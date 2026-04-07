@@ -6,8 +6,19 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		44BFE1E72F8424EF00B1A1EA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 44432F6C2F81BA4000D8239C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 44432F732F81BA4000D8239C;
+			remoteInfo = LoonyBear;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		44432F742F81BA4000D8239C /* LoonyBear.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LoonyBear.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		44BFE1E32F8424EF00B1A1EA /* LoonyBearTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LoonyBearTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -16,10 +27,22 @@
 			path = LoonyBear;
 			sourceTree = "<group>";
 		};
+		44BFE1E42F8424EF00B1A1EA /* LoonyBearTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = LoonyBearTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		44432F712F81BA4000D8239C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		44BFE1E02F8424EF00B1A1EA /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -33,7 +56,9 @@
 			isa = PBXGroup;
 			children = (
 				44432F762F81BA4000D8239C /* LoonyBear */,
+				44BFE1E42F8424EF00B1A1EA /* LoonyBearTests */,
 				44432F752F81BA4000D8239C /* Products */,
+				448C16D02F8535DC00E0AC4D /* Resources */,
 			);
 			sourceTree = "<group>";
 		};
@@ -41,8 +66,16 @@
 			isa = PBXGroup;
 			children = (
 				44432F742F81BA4000D8239C /* LoonyBear.app */,
+				44BFE1E32F8424EF00B1A1EA /* LoonyBearTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		448C16D02F8535DC00E0AC4D /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -70,6 +103,29 @@
 			productReference = 44432F742F81BA4000D8239C /* LoonyBear.app */;
 			productType = "com.apple.product-type.application";
 		};
+		44BFE1E22F8424EF00B1A1EA /* LoonyBearTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 44BFE1EB2F8424EF00B1A1EA /* Build configuration list for PBXNativeTarget "LoonyBearTests" */;
+			buildPhases = (
+				44BFE1DF2F8424EF00B1A1EA /* Sources */,
+				44BFE1E02F8424EF00B1A1EA /* Frameworks */,
+				44BFE1E12F8424EF00B1A1EA /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				44BFE1E82F8424EF00B1A1EA /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				44BFE1E42F8424EF00B1A1EA /* LoonyBearTests */,
+			);
+			name = LoonyBearTests;
+			packageProductDependencies = (
+			);
+			productName = LoonyBearTests;
+			productReference = 44BFE1E32F8424EF00B1A1EA /* LoonyBearTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -82,6 +138,10 @@
 				TargetAttributes = {
 					44432F732F81BA4000D8239C = {
 						CreatedOnToolsVersion = 26.4;
+					};
+					44BFE1E22F8424EF00B1A1EA = {
+						CreatedOnToolsVersion = 26.4;
+						TestTargetID = 44432F732F81BA4000D8239C;
 					};
 				};
 			};
@@ -100,12 +160,20 @@
 			projectRoot = "";
 			targets = (
 				44432F732F81BA4000D8239C /* LoonyBear */,
+				44BFE1E22F8424EF00B1A1EA /* LoonyBearTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		44432F722F81BA4000D8239C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		44BFE1E12F8424EF00B1A1EA /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -122,7 +190,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		44BFE1DF2F8424EF00B1A1EA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		44BFE1E82F8424EF00B1A1EA /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 44432F732F81BA4000D8239C /* LoonyBear */;
+			targetProxy = 44BFE1E72F8424EF00B1A1EA /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		44432F822F81BA4000D8239C /* Debug */ = {
@@ -310,6 +393,48 @@
 			};
 			name = Release;
 		};
+		44BFE1E92F8424EF00B1A1EA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = NS2UA7UTVH;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.valr4k.LoonyBearTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/LoonyBear.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/LoonyBear";
+			};
+			name = Debug;
+		};
+		44BFE1EA2F8424EF00B1A1EA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = NS2UA7UTVH;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.valr4k.LoonyBearTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/LoonyBear.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/LoonyBear";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -327,6 +452,15 @@
 			buildConfigurations = (
 				44432F852F81BA4000D8239C /* Debug */,
 				44432F862F81BA4000D8239C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		44BFE1EB2F8424EF00B1A1EA /* Build configuration list for PBXNativeTarget "LoonyBearTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				44BFE1E92F8424EF00B1A1EA /* Debug */,
+				44BFE1EA2F8424EF00B1A1EA /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

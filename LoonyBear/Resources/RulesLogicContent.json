@@ -1,0 +1,131 @@
+{
+  "title": "Rules & Logic",
+  "sections": [
+    {
+      "title": "General",
+      "items": [
+        {
+          "title": "Two trackers",
+          "body": "This app has two separate trackers: Habits and Pills. They use similar screens and reminders, but the counting logic is different."
+        },
+        {
+          "title": "Edits don’t rewrite everything",
+          "body": "Most edits update the current setup going forward. The app does not automatically rewrite all past history when you change a schedule later."
+        },
+        {
+          "title": "Lists stay separate",
+          "body": "Habits and Pills are stored and managed separately. Changes in one tab are not supposed to affect the other."
+        }
+      ]
+    },
+    {
+      "title": "Habits",
+      "items": [
+        {
+          "title": "Habit types",
+          "body": "Habits can be created as either Build Habit or Quit Habit. This affects how the habit is categorized, but tracking still happens by marking days as completed."
+        },
+        {
+          "title": "Marking progress",
+          "body": "A habit can be marked completed for today, or the mark can be removed. This can be done from the list or by editing recent history."
+        },
+        {
+          "title": "Editing history",
+          "body": "Habit history can only be edited for the recent editable window. Older history stays visible, but it is not meant to be changed from edit."
+        },
+        {
+          "title": "Schedule changes",
+          "body": "If you change a habit schedule later, the app keeps the historical record that already exists. It does not fully recalculate older completions from scratch."
+        }
+      ]
+    },
+    {
+      "title": "Pills",
+      "items": [
+        {
+          "title": "Start date creates the base history",
+          "body": "When a pill is created, the app uses the Start Date to generate the initial taken history automatically."
+        },
+        {
+          "title": "Use schedule for history",
+          "body": "If enabled, only scheduled days are counted from the start date up to yesterday. If disabled, every day from the start date up to yesterday is counted."
+        },
+        {
+          "title": "Today is not auto-counted on create",
+          "body": "Initial pill history is generated only up to yesterday. Creating a pill today does not automatically mark it as taken today."
+        },
+        {
+          "title": "Editing recent pill history",
+          "body": "Pill history can be corrected only for the recent editable window. Older history stays stored for totals and details, but it is not directly rewritten in edit."
+        },
+        {
+          "title": "Pills use total days",
+          "body": "Pills do not use streaks. They only track the total number of days marked as taken."
+        }
+      ]
+    },
+    {
+      "title": "Notifications",
+      "items": [
+        {
+          "title": "Permission is requested during setup",
+          "body": "The app asks for notification permission during app setup so reminders can be available immediately."
+        },
+        {
+          "title": "Reminder window is limited",
+          "body": "The app schedules reminders only for a short upcoming window, currently the next 2 days. This helps avoid system notification limits."
+        },
+        {
+          "title": "Grouped reminders",
+          "body": "If multiple reminders fall at the same time, the app may group them into a single notification instead of showing one per item."
+        },
+        {
+          "title": "Reminders refresh often",
+          "body": "Reminder scheduling is refreshed when the app becomes active and after reminder-related changes such as create, edit, delete, mark, or unmark."
+        }
+      ]
+    },
+    {
+      "title": "History & Counts",
+      "items": [
+        {
+          "title": "Habits use streaks",
+          "body": "Habits track current streak, longest streak, and completion history."
+        },
+        {
+          "title": "Pills use total days only",
+          "body": "Pills track only total days taken. Missed days do not break a streak because pills do not use streak logic."
+        },
+        {
+          "title": "History windows are different",
+          "body": "Habits and Pills do not use the same history rules everywhere. Create flow, edit flow, and details screens may use different history windows depending on the feature."
+        },
+        {
+          "title": "Older history stays visible",
+          "body": "Even when older history is not editable, it still contributes to totals and still appears in the visual history where supported."
+        }
+      ]
+    },
+    {
+      "title": "Backup",
+      "items": [
+        {
+          "title": "Backup stores both trackers",
+          "body": "Backup includes both Habits and Pills, including their schedules, reminder settings, and stored history."
+        },
+        {
+          "title": "Restore replaces app data",
+          "body": "When a backup is restored, the app rebuilds the stored data from that backup. This can change what appears in both trackers."
+        },
+        {
+          "title": "Notifications are rebuilt after restore",
+          "body": "After restore, reminder notifications are rebuilt from the restored data so reminders match the current stored state."
+        },
+        {
+          "title": "Use backup for manual correction if needed",
+          "body": "If something was entered incorrectly a long time ago, backup data can be a practical way to inspect or correct older stored records."
+        }
+      ]
+    }
+  ]
+}

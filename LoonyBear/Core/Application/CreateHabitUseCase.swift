@@ -1,0 +1,34 @@
+import Foundation
+
+enum CreateHabitError: LocalizedError, Equatable {
+    case emptyName
+    case noScheduleDays
+    case tooManyHabits
+
+    var errorDescription: String? {
+        switch self {
+        case .emptyName:
+            return "Habit name is required."
+        case .noScheduleDays:
+            return "Select at least one day."
+        case .tooManyHabits:
+            return "You can create up to 20 habits."
+        }
+    }
+}
+
+struct CreateHabitUseCase {
+    let repository: HabitRepository
+
+    func execute(draft: CreateHabitDraft) throws -> UUID {
+        guard !draft.trimmedName.isEmpty else {
+            throw CreateHabitError.emptyName
+        }
+
+        guard draft.scheduleDays.rawValue != 0 else {
+            throw CreateHabitError.noScheduleDays
+        }
+
+        return try repository.createHabit(from: draft)
+    }
+}
