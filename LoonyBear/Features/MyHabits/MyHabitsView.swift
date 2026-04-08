@@ -6,14 +6,17 @@ struct MyHabitsView: View {
     @State private var habitPendingDeletion: HabitCardProjection?
     private let reminderStateTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
     let onCreateHabit: () -> Void
-    let onSelectHabit: (HabitCardProjection) -> Void
+    let onShowHabitInfo: (HabitCardProjection) -> Void
+    let onEditHabit: (HabitCardProjection) -> Void
 
     init(
         onCreateHabit: @escaping () -> Void = {},
-        onSelectHabit: @escaping (HabitCardProjection) -> Void = { _ in }
+        onShowHabitInfo: @escaping (HabitCardProjection) -> Void = { _ in },
+        onEditHabit: @escaping (HabitCardProjection) -> Void = { _ in }
     ) {
         self.onCreateHabit = onCreateHabit
-        self.onSelectHabit = onSelectHabit
+        self.onShowHabitInfo = onShowHabitInfo
+        self.onEditHabit = onEditHabit
     }
 
     var body: some View {
@@ -34,17 +37,12 @@ struct MyHabitsView: View {
                     ForEach(sections) { section in
                         Section {
                             ForEach(Array(section.habits.enumerated()), id: \.element.id) { index, habit in
-                                Button {
-                                    onSelectHabit(habit)
-                                } label: {
-                                    HabitCardView(
-                                        habit: habit,
-                                        position: rowPosition(for: index, count: section.habits.count),
-                                        currentTime: currentTime
-                                    )
-                                    .padding(.horizontal, 10)
-                                }
-                                .buttonStyle(.plain)
+                                HabitCardView(
+                                    habit: habit,
+                                    position: rowPosition(for: index, count: section.habits.count),
+                                    currentTime: currentTime
+                                )
+                                .padding(.horizontal, 10)
                                 .listRowInsets(EdgeInsets())
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
@@ -62,15 +60,26 @@ struct MyHabitsView: View {
                                 }
                                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                     Button {
+                                        onShowHabitInfo(habit)
+                                    } label: {
+                                        Image(systemName: "info")
+                                    }
+                                    .tint(.indigo)
+
+                                    Button {
+                                        onEditHabit(habit)
+                                    } label: {
+                                        Image(systemName: "pencil")
+                                    }
+                                    .tint(.blue)
+
+                                    Button {
                                         habitPendingDeletion = habit
                                     } label: {
                                         Image(systemName: "trash")
                                     }
                                     .tint(.red)
                                 }
-                            }
-                            .onMove { offsets, destination in
-                                appState.moveHabits(of: section.id, from: offsets, to: destination)
                             }
                         } header: {
                             Text(section.title)
@@ -189,15 +198,11 @@ private struct HabitCardView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             ZStack(alignment: .topTrailing) {
-                HStack(spacing: 10) {
+                HStack {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.title3)
                         .foregroundStyle(.green)
                         .opacity(habit.isCompletedToday ? 1 : 0)
-
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.tertiary)
                 }
                 .frame(maxHeight: .infinity, alignment: .center)
 
@@ -209,7 +214,7 @@ private struct HabitCardView: View {
                         .offset(y: -4)
                 }
             }
-            .frame(width: 56)
+            .frame(width: 40)
             .frame(maxHeight: .infinity, alignment: .trailing)
         }
         .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)

@@ -26,7 +26,7 @@ struct EditHabitView: View {
     }
 
     var body: some View {
-        AppScreen(backgroundStyle: .habits) {
+        AppScreen(backgroundStyle: .habits, topPadding: 8) {
             AppCard {
                 VStack(alignment: .leading, spacing: 0) {
                     HabitNameInputField(text: $draft.name)
@@ -136,6 +136,15 @@ struct EditHabitView: View {
         .navigationTitle(draft.type.sectionTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .accessibilityLabel("Close")
+            }
+
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     save()
@@ -461,7 +470,7 @@ struct HabitCalendarDayView: View {
         ZStack {
             if style == .selected {
                 Circle()
-                    .fill(Color.blue.opacity(0.14))
+                    .fill(Color(uiColor: .systemBlue).opacity(0.2))
                     .frame(width: 42, height: 42)
             }
 
@@ -480,7 +489,7 @@ struct HabitCalendarDayView: View {
         case .available:
             return .primary
         case .disabled:
-            return Color.secondary.opacity(0.55)
+            return Color(uiColor: .tertiaryLabel)
         }
     }
 }

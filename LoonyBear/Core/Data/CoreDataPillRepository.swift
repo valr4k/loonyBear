@@ -56,6 +56,7 @@ struct CoreDataPillRepository: PillRepository {
                 sortOrder: Int(pillObject.value(forKey: "sortOrder") as? Int32 ?? 0)
             )
         }
+        .sorted(by: pillDashboardSort)
     }
 
     func fetchPillDetails(id: UUID) -> PillDetailsProjection? {
@@ -396,6 +397,45 @@ struct CoreDataPillRepository: PillRepository {
             return lhs.version > rhs.version
         }
         return lhs.createdAt > rhs.createdAt
+    }
+
+    private func pillDashboardSort(_ lhs: PillCardProjection, _ rhs: PillCardProjection) -> Bool {
+        let lhsTime = reminderSortKey(for: lhs)
+        let rhsTime = reminderSortKey(for: rhs)
+
+        if lhsTime != rhsTime {
+            return lhsTime < rhsTime
+        }
+
+        if lhs.sortOrder != rhs.sortOrder {
+            return lhs.sortOrder < rhs.sortOrder
+        }
+
+        return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+    }
+
+    private func reminderSortKey(for pill: PillCardProjection) -> Int {
+        guard let hour = pill.reminderHour, let minute = pill.reminderMinute else {
+            return Int.max
+        }
+
+        return hour * 60 + minute
+    }
+
+    private func reorderedItems<T>(_ items: [T], from offsets: IndexSet, to destination: Int) -> [T] {
+        var reordered = items
+        let movedItems = offsets.map { reordered[$0] }
+
+        for offset in offsets.sorted(by: >) {
+            reordered.remove(at: offset)
+        }
+
+        let insertionIndex = min(
+            destination - offsets.count(in: 0..<destination),
+            reordered.count
+        )
+        reordered.insert(contentsOf: movedItems, at: insertionIndex)
+        return reordered
     }
 }
 

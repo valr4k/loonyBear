@@ -9,6 +9,7 @@ enum AppBackgroundStyle {
 
 struct AppScreen<Content: View>: View {
     var backgroundStyle: AppBackgroundStyle = .default
+    var topPadding: CGFloat = 20
     @ViewBuilder let content: Content
 
     var body: some View {
@@ -17,7 +18,7 @@ struct AppScreen<Content: View>: View {
                 content
             }
             .padding(.horizontal, 20)
-            .padding(.top, 20)
+            .padding(.top, topPadding)
             .padding(.bottom, 40)
         }
         .background(AppBackground(style: backgroundStyle))

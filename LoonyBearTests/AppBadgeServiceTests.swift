@@ -115,7 +115,6 @@ private struct FakeHabitRepository: HabitRepository {
     func completeHabitToday(id: UUID) throws { fatalError("Unused in tests") }
     func removeHabitCompletionToday(id: UUID) throws { fatalError("Unused in tests") }
     func deleteHabit(id: UUID) throws { fatalError("Unused in tests") }
-    func moveHabits(of type: HabitType, from offsets: IndexSet, to destination: Int) throws { fatalError("Unused in tests") }
     func updateHabit(from draft: EditHabitDraft) throws { fatalError("Unused in tests") }
 }
 

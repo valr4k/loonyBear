@@ -49,7 +49,7 @@ final class PillNotificationService {
     func notificationCategories() -> [UNNotificationCategory] {
         let takeAction = UNNotificationAction(
             identifier: takeActionIdentifier,
-            title: "Mark as taken",
+            title: "Mark as Taken",
             options: []
         )
 
@@ -312,7 +312,7 @@ final class PillNotificationService {
     private func makeIndividualNotificationRequest(for candidate: ScheduledPillReminderCandidate) -> UNNotificationRequest {
         let content = UNMutableNotificationContent()
         content.title = candidate.pillName
-        content.body = "Time to take: \(candidate.dosage)."
+        content.body = "Take \(candidate.dosage)."
         content.sound = .default
         content.categoryIdentifier = categoryIdentifier
         content.userInfo = [
@@ -335,7 +335,7 @@ final class PillNotificationService {
     ) -> UNNotificationRequest {
         let content = UNMutableNotificationContent()
         content.title = "Pills"
-        content.body = "You have: \(candidates.count) pills to take."
+        content.body = "You have \(candidates.count) pills to take."
         content.sound = .default
         content.categoryIdentifier = summaryCategoryIdentifier
         content.userInfo = [

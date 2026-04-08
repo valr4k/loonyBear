@@ -59,7 +59,7 @@ final class NotificationService {
     func notificationCategories() -> [UNNotificationCategory] {
         let completeAction = UNNotificationAction(
             identifier: completeActionIdentifier,
-            title: "Mark as complete",
+            title: "Mark as Completed",
             options: []
         )
 
@@ -497,7 +497,7 @@ final class NotificationService {
     private func makeIndividualNotificationRequest(for candidate: ScheduledHabitReminderCandidate) -> UNNotificationRequest {
         let content = UNMutableNotificationContent()
         content.title = candidate.habitName
-        content.body = "Don’t forget today’s check-in."
+        content.body = "Check in today."
         content.sound = .default
         content.categoryIdentifier = categoryIdentifier
         content.userInfo = [
@@ -525,7 +525,7 @@ final class NotificationService {
     ) -> UNNotificationRequest {
         let content = UNMutableNotificationContent()
         content.title = "Habits"
-        content.body = "You have: \(candidates.count) habits to check in today."
+        content.body = "You have \(candidates.count) habits to check in today."
         content.sound = .default
         content.categoryIdentifier = summaryCategoryIdentifier
         content.userInfo = [

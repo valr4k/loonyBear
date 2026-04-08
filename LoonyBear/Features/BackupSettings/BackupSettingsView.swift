@@ -4,6 +4,7 @@ struct BackupSettingsView: View {
     @EnvironmentObject private var appState: HabitAppState
     @EnvironmentObject private var pillAppState: PillAppState
     @StateObject private var viewModel: BackupSettingsViewModel
+    @State private var confirmationDialog: BackupConfirmationDialog?
 
     init(viewModel: BackupSettingsViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -42,42 +43,48 @@ struct BackupSettingsView: View {
             )
         }
         .confirmationDialog(
-            viewModel.confirmationDialog?.title ?? "",
+            confirmationDialog?.title ?? "",
             isPresented: Binding(
-                get: { viewModel.confirmationDialog != nil },
+                get: { confirmationDialog != nil },
                 set: { isPresented in
                     if !isPresented {
-                        viewModel.confirmationDialog = nil
+                        confirmationDialog = nil
                     }
                 }
             ),
             titleVisibility: .visible
         ) {
-            switch viewModel.confirmationDialog {
+            switch confirmationDialog {
             case .createBackup:
                 Button("Create Backup") {
-                    viewModel.confirmCreateBackup()
-                    viewModel.confirmationDialog = nil
+                    confirmationDialog = nil
+                    Task {
+                        await Task.yield()
+                        await viewModel.confirmCreateBackup()
+                    }
                 }
                 Button("Cancel", role: .cancel) {
-                    viewModel.confirmationDialog = nil
+                    confirmationDialog = nil
                 }
             case .restoreBackup:
                 Button("Restore Backup", role: .destructive) {
-                    if viewModel.confirmRestoreBackup() {
-                        appState.refreshDashboard()
-                        pillAppState.refreshDashboard()
+                    confirmationDialog = nil
+                    Task {
+                        await Task.yield()
+                        if await viewModel.confirmRestoreBackup() {
+                            appState.refreshDashboard()
+                            pillAppState.refreshDashboard()
+                        }
                     }
-                    viewModel.confirmationDialog = nil
                 }
                 Button("Cancel", role: .cancel) {
-                    viewModel.confirmationDialog = nil
+                    confirmationDialog = nil
                 }
             case .none:
                 EmptyView()
             }
         } message: {
-            if let dialog = viewModel.confirmationDialog {
+            if let dialog = confirmationDialog {
                 Text(dialog.message)
             }
         }
@@ -122,8 +129,13 @@ struct BackupSettingsView: View {
             BackupActionRow(
                 icon: "arrow.clockwise",
                 title: "Create Backup",
-                isEnabled: viewModel.status.hasSelectedFolder,
-                action: viewModel.createBackup
+                isEnabled: viewModel.status.hasSelectedFolder && !viewModel.isPerformingOperation,
+                isLoading: viewModel.isCreatingBackup,
+                action: {
+                    if viewModel.createBackup() {
+                        confirmationDialog = .createBackup
+                    }
+                }
             )
 
             Divider()
@@ -132,8 +144,13 @@ struct BackupSettingsView: View {
             BackupActionRow(
                 icon: "arrow.counterclockwise",
                 title: "Restore Backup",
-                isEnabled: viewModel.status.hasSelectedFolder,
-                action: viewModel.restoreBackup
+                isEnabled: viewModel.status.hasSelectedFolder && !viewModel.isPerformingOperation,
+                isLoading: viewModel.isRestoringBackup,
+                action: {
+                    if viewModel.restoreBackup() {
+                        confirmationDialog = .restoreBackup
+                    }
+                }
             )
         }
     }
@@ -185,15 +202,23 @@ private struct BackupActionRow: View {
     let icon: String
     let title: String
     let isEnabled: Bool
+    let isLoading: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.system(size: 21, weight: .regular))
-                    .foregroundStyle(.blue)
-                    .frame(width: 22)
+                Group {
+                    if isLoading {
+                        ProgressView()
+                            .tint(.blue)
+                    } else {
+                        Image(systemName: icon)
+                            .font(.system(size: 21, weight: .regular))
+                            .foregroundStyle(.blue)
+                    }
+                }
+                .frame(width: 22, height: 22)
 
                 Text(title)
                     .foregroundStyle(isEnabled ? .blue : .secondary)

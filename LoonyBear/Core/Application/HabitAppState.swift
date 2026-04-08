@@ -92,17 +92,6 @@ final class HabitAppState: ObservableObject {
         }
     }
 
-    func moveHabits(of type: HabitType, from offsets: IndexSet, to destination: Int) {
-        do {
-            try repository.moveHabits(of: type, from: offsets, to: destination)
-            refreshDashboard()
-            actionErrorMessage = nil
-        } catch {
-            refreshDashboard()
-            actionErrorMessage = error.localizedDescription
-        }
-    }
-
     func clearActionError() {
         actionErrorMessage = nil
     }

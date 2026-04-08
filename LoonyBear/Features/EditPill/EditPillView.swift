@@ -34,7 +34,7 @@ struct EditPillView: View {
 
     var body: some View {
         ScrollViewReader { proxy in
-            AppScreen(backgroundStyle: .pills) {
+            AppScreen(backgroundStyle: .pills, topPadding: 8) {
                 AppCard {
                     VStack(alignment: .leading, spacing: 0) {
                         CenteredInputField(
@@ -146,6 +146,15 @@ struct EditPillView: View {
                     .frame(height: focusedField == .description ? 36 : 0)
             }
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Close")
+                }
+
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         save()

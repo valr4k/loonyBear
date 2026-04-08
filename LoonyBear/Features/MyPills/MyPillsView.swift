@@ -8,14 +8,17 @@ struct MyPillsView: View {
 
     private let reminderStateTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
     let onCreatePill: () -> Void
-    let onSelectPill: (PillCardProjection) -> Void
+    let onShowPillInfo: (PillCardProjection) -> Void
+    let onEditPill: (PillCardProjection) -> Void
 
     init(
         onCreatePill: @escaping () -> Void = {},
-        onSelectPill: @escaping (PillCardProjection) -> Void = { _ in }
+        onShowPillInfo: @escaping (PillCardProjection) -> Void = { _ in },
+        onEditPill: @escaping (PillCardProjection) -> Void = { _ in }
     ) {
         self.onCreatePill = onCreatePill
-        self.onSelectPill = onSelectPill
+        self.onShowPillInfo = onShowPillInfo
+        self.onEditPill = onEditPill
     }
 
     var body: some View {
@@ -34,17 +37,12 @@ struct MyPillsView: View {
                     ForEach(sections) { section in
                         Section {
                             ForEach(Array(section.pills.enumerated()), id: \.element.id) { index, pill in
-                                Button {
-                                    onSelectPill(pill)
-                                } label: {
-                                    PillCardView(
-                                        pill: pill,
-                                        position: rowPosition(for: index, count: section.pills.count),
-                                        currentTime: currentTime
-                                    )
-                                    .padding(.horizontal, 10)
-                                }
-                                .buttonStyle(.plain)
+                                PillCardView(
+                                    pill: pill,
+                                    position: rowPosition(for: index, count: section.pills.count),
+                                    currentTime: currentTime
+                                )
+                                .padding(.horizontal, 10)
                                 .listRowInsets(EdgeInsets())
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
@@ -61,6 +59,20 @@ struct MyPillsView: View {
                                     .tint(pill.isTakenToday ? .orange : .green)
                                 }
                                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button {
+                                        onShowPillInfo(pill)
+                                    } label: {
+                                        Image(systemName: "info")
+                                    }
+                                    .tint(.indigo)
+
+                                    Button {
+                                        onEditPill(pill)
+                                    } label: {
+                                        Image(systemName: "pencil")
+                                    }
+                                    .tint(.blue)
+
                                     Button {
                                         pillPendingDeletion = pill
                                     } label: {
@@ -123,7 +135,7 @@ struct MyPillsView: View {
     }
 
     private var pills: [PillCardProjection] {
-        pillAppState.dashboard.pills.sorted(by: pillSort)
+        pillAppState.dashboard.pills
     }
 
     private var sections: [PillDashboardSectionProjection] {
@@ -168,25 +180,6 @@ struct MyPillsView: View {
             return .last
         }
         return .middle
-    }
-
-    private func pillSort(_ lhs: PillCardProjection, _ rhs: PillCardProjection) -> Bool {
-        let lhsTime = sortTime(for: lhs)
-        let rhsTime = sortTime(for: rhs)
-
-        if lhsTime != rhsTime {
-            return lhsTime < rhsTime
-        }
-
-        return lhs.sortOrder < rhs.sortOrder
-    }
-
-    private func sortTime(for pill: PillCardProjection) -> Int {
-        guard let hour = pill.reminderHour, let minute = pill.reminderMinute else {
-            return Int.max
-        }
-
-        return hour * 60 + minute
     }
 }
 

@@ -16,7 +16,7 @@ struct CreatePillView: View {
 
     var body: some View {
         ScrollViewReader { proxy in
-            AppScreen(backgroundStyle: .pills) {
+            AppScreen(backgroundStyle: .pills, topPadding: 8) {
                 VStack(alignment: .leading, spacing: 20) {
                     detailsSection
                     daysSection
@@ -34,6 +34,15 @@ struct CreatePillView: View {
                     .frame(height: focusedField == .description ? 36 : 0)
             }
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Close")
+                }
+
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         savePill()

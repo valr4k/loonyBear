@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct PillDetailsView: View {
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var pillAppState: PillAppState
     let pill: PillCardProjection
 
@@ -14,7 +15,7 @@ struct PillDetailsView: View {
     }()
 
     var body: some View {
-        AppScreen(backgroundStyle: .pills) {
+        AppScreen(backgroundStyle: .pills, topPadding: 8) {
             if isLoadingDetails {
                 AppCard {
                     HStack {
@@ -90,14 +91,13 @@ struct PillDetailsView: View {
         .navigationTitle("Pill Details")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                if let details {
-                    NavigationLink("Edit") {
-                        EditPillView(details: details) {
-                            needsReloadOnAppear = true
-                        }
-                    }
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
                 }
+                .accessibilityLabel("Close")
             }
         }
         .onAppear {

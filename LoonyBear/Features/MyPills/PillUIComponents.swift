@@ -53,15 +53,11 @@ struct PillCardView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             ZStack(alignment: .topTrailing) {
-                HStack(spacing: 10) {
+                HStack {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.title3)
                         .foregroundStyle(.green)
                         .opacity(pill.isTakenToday ? 1 : 0)
-
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.tertiary)
                 }
                 .frame(maxHeight: .infinity, alignment: .center)
 
@@ -73,7 +69,7 @@ struct PillCardView: View {
                         .offset(y: -4)
                 }
             }
-            .frame(width: 64)
+            .frame(width: 44)
             .frame(maxHeight: .infinity, alignment: .trailing)
         }
         .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
@@ -477,7 +473,7 @@ private struct PillCalendarDayView: View {
         ZStack {
             if style == .selected {
                 Circle()
-                    .fill(Color.blue.opacity(0.14))
+                    .fill(Color(uiColor: .systemBlue).opacity(0.2))
                     .frame(width: 42, height: 42)
             }
 
@@ -496,7 +492,7 @@ private struct PillCalendarDayView: View {
         case .available:
             return .primary
         case .disabled:
-            return .secondary.opacity(0.55)
+            return Color(uiColor: .tertiaryLabel)
         }
     }
 }
@@ -510,13 +506,13 @@ private struct PillReadOnlyCalendarDayView: View {
         ZStack {
             if isSelected {
                 Circle()
-                    .fill(Color.blue.opacity(0.14))
+                    .fill(Color(uiColor: .systemBlue).opacity(0.2))
                     .frame(width: 42, height: 42)
             }
 
             Text("\(dayNumber)")
                 .font(.system(size: 19, weight: .regular, design: .rounded))
-                .foregroundStyle(isSelected ? Color.blue : Color.secondary.opacity(0.55))
+                .foregroundStyle(isSelected ? Color.blue : Color(uiColor: .tertiaryLabel))
         }
         .frame(width: cellSize, height: cellSize)
         .frame(maxWidth: .infinity, minHeight: cellSize)

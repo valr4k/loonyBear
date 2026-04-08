@@ -109,6 +109,7 @@ struct CoreDataHabitRepository: HabitRepository {
                 sortOrder: sortOrder
             )
         }
+        .sorted(by: habitDashboardSort)
     }
 
     func fetchHabitDetails(id: UUID) -> HabitDetailsProjection? {
@@ -233,22 +234,6 @@ struct CoreDataHabitRepository: HabitRepository {
             guard let habit = try fetchHabit(id: id, in: context) else { return }
 
             context.delete(habit)
-            try context.save()
-        }
-    }
-
-    func moveHabits(of type: HabitType, from offsets: IndexSet, to destination: Int) throws {
-        try performWrite { context in
-            let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
-            request.predicate = NSPredicate(format: "typeRaw == %@", type.rawValue)
-            request.sortDescriptors = [NSSortDescriptor(key: "sortOrder", ascending: true)]
-
-            let habits = reorderedItems(try context.fetch(request), from: offsets, to: destination)
-
-            for (index, habit) in habits.enumerated() {
-                habit.setValue(Int32(index), forKey: "sortOrder")
-            }
-
             try context.save()
         }
     }
@@ -459,6 +444,35 @@ struct CoreDataHabitRepository: HabitRepository {
             return lhs.version > rhs.version
         }
         return lhs.createdAt > rhs.createdAt
+    }
+
+    private func habitDashboardSort(_ lhs: HabitCardProjection, _ rhs: HabitCardProjection) -> Bool {
+        if lhs.type != rhs.type {
+            return lhs.type.rawValue < rhs.type.rawValue
+        }
+
+        let lhsReminder = reminderSortKey(for: lhs)
+        let rhsReminder = reminderSortKey(for: rhs)
+        if lhsReminder != rhsReminder {
+            return lhsReminder < rhsReminder
+        }
+
+        if lhs.sortOrder != rhs.sortOrder {
+            return lhs.sortOrder < rhs.sortOrder
+        }
+
+        return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+    }
+
+    private func reminderSortKey(for habit: HabitCardProjection) -> Int {
+        guard
+            let hour = habit.reminderHour,
+            let minute = habit.reminderMinute
+        else {
+            return Int.max
+        }
+
+        return (hour * 60) + minute
     }
 }
 

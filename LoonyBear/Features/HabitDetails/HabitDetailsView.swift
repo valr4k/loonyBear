@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct HabitDetailsView: View {
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var appState: HabitAppState
     let habit: HabitCardProjection
     @State private var details: HabitDetailsProjection?
@@ -13,7 +14,7 @@ struct HabitDetailsView: View {
     }()
 
     var body: some View {
-        AppScreen(backgroundStyle: .habits) {
+        AppScreen(backgroundStyle: .habits, topPadding: 8) {
             if let details {
                 DetailsCard {
                     Text(details.name)
@@ -67,14 +68,13 @@ struct HabitDetailsView: View {
         .navigationTitle(details?.type.sectionTitle ?? "Habit")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                if let details {
-                    NavigationLink("Edit") {
-                        EditHabitView(details: details) {
-                            needsReloadOnAppear = true
-                        }
-                    }
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
                 }
+                .accessibilityLabel("Close")
             }
         }
         .onAppear {
