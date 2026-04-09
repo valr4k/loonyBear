@@ -69,13 +69,24 @@ final class HabitAppState: ObservableObject {
         notificationService.removeDeliveredNotifications(forHabitID: id, on: Date())
     }
 
-    func removeHabitCompletionToday(id: UUID) {
-        let didRemoveCompletion = performDashboardMutation {
-            try repository.removeHabitCompletionToday(id: id)
+    func skipHabitToday(id: UUID) {
+        let didSkip = performDashboardMutation {
+            try repository.skipHabitToday(id: id)
         }
-        guard didRemoveCompletion else { return }
+        guard didSkip else { return }
 
         notificationService.rescheduleAllNotifications()
+        notificationService.removeDeliveredNotifications(forHabitID: id, on: Date())
+    }
+
+    func clearHabitDayStateToday(id: UUID) {
+        let didClearDayState = performDashboardMutation {
+            try repository.clearHabitDayStateToday(id: id)
+        }
+        guard didClearDayState else { return }
+
+        notificationService.rescheduleAllNotifications()
+        notificationService.removeDeliveredNotifications(forHabitID: id, on: Date())
     }
 
     func deleteHabit(id: UUID) {

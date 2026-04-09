@@ -109,4 +109,86 @@ struct CoreDataHabitRepositoryTests {
             "No Reminder",
         ])
     }
+
+    @Test
+    func skipDoesNotCountAsCompletionAndCompletionOverwritesSkip() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataHabitRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Walk"
+        draft.startDate = TestSupport.makeDate(2026, 4, 1)
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = false
+
+        let habitID = try repository.createHabit(from: draft)
+
+        try repository.skipHabitToday(id: habitID)
+
+        let skippedDashboardHabit = try #require(
+            repository.fetchDashboardHabits().first { $0.id == habitID }
+        )
+        let skippedDetails = try #require(repository.fetchHabitDetails(id: habitID))
+
+        #expect(skippedDashboardHabit.isSkippedToday)
+        #expect(!skippedDashboardHabit.isCompletedToday)
+        #expect(skippedDetails.totalCompletedDays == 0)
+        #expect(skippedDetails.completedDays.isEmpty)
+        #expect(skippedDetails.skippedDays.count == 1)
+
+        try repository.completeHabitToday(id: habitID)
+
+        let completedDashboardHabit = try #require(
+            repository.fetchDashboardHabits().first { $0.id == habitID }
+        )
+        let completedDetails = try #require(repository.fetchHabitDetails(id: habitID))
+
+        #expect(!completedDashboardHabit.isSkippedToday)
+        #expect(completedDashboardHabit.isCompletedToday)
+        #expect(completedDetails.totalCompletedDays == 1)
+        #expect(completedDetails.completedDays.count == 1)
+        #expect(completedDetails.skippedDays.isEmpty)
+
+        let request = NSFetchRequest<NSManagedObject>(entityName: "HabitCompletion")
+        request.predicate = NSPredicate(format: "habitID == %@", habitID as CVarArg)
+        let completions = try context.fetch(request)
+
+        #expect(completions.count == 1)
+        #expect(completions.first?.value(forKey: "sourceRaw") as? String == CompletionSource.swipe.rawValue)
+    }
+
+    @Test
+    func clearRemovesSkippedStateAndReturnsHabitToNormalDayState() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Read"
+        draft.startDate = TestSupport.makeDate(2026, 4, 1)
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = false
+
+        let habitID = try repository.createHabit(from: draft)
+
+        try repository.skipHabitToday(id: habitID)
+        try repository.clearHabitDayStateToday(id: habitID)
+
+        let dashboardHabit = try #require(
+            repository.fetchDashboardHabits().first { $0.id == habitID }
+        )
+        let details = try #require(repository.fetchHabitDetails(id: habitID))
+
+        #expect(!dashboardHabit.isSkippedToday)
+        #expect(!dashboardHabit.isCompletedToday)
+        #expect(details.completedDays.isEmpty)
+        #expect(details.skippedDays.isEmpty)
+        #expect(details.totalCompletedDays == 0)
+    }
 }

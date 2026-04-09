@@ -47,16 +47,35 @@ struct MyHabitsView: View {
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
                                 .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                    Button {
-                                        if habit.isCompletedToday {
-                                            appState.removeHabitCompletionToday(id: habit.id)
-                                        } else {
-                                            appState.completeHabitToday(id: habit.id)
+                                    if habit.isCompletedToday {
+                                        Button {
+                                            appState.clearHabitDayStateToday(id: habit.id)
+                                        } label: {
+                                            Image(systemName: "calendar.badge.minus")
                                         }
-                                    } label: {
-                                        Image(systemName: habit.isCompletedToday ? "xmark" : "checkmark")
+                                        .tint(.orange)
+                                    } else if habit.isSkippedToday {
+                                        Button {
+                                            appState.clearHabitDayStateToday(id: habit.id)
+                                        } label: {
+                                            Image(systemName: "calendar.badge.minus")
+                                        }
+                                        .tint(.orange)
+                                    } else {
+                                        Button {
+                                            appState.completeHabitToday(id: habit.id)
+                                        } label: {
+                                            Image(systemName: "checkmark")
+                                        }
+                                        .tint(.green)
+
+                                        Button {
+                                            appState.skipHabitToday(id: habit.id)
+                                        } label: {
+                                            Image(systemName: "xmark")
+                                        }
+                                        .tint(.red)
                                     }
-                                    .tint(habit.isCompletedToday ? .orange : .green)
                                 }
                                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                     Button {
@@ -191,31 +210,34 @@ private struct HabitCardView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
 
-                Text("Current streak: \(habit.currentStreak)")
+                Text("Current streak: \(DayCountFormatter.compactDurationString(for: habit.currentStreak))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            ZStack(alignment: .topTrailing) {
-                HStack {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(.green)
-                        .opacity(habit.isCompletedToday ? 1 : 0)
+            Color.clear
+                .overlay(alignment: .topTrailing) {
+                    if let reminderText = habit.reminderText {
+                        Text(reminderText)
+                            .font(.caption)
+                            .foregroundStyle(isReminderOverdueToday ? .red : .secondary)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
                 }
-                .frame(maxHeight: .infinity, alignment: .center)
-
-                if let reminderText = habit.reminderText {
-                    Text(reminderText)
-                        .font(.caption)
-                        .foregroundStyle(isReminderOverdueToday ? .red : .secondary)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .offset(y: -4)
+                .overlay(alignment: .trailing) {
+                    if habit.isCompletedToday {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(.green)
+                    } else if habit.isSkippedToday {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(.red)
+                    }
                 }
-            }
             .frame(width: 40)
-            .frame(maxHeight: .infinity, alignment: .trailing)
+            .frame(maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
         .contentShape(Rectangle())
@@ -230,6 +252,7 @@ private struct HabitCardView: View {
     private var isReminderOverdueToday: Bool {
         guard habit.isReminderScheduledToday else { return false }
         guard !habit.isCompletedToday else { return false }
+        guard !habit.isSkippedToday else { return false }
         guard
             let reminderHour = habit.reminderHour,
             let reminderMinute = habit.reminderMinute

@@ -11,6 +11,7 @@ struct EditPillView: View {
     @State private var displayedMonth: Date
     @State private var validationMessage: String?
     @State private var isSaving = false
+    @State private var isDismissingKeyboardForNonTextControl = false
 
     private enum Field: Hashable {
         case description
@@ -87,6 +88,9 @@ struct EditPillView: View {
                                 displayedComponents: .hourAndMinute
                             )
                             .datePickerStyle(.compact)
+                            .simultaneousGesture(TapGesture().onEnded {
+                                dismissKeyboardForNonTextControl()
+                            })
                             .padding(.horizontal, 18)
                             .padding(.vertical, 18)
                         }
@@ -95,6 +99,9 @@ struct EditPillView: View {
 
                 AppCard {
                     InlineDaysSelector(selection: scheduleDaysBinding)
+                        .simultaneousGesture(TapGesture().onEnded {
+                            dismissKeyboardForNonTextControl()
+                        })
                     if draft.scheduleDays.rawValue == 0 {
                         HStack {
                             Text("Select at least one day.")
@@ -116,6 +123,9 @@ struct EditPillView: View {
                             availableMonths: availableMonths,
                             onMonthChange: { displayedMonth = $0 }
                         )
+                        .simultaneousGesture(TapGesture().onEnded {
+                            dismissKeyboardForNonTextControl()
+                        })
                         .padding(.horizontal, 18)
                         .padding(.vertical, 18)
                     }
@@ -139,11 +149,16 @@ struct EditPillView: View {
                     AppValidationBanner(message: validationMessage)
                 }
             }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                focusedField = nil
+            }
             .navigationTitle(draft.name.isEmpty ? "Edit Pill" : draft.name)
             .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.immediately)
             .safeAreaInset(edge: .bottom) {
                 Color.clear
-                    .frame(height: focusedField == .description ? 36 : 0)
+                    .frame(height: shouldShowDescriptionInset ? 36 : 0)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -166,8 +181,8 @@ struct EditPillView: View {
                     .disabled(!isFormValid || isSaving)
                 }
             }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { _ in
-                guard focusedField == .description else { return }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                guard focusedField == .description, !isDismissingKeyboardForNonTextControl else { return }
                 scrollDescriptionIntoView(with: proxy)
             }
             .onChange(of: draft.reminderEnabled) { _, isEnabled in
@@ -183,6 +198,7 @@ struct EditPillView: View {
             }
             .onChange(of: focusedField) { _, field in
                 guard field == .description else { return }
+                isDismissingKeyboardForNonTextControl = false
                 scrollDescriptionIntoView(with: proxy)
             }
         }
@@ -235,6 +251,10 @@ struct EditPillView: View {
         !draft.trimmedName.isEmpty && !draft.trimmedDosage.isEmpty && draft.scheduleDays.rawValue != 0
     }
 
+    private var shouldShowDescriptionInset: Bool {
+        focusedField == .description && !isDismissingKeyboardForNonTextControl
+    }
+
     private func save() {
         guard isFormValid else {
             validationMessage = invalidMessage
@@ -271,10 +291,24 @@ struct EditPillView: View {
     }
 
     private func scrollDescriptionIntoView(with proxy: ScrollViewProxy) {
+        guard focusedField == .description, !isDismissingKeyboardForNonTextControl else { return }
+
         DispatchQueue.main.async {
             withAnimation(.easeInOut(duration: 0.2)) {
                 proxy.scrollTo(Field.description, anchor: .bottom)
             }
+        }
+    }
+
+    private func dismissKeyboardForNonTextControl() {
+        guard focusedField == .description else { return }
+
+        isDismissingKeyboardForNonTextControl = true
+        focusedField = nil
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            isDismissingKeyboardForNonTextControl = false
         }
     }
 }

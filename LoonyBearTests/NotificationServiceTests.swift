@@ -191,6 +191,29 @@ struct NotificationServiceTests {
         #expect(XCTWaiter.wait(for: [secondExpectation], timeout: 1) == .completed)
     }
 
+    @Test
+    func individualNotificationCategoriesIncludeSkippedActions() {
+        let persistence = PersistenceController(inMemory: true)
+        let habitService = NotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let pillService = PillNotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        let habitCategory = try #require(
+            habitService.notificationCategories().first { $0.identifier == "habit.reminder" }
+        )
+        let pillCategory = try #require(
+            pillService.notificationCategories().first { $0.identifier == "pill.reminder" }
+        )
+
+        #expect(habitCategory.actions.map(\.identifier) == ["habit.complete", "habit.skip"])
+        #expect(pillCategory.actions.map(\.identifier) == ["pill.take", "pill.skip"])
+    }
+
     private func reminderTimeOneHourFromNow() -> ReminderTime {
         let futureTime = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date()
         let components = Calendar.current.dateComponents([.hour, .minute], from: futureTime)

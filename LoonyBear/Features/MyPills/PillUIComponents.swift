@@ -46,31 +46,34 @@ struct PillCardView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
 
-                Text("Total days: \(pill.totalTakenDays)")
+                Text("Taken for: \(DayCountFormatter.compactDurationString(for: pill.totalTakenDays))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            ZStack(alignment: .topTrailing) {
-                HStack {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(.green)
-                        .opacity(pill.isTakenToday ? 1 : 0)
+            Color.clear
+                .overlay(alignment: .topTrailing) {
+                    if let reminderText = pill.reminderText {
+                        Text(reminderText)
+                            .font(.caption)
+                            .foregroundStyle(isReminderOverdueToday ? .red : .secondary)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
                 }
-                .frame(maxHeight: .infinity, alignment: .center)
-
-                if let reminderText = pill.reminderText {
-                    Text(reminderText)
-                        .font(.caption)
-                        .foregroundStyle(isReminderOverdueToday ? .red : .secondary)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .offset(y: -4)
+                .overlay(alignment: .trailing) {
+                    if pill.isTakenToday {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(.green)
+                    } else if pill.isSkippedToday {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(.red)
+                    }
                 }
-            }
             .frame(width: 44)
-            .frame(maxHeight: .infinity, alignment: .trailing)
+            .frame(maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
         .contentShape(Rectangle())
@@ -85,6 +88,7 @@ struct PillCardView: View {
     private var isReminderOverdueToday: Bool {
         guard pill.isReminderScheduledToday else { return false }
         guard !pill.isTakenToday else { return false }
+        guard !pill.isSkippedToday else { return false }
         guard let reminderHour = pill.reminderHour, let reminderMinute = pill.reminderMinute else {
             return false
         }
