@@ -5,6 +5,11 @@ enum PillCompletionSource: String, Codable {
     case manualEdit = "manual edit"
     case notification = "notification"
     case restore = "restore"
+    case skipped = "skipped"
+
+    var countsAsIntake: Bool {
+        self != .skipped
+    }
 }
 
 struct Pill: Identifiable, Equatable {
@@ -50,6 +55,7 @@ struct PillCardProjection: Identifiable, Equatable, Hashable {
     let isReminderScheduledToday: Bool
     let isScheduledToday: Bool
     let isTakenToday: Bool
+    let isSkippedToday: Bool
     let sortOrder: Int
 }
 
@@ -65,6 +71,7 @@ struct PillDetailsProjection: Equatable {
     let reminderTime: ReminderTime?
     let totalTakenDays: Int
     let takenDays: Set<Date>
+    let skippedDays: Set<Date>
 }
 
 struct PillDashboardProjection: Equatable {

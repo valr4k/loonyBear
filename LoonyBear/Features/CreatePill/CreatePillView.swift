@@ -9,6 +9,7 @@ struct CreatePillView: View {
     @State private var draft = PillDraft()
     @State private var validationMessage: String?
     @State private var isSaving = false
+    @State private var isDismissingKeyboardForNonTextControl = false
 
     private enum Field: Hashable {
         case description
@@ -26,12 +27,17 @@ struct CreatePillView: View {
                         AppValidationBanner(message: validationMessage)
                     }
                 }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    focusedField = nil
+                }
             }
             .navigationTitle("Create Pill")
             .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.immediately)
             .safeAreaInset(edge: .bottom) {
                 Color.clear
-                    .frame(height: focusedField == .description ? 36 : 0)
+                    .frame(height: shouldShowDescriptionInset ? 36 : 0)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -67,10 +73,11 @@ struct CreatePillView: View {
             }
             .onChange(of: focusedField) { _, field in
                 guard field == .description else { return }
+                isDismissingKeyboardForNonTextControl = false
                 scrollDescriptionIntoView(with: proxy)
             }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { _ in
-                guard focusedField == .description else { return }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                guard focusedField == .description, !isDismissingKeyboardForNonTextControl else { return }
                 scrollDescriptionIntoView(with: proxy)
             }
         }
@@ -108,6 +115,9 @@ struct CreatePillView: View {
                     displayedComponents: .date
                 )
                 .datePickerStyle(.compact)
+                .simultaneousGesture(TapGesture().onEnded {
+                    dismissKeyboardForNonTextControl()
+                })
                 .padding(.horizontal, 18)
                 .padding(.vertical, 18)
 
@@ -134,6 +144,9 @@ struct CreatePillView: View {
                         displayedComponents: .hourAndMinute
                     )
                     .datePickerStyle(.compact)
+                    .simultaneousGesture(TapGesture().onEnded {
+                        dismissKeyboardForNonTextControl()
+                    })
                     .padding(.horizontal, 18)
                     .padding(.vertical, 18)
                 }
@@ -146,6 +159,9 @@ struct CreatePillView: View {
             AppCard {
                 VStack(alignment: .leading, spacing: 0) {
                     InlineDaysSelector(selection: scheduleDaysBinding)
+                        .simultaneousGesture(TapGesture().onEnded {
+                            dismissKeyboardForNonTextControl()
+                        })
 
                     AppSectionDivider()
 
@@ -223,6 +239,10 @@ struct CreatePillView: View {
         !draft.trimmedName.isEmpty && !draft.trimmedDosage.isEmpty && draft.scheduleDays.rawValue != 0
     }
 
+    private var shouldShowDescriptionInset: Bool {
+        focusedField == .description && !isDismissingKeyboardForNonTextControl
+    }
+
     private var historyHelperText: String {
         draft.useScheduleForHistory
             ? "Count only scheduled days from the start date."
@@ -294,10 +314,24 @@ struct CreatePillView: View {
     }
 
     private func scrollDescriptionIntoView(with proxy: ScrollViewProxy) {
+        guard focusedField == .description, !isDismissingKeyboardForNonTextControl else { return }
+
         DispatchQueue.main.async {
             withAnimation(.easeInOut(duration: 0.2)) {
                 proxy.scrollTo(Field.description, anchor: .bottom)
             }
+        }
+    }
+
+    private func dismissKeyboardForNonTextControl() {
+        guard focusedField == .description else { return }
+
+        isDismissingKeyboardForNonTextControl = true
+        focusedField = nil
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            isDismissingKeyboardForNonTextControl = false
         }
     }
 }

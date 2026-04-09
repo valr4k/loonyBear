@@ -50,7 +50,7 @@ struct PillDetailsView: View {
                 }
 
                 AppCard {
-                    AppValueRow(title: "Total days count", value: "\(details.totalTakenDays)", valueColor: AnyShapeStyle(.primary))
+                    AppValueRow(title: "Taken for", value: DayCountFormatter.compactDurationString(for: details.totalTakenDays), valueColor: AnyShapeStyle(.primary))
                 }
 
                 AppCard {

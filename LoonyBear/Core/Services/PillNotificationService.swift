@@ -7,6 +7,7 @@ final class PillNotificationService {
     private let categoryIdentifier = "pill.reminder"
     private let summaryCategoryIdentifier = "pill.reminder.summary"
     private let takeActionIdentifier = "pill.take"
+    private let skipActionIdentifier = "pill.skip"
     private let aggregationThreshold = 3
     private let schedulingWindowDays = 2
     private let readContext: NSManagedObjectContext
@@ -52,10 +53,15 @@ final class PillNotificationService {
             title: "Mark as Taken",
             options: []
         )
+        let skipAction = UNNotificationAction(
+            identifier: skipActionIdentifier,
+            title: "Mark as Skipped",
+            options: []
+        )
 
         let category = UNNotificationCategory(
             identifier: categoryIdentifier,
-            actions: [takeAction],
+            actions: [takeAction, skipAction],
             intentIdentifiers: [],
             options: []
         )
@@ -79,12 +85,18 @@ final class PillNotificationService {
             self.removeDeliveredAggregatedNotifications(on: Date())
             self.refreshReadContext()
 
-            let reminders = self.performRead(self.fetchReminderConfigurations) ?? []
-            let candidates = reminders.flatMap(self.reminderCandidates(for:))
+            let pills = self.performRead(self.fetchReminderConfigurations) ?? []
+            let habits: [HabitReminderConfiguration] = self.performRead { context in
+                let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
+                let habits = try context.fetch(request)
+                return habits.compactMap(self.makeHabitReminderConfiguration(from:))
+            } ?? []
+
+            let candidates = pills.flatMap(self.reminderCandidates(for:))
             let groupedCandidates = Dictionary(grouping: candidates, by: \.scheduledDateTime)
 
             for group in groupedCandidates.values {
-                for request in self.notificationRequests(for: group) {
+                for request in self.notificationRequests(for: group, habits: habits, pills: pills) {
                     self.center.add(request) { error in
                         if let error {
                             print("Failed to schedule notification \(request.identifier): \(error.localizedDescription)")
@@ -146,7 +158,6 @@ final class PillNotificationService {
         guard type == "pill" else { return false }
 
         guard
-            response.actionIdentifier == takeActionIdentifier,
             let pillIDString = response.notification.request.content.userInfo["pillID"] as? String,
             let pillID = UUID(uuidString: pillIDString)
         else {
@@ -154,8 +165,16 @@ final class PillNotificationService {
         }
 
         let deliveryDay = calendar.startOfDay(for: response.notification.date)
-        let didCreateIntake = createIntakeIfNeeded(for: pillID, on: deliveryDay, source: .notification)
-        guard didCreateIntake else { return true }
+        let didMutateStore: Bool
+        switch response.actionIdentifier {
+        case takeActionIdentifier:
+            didMutateStore = createIntakeIfNeeded(for: pillID, on: deliveryDay, source: .notification)
+        case skipActionIdentifier:
+            didMutateStore = createSkippedIntakeIfNeeded(for: pillID, on: deliveryDay)
+        default:
+            return true
+        }
+        guard didMutateStore else { return true }
 
         removeDeliveredNotifications(forPillID: pillID, on: deliveryDay)
         rescheduleAllNotifications()
@@ -248,9 +267,19 @@ final class PillNotificationService {
 
         let weekdayMask = Int(latestSchedule?.value(forKey: "weekdayMask") as? Int16 ?? 0)
         let intakes = (object.mutableSetValue(forKey: "intakes").allObjects as? [NSManagedObject]) ?? []
-        let takenDays = Set(intakes.compactMap { intakeObject in
-            (intakeObject.value(forKey: "localDate") as? Date).map { calendar.startOfDay(for: $0) }
-        })
+        let intakeEntries = intakes.compactMap { intakeObject -> (Date, PillCompletionSource)? in
+            guard
+                let localDate = intakeObject.value(forKey: "localDate") as? Date,
+                let sourceRaw = intakeObject.value(forKey: "sourceRaw") as? String,
+                let source = PillCompletionSource(rawValue: sourceRaw)
+            else {
+                return nil
+            }
+
+            return (calendar.startOfDay(for: localDate), source)
+        }
+        let takenDays = Set(intakeEntries.compactMap { $0.1.countsAsIntake ? $0.0 : nil })
+        let skippedDays = Set(intakeEntries.compactMap { !$0.1.countsAsIntake ? $0.0 : nil })
 
         return PillReminderConfiguration(
             id: id,
@@ -260,7 +289,8 @@ final class PillNotificationService {
             scheduleDays: WeekdaySet(rawValue: weekdayMask),
             reminderEnabled: reminderEnabled,
             reminderTime: reminderTime,
-            takenDays: takenDays
+            takenDays: takenDays,
+            skippedDays: skippedDays
         )
     }
 
@@ -279,6 +309,7 @@ final class PillNotificationService {
             guard normalizedDay >= normalizedStartDate else { return nil }
             guard reminder.scheduleDays.contains(calendar.pillWeekdaySet(for: normalizedDay)) else { return nil }
             guard !reminder.takenDays.contains(normalizedDay) else { return nil }
+            guard !reminder.skippedDays.contains(normalizedDay) else { return nil }
             guard let scheduledDateTime = calendar.date(
                 bySettingHour: reminderTime.hour,
                 minute: reminderTime.minute,
@@ -299,22 +330,42 @@ final class PillNotificationService {
         }
     }
 
-    private func notificationRequests(for candidates: [ScheduledPillReminderCandidate]) -> [UNNotificationRequest] {
+    private func notificationRequests(
+        for candidates: [ScheduledPillReminderCandidate],
+        habits: [HabitReminderConfiguration],
+        pills: [PillReminderConfiguration]
+    ) -> [UNNotificationRequest] {
         guard let firstCandidate = candidates.first else { return [] }
+        let projectedBadgeCount = ProjectedBadgeCountCalculator.projectedOverdueCount(
+            at: firstCandidate.scheduledDateTime,
+            habits: habits,
+            pills: pills,
+            calendar: calendar
+        )
 
         if candidates.count < aggregationThreshold {
-            return candidates.map(makeIndividualNotificationRequest)
+            return candidates.map { makeIndividualNotificationRequest(for: $0, projectedBadgeCount: projectedBadgeCount) }
         }
 
-        return [makeAggregatedNotificationRequest(for: candidates, scheduledDateTime: firstCandidate.scheduledDateTime)]
+        return [
+            makeAggregatedNotificationRequest(
+                for: candidates,
+                scheduledDateTime: firstCandidate.scheduledDateTime,
+                projectedBadgeCount: projectedBadgeCount
+            ),
+        ]
     }
 
-    private func makeIndividualNotificationRequest(for candidate: ScheduledPillReminderCandidate) -> UNNotificationRequest {
+    private func makeIndividualNotificationRequest(
+        for candidate: ScheduledPillReminderCandidate,
+        projectedBadgeCount: Int
+    ) -> UNNotificationRequest {
         let content = UNMutableNotificationContent()
         content.title = candidate.pillName
         content.body = "Take \(candidate.dosage)."
         content.sound = .default
         content.categoryIdentifier = categoryIdentifier
+        content.badge = NSNumber(value: projectedBadgeCount)
         content.userInfo = [
             "type": "pill",
             "pillID": candidate.pillID.uuidString,
@@ -331,13 +382,15 @@ final class PillNotificationService {
 
     private func makeAggregatedNotificationRequest(
         for candidates: [ScheduledPillReminderCandidate],
-        scheduledDateTime: Date
+        scheduledDateTime: Date,
+        projectedBadgeCount: Int
     ) -> UNNotificationRequest {
         let content = UNMutableNotificationContent()
         content.title = "Pills"
         content.body = "You have \(candidates.count) pills to take."
         content.sound = .default
         content.categoryIdentifier = summaryCategoryIdentifier
+        content.badge = NSNumber(value: projectedBadgeCount)
         content.userInfo = [
             "type": "pill_aggregated",
             "count": candidates.count,
@@ -349,6 +402,67 @@ final class PillNotificationService {
             identifier: aggregatedNotificationIdentifier(for: scheduledDateTime),
             content: content,
             trigger: trigger
+        )
+    }
+
+    private func makeHabitReminderConfiguration(from object: NSManagedObject) -> HabitReminderConfiguration? {
+        guard
+            let id = object.value(forKey: "id") as? UUID,
+            let name = object.value(forKey: "name") as? String,
+            let startDate = object.value(forKey: "startDate") as? Date
+        else {
+            return nil
+        }
+
+        let schedules = (object.mutableSetValue(forKey: "scheduleVersions").allObjects as? [NSManagedObject]) ?? []
+        let latestSchedule = schedules
+            .sorted {
+                let lhs = $0.value(forKey: "effectiveFrom") as? Date ?? .distantPast
+                let rhs = $1.value(forKey: "effectiveFrom") as? Date ?? .distantPast
+                if lhs != rhs {
+                    return lhs > rhs
+                }
+
+                let lhsVersion = $0.value(forKey: "version") as? Int32 ?? 0
+                let rhsVersion = $1.value(forKey: "version") as? Int32 ?? 0
+                if lhsVersion != rhsVersion {
+                    return lhsVersion > rhsVersion
+                }
+
+                let lhsCreatedAt = $0.value(forKey: "createdAt") as? Date ?? .distantPast
+                let rhsCreatedAt = $1.value(forKey: "createdAt") as? Date ?? .distantPast
+                return lhsCreatedAt > rhsCreatedAt
+            }
+            .first
+
+        let weekdayMask = Int(latestSchedule?.value(forKey: "weekdayMask") as? Int16 ?? 0)
+        let reminderEnabled = object.value(forKey: "reminderEnabled") as? Bool ?? false
+        let hour = Int(object.value(forKey: "reminderHour") as? Int16 ?? 0)
+        let minute = Int(object.value(forKey: "reminderMinute") as? Int16 ?? 0)
+        let completions = (object.mutableSetValue(forKey: "completions").allObjects as? [NSManagedObject]) ?? []
+        let completionEntries = completions.compactMap { completion -> (Date, CompletionSource)? in
+            guard
+                let localDate = completion.value(forKey: "localDate") as? Date,
+                let sourceRaw = completion.value(forKey: "sourceRaw") as? String,
+                let source = CompletionSource(rawValue: sourceRaw)
+            else {
+                return nil
+            }
+
+            return (calendar.startOfDay(for: localDate), source)
+        }
+        let completedDays = Set(completionEntries.compactMap { $0.1.countsAsCompletion ? $0.0 : nil })
+        let skippedDays = Set(completionEntries.compactMap { !$0.1.countsAsCompletion ? $0.0 : nil })
+
+        return HabitReminderConfiguration(
+            id: id,
+            name: name,
+            startDate: startDate,
+            scheduleDays: WeekdaySet(rawValue: weekdayMask),
+            reminderEnabled: reminderEnabled,
+            reminderTime: reminderEnabled ? ReminderTime(hour: hour, minute: minute) : nil,
+            completedDays: completedDays,
+            skippedDays: skippedDays
         )
     }
 
@@ -392,7 +506,21 @@ final class PillNotificationService {
             ])
             fetchRequest.fetchLimit = 1
 
-            if try context.fetch(fetchRequest).isEmpty == false {
+            if let existing = try context.fetch(fetchRequest).first {
+                guard
+                    let sourceRaw = existing.value(forKey: "sourceRaw") as? String,
+                    let existingSource = PillCompletionSource(rawValue: sourceRaw)
+                else {
+                    return false
+                }
+
+                if existingSource == .skipped {
+                    existing.setValue(source.rawValue, forKey: "sourceRaw")
+                    existing.setValue(Date(), forKey: "createdAt")
+                    try context.save()
+                    return true
+                }
+
                 return false
             }
 
@@ -409,6 +537,61 @@ final class PillNotificationService {
             intake.setValue(pillID, forKey: "pillID")
             intake.setValue(normalizedDate, forKey: "localDate")
             intake.setValue(source.rawValue, forKey: "sourceRaw")
+            intake.setValue(Date(), forKey: "createdAt")
+            intake.setValue(pill, forKey: "pill")
+
+            try context.save()
+            return true
+        }
+
+        if didCreate == true {
+            DispatchQueue.main.async {
+                guard UIApplication.shared.applicationState == .active else { return }
+                NotificationCenter.default.post(name: .pillStoreDidChange, object: nil)
+            }
+            return true
+        }
+
+        return false
+    }
+
+    @discardableResult
+    private func createSkippedIntakeIfNeeded(for pillID: UUID, on localDate: Date) -> Bool {
+        let normalizedDate = calendar.startOfDay(for: localDate)
+
+        let didCreate = performWrite { context in
+            let fetchRequest = NSFetchRequest<NSManagedObject>(entityName: "PillIntake")
+            fetchRequest.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+                NSPredicate(format: "pillID == %@", pillID as CVarArg),
+                NSPredicate(format: "localDate == %@", normalizedDate as CVarArg),
+            ])
+            fetchRequest.fetchLimit = 1
+
+            if let existing = try context.fetch(fetchRequest).first {
+                guard
+                    let sourceRaw = existing.value(forKey: "sourceRaw") as? String,
+                    let existingSource = PillCompletionSource(rawValue: sourceRaw),
+                    existingSource == .skipped
+                else {
+                    return false
+                }
+
+                return false
+            }
+
+            let pillRequest = NSFetchRequest<NSManagedObject>(entityName: "Pill")
+            pillRequest.predicate = NSPredicate(format: "id == %@", pillID as CVarArg)
+            pillRequest.fetchLimit = 1
+
+            guard let pill = try context.fetch(pillRequest).first else {
+                return false
+            }
+
+            let intake = NSEntityDescription.insertNewObject(forEntityName: "PillIntake", into: context)
+            intake.setValue(UUID(), forKey: "id")
+            intake.setValue(pillID, forKey: "pillID")
+            intake.setValue(normalizedDate, forKey: "localDate")
+            intake.setValue(PillCompletionSource.skipped.rawValue, forKey: "sourceRaw")
             intake.setValue(Date(), forKey: "createdAt")
             intake.setValue(pill, forKey: "pill")
 
@@ -464,7 +647,7 @@ final class PillNotificationService {
     }
 }
 
-private struct PillReminderConfiguration {
+struct PillReminderConfiguration {
     let id: UUID
     let name: String
     let dosage: String
@@ -473,6 +656,7 @@ private struct PillReminderConfiguration {
     let reminderEnabled: Bool
     let reminderTime: ReminderTime?
     let takenDays: Set<Date>
+    let skippedDays: Set<Date>
 }
 
 private struct ScheduledPillReminderCandidate {

@@ -1,39 +1,19 @@
+import Combine
 import SwiftUI
 
 struct RootTabView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var appState: HabitAppState
     @EnvironmentObject private var pillAppState: PillAppState
-    @State private var selectedTab: AppTab = .myHabits
+    @State private var selectedTab: AppTab = .myPills
     @State private var presentedHabitSheet: HabitSheet?
     @State private var presentedPillSheet: PillSheet?
+    @State private var badgeNow = Date()
+
+    private let badgeRefreshTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            NavigationStack {
-                MyHabitsView(
-                    onCreateHabit: {
-                        presentedHabitSheet = .create
-                    },
-                    onShowHabitInfo: { habit in
-                        presentedHabitSheet = .details(habit.id)
-                    },
-                    onEditHabit: { habit in
-                        presentedHabitSheet = .edit(habit.id)
-                    }
-                )
-                .environmentObject(appState)
-                .navigationTitle("My Habits")
-                .sheet(item: $presentedHabitSheet) { sheet in
-                    NavigationStack {
-                        habitSheetContent(for: sheet)
-                    }
-                }
-            }
-                .tag(AppTab.myHabits)
-                .tabItem {
-                    Label("My Habits", systemImage: "checklist")
-                }
-
             NavigationStack {
                 MyPillsView(
                     onCreatePill: {
@@ -58,6 +38,33 @@ struct RootTabView: View {
                 .tabItem {
                     Label("My Pills", systemImage: "pills")
                 }
+                .badge(overduePillCount)
+
+            NavigationStack {
+                MyHabitsView(
+                    onCreateHabit: {
+                        presentedHabitSheet = .create
+                    },
+                    onShowHabitInfo: { habit in
+                        presentedHabitSheet = .details(habit.id)
+                    },
+                    onEditHabit: { habit in
+                        presentedHabitSheet = .edit(habit.id)
+                    }
+                )
+                .environmentObject(appState)
+                .navigationTitle("My Habits")
+                .sheet(item: $presentedHabitSheet) { sheet in
+                    NavigationStack {
+                        habitSheetContent(for: sheet)
+                    }
+                }
+            }
+                .tag(AppTab.myHabits)
+                .tabItem {
+                    Label("My Habits", systemImage: "checklist")
+                }
+                .badge(overdueHabitCount)
 
             NavigationStack {
                 SettingsView()
@@ -68,12 +75,21 @@ struct RootTabView: View {
                 }
         }
         .onReceive(NotificationCenter.default.publisher(for: .openMyHabitsTab)) { _ in
+            presentedPillSheet = nil
             presentedHabitSheet = nil
             selectedTab = .myHabits
         }
         .onReceive(NotificationCenter.default.publisher(for: .openMyPillsTab)) { _ in
+            presentedHabitSheet = nil
             presentedPillSheet = nil
             selectedTab = .myPills
+        }
+        .onReceive(badgeRefreshTimer) { now in
+            badgeNow = now
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            badgeNow = Date()
         }
     }
 
@@ -148,6 +164,20 @@ struct RootTabView: View {
     private func pillProjection(for id: UUID) -> PillCardProjection? {
         pillAppState.dashboard.pills
             .first { $0.id == id }
+    }
+
+    private var overdueHabitCount: Int {
+        ProjectedBadgeCountCalculator.overdueHabitCount(
+            now: badgeNow,
+            habits: appState.dashboard.sections.flatMap(\.habits)
+        )
+    }
+
+    private var overduePillCount: Int {
+        ProjectedBadgeCountCalculator.overduePillCount(
+            now: badgeNow,
+            pills: pillAppState.dashboard.pills
+        )
     }
 }
 

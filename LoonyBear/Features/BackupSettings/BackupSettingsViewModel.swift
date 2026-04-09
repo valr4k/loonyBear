@@ -227,7 +227,7 @@ enum BackupConfirmationDialog: Identifiable {
         case .createBackup:
             return "A new backup file will be created in the selected folder."
         case .restoreBackup:
-            return "Current local data will be fully replaced by backup data. A safety snapshot will be created first."
+            return "This will replace current app data with the selected backup."
         }
     }
 }

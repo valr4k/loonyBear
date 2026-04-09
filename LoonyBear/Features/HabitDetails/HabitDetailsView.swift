@@ -32,11 +32,11 @@ struct HabitDetailsView: View {
                 }
 
                 DetailsCard {
-                    AppValueRow(title: "Current streak", value: "\(details.currentStreak)", valueColor: AnyShapeStyle(.primary))
+                    AppValueRow(title: "Current streak", value: DayCountFormatter.compactDurationString(for: details.currentStreak), valueColor: AnyShapeStyle(.primary))
                     AppSectionDivider()
-                    AppValueRow(title: "Longest streak", value: "\(details.longestStreak)", valueColor: AnyShapeStyle(.primary))
+                    AppValueRow(title: "Best streak", value: DayCountFormatter.compactDurationString(for: details.longestStreak), valueColor: AnyShapeStyle(.primary))
                     AppSectionDivider()
-                    AppValueRow(title: "Total completed days", value: "\(details.totalCompletedDays)", valueColor: AnyShapeStyle(.primary))
+                    AppValueRow(title: "Completed for", value: DayCountFormatter.compactDurationString(for: details.totalCompletedDays), valueColor: AnyShapeStyle(.primary))
                 }
 
                 DetailsCard {
@@ -337,6 +337,7 @@ private struct HabitCalendarWidthPreferenceKey: PreferenceKey {
                 reminderMinute: 0,
                 isReminderScheduledToday: true,
                 isCompletedToday: true,
+                isSkippedToday: false,
                 sortOrder: 0
             )
         )

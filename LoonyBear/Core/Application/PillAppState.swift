@@ -75,10 +75,24 @@ final class PillAppState: ObservableObject {
         }
     }
 
-    func unmarkTakenToday(id: UUID) {
+    func skipPillToday(id: UUID) {
         do {
-            try repository.unmarkTakenToday(id: id)
+            try repository.skipPillToday(id: id)
             notificationService.rescheduleAllNotifications()
+            notificationService.removeDeliveredNotifications(forPillID: id, on: Date())
+            refreshDashboard()
+            actionErrorMessage = nil
+        } catch {
+            refreshDashboard()
+            actionErrorMessage = error.localizedDescription
+        }
+    }
+
+    func clearPillDayStateToday(id: UUID) {
+        do {
+            try repository.clearPillDayStateToday(id: id)
+            notificationService.rescheduleAllNotifications()
+            notificationService.removeDeliveredNotifications(forPillID: id, on: Date())
             refreshDashboard()
             actionErrorMessage = nil
         } catch {

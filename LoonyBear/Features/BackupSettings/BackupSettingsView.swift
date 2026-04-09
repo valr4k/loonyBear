@@ -4,7 +4,8 @@ struct BackupSettingsView: View {
     @EnvironmentObject private var appState: HabitAppState
     @EnvironmentObject private var pillAppState: PillAppState
     @StateObject private var viewModel: BackupSettingsViewModel
-    @State private var confirmationDialog: BackupConfirmationDialog?
+    @State private var isShowingCreateBackupConfirmation = false
+    @State private var isShowingRestoreBackupConfirmation = false
 
     init(viewModel: BackupSettingsViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -41,52 +42,6 @@ struct BackupSettingsView: View {
                 message: Text(alert.message),
                 dismissButton: .default(Text("OK"))
             )
-        }
-        .confirmationDialog(
-            confirmationDialog?.title ?? "",
-            isPresented: Binding(
-                get: { confirmationDialog != nil },
-                set: { isPresented in
-                    if !isPresented {
-                        confirmationDialog = nil
-                    }
-                }
-            ),
-            titleVisibility: .visible
-        ) {
-            switch confirmationDialog {
-            case .createBackup:
-                Button("Create Backup") {
-                    confirmationDialog = nil
-                    Task {
-                        await Task.yield()
-                        await viewModel.confirmCreateBackup()
-                    }
-                }
-                Button("Cancel", role: .cancel) {
-                    confirmationDialog = nil
-                }
-            case .restoreBackup:
-                Button("Restore Backup", role: .destructive) {
-                    confirmationDialog = nil
-                    Task {
-                        await Task.yield()
-                        if await viewModel.confirmRestoreBackup() {
-                            appState.refreshDashboard()
-                            pillAppState.refreshDashboard()
-                        }
-                    }
-                }
-                Button("Cancel", role: .cancel) {
-                    confirmationDialog = nil
-                }
-            case .none:
-                EmptyView()
-            }
-        } message: {
-            if let dialog = confirmationDialog {
-                Text(dialog.message)
-            }
         }
     }
 
@@ -133,10 +88,26 @@ struct BackupSettingsView: View {
                 isLoading: viewModel.isCreatingBackup,
                 action: {
                     if viewModel.createBackup() {
-                        confirmationDialog = .createBackup
+                        isShowingCreateBackupConfirmation = true
                     }
                 }
             )
+            .confirmationDialog(
+                "Create backup?",
+                isPresented: $isShowingCreateBackupConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Create Backup") {
+                    Task {
+                        await Task.yield()
+                        await viewModel.confirmCreateBackup()
+                    }
+                }
+
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("A new backup file will be created in the selected folder.")
+            }
 
             Divider()
                 .padding(.leading, 52)
@@ -148,10 +119,29 @@ struct BackupSettingsView: View {
                 isLoading: viewModel.isRestoringBackup,
                 action: {
                     if viewModel.restoreBackup() {
-                        confirmationDialog = .restoreBackup
+                        isShowingRestoreBackupConfirmation = true
                     }
                 }
             )
+            .confirmationDialog(
+                "Restore backup?",
+                isPresented: $isShowingRestoreBackupConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Restore Backup", role: .destructive) {
+                    Task {
+                        await Task.yield()
+                        if await viewModel.confirmRestoreBackup() {
+                            appState.refreshDashboard()
+                            pillAppState.refreshDashboard()
+                        }
+                    }
+                }
+
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will replace current app data with the selected backup.")
+            }
         }
     }
 }

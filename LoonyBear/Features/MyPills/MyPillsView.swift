@@ -47,16 +47,35 @@ struct MyPillsView: View {
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
                                 .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                    Button {
-                                        if pill.isTakenToday {
-                                            pillAppState.unmarkTakenToday(id: pill.id)
-                                        } else {
-                                            pillAppState.markTakenToday(id: pill.id)
+                                    if pill.isTakenToday {
+                                        Button {
+                                            pillAppState.clearPillDayStateToday(id: pill.id)
+                                        } label: {
+                                            Image(systemName: "calendar.badge.minus")
                                         }
-                                    } label: {
-                                        Image(systemName: pill.isTakenToday ? "xmark" : "checkmark")
+                                        .tint(.orange)
+                                    } else if pill.isSkippedToday {
+                                        Button {
+                                            pillAppState.clearPillDayStateToday(id: pill.id)
+                                        } label: {
+                                            Image(systemName: "calendar.badge.minus")
+                                        }
+                                        .tint(.orange)
+                                    } else {
+                                        Button {
+                                            pillAppState.markTakenToday(id: pill.id)
+                                        } label: {
+                                            Image(systemName: "checkmark")
+                                        }
+                                        .tint(.green)
+
+                                        Button {
+                                            pillAppState.skipPillToday(id: pill.id)
+                                        } label: {
+                                            Image(systemName: "xmark")
+                                        }
+                                        .tint(.red)
                                     }
-                                    .tint(pill.isTakenToday ? .orange : .green)
                                 }
                                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                     Button {

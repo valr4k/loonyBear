@@ -69,7 +69,11 @@ struct CoreDataHabitRepository: HabitRepository {
 
             let scheduleHistory = loadSchedules(for: habitObject, habitID: id)
             let latestSchedule = scheduleHistory.sorted(by: isNewerSchedule).first
-            let isCompletedToday = completionModels.contains { Calendar.current.isDate($0.localDate, inSameDayAs: today) }
+            let successfulCompletions = completionModels.filter { $0.source.countsAsCompletion }
+            let isCompletedToday = successfulCompletions.contains { Calendar.current.isDate($0.localDate, inSameDayAs: today) }
+            let isSkippedToday = completionModels.contains {
+                !$0.source.countsAsCompletion && Calendar.current.isDate($0.localDate, inSameDayAs: today)
+            }
             let reminderEnabled = habitObject.value(forKey: "reminderEnabled") as? Bool ?? false
             let reminderHour = Int(habitObject.value(forKey: "reminderHour") as? Int16 ?? 0)
             let reminderMinute = Int(habitObject.value(forKey: "reminderMinute") as? Int16 ?? 0)
@@ -90,7 +94,7 @@ struct CoreDataHabitRepository: HabitRepository {
             }
 
             let streak = StreakEngine.currentStreak(
-                completions: completionModels,
+                completions: successfulCompletions,
                 schedules: scheduleHistory,
                 today: today
             )
@@ -106,6 +110,7 @@ struct CoreDataHabitRepository: HabitRepository {
                 reminderMinute: displayReminderMinute,
                 isReminderScheduledToday: scheduledToday,
                 isCompletedToday: isCompletedToday,
+                isSkippedToday: isSkippedToday,
                 sortOrder: sortOrder
             )
         }
@@ -119,6 +124,12 @@ struct CoreDataHabitRepository: HabitRepository {
 
         let today = Calendar.current.startOfDay(for: Date())
         let completions = loadCompletions(for: habitObject, habitID: id)
+        let successfulCompletions = completions.filter { $0.source.countsAsCompletion }
+        let skippedDays = Set(
+            completions
+                .filter { !$0.source.countsAsCompletion }
+                .map { Calendar.current.startOfDay(for: $0.localDate) }
+        )
         let scheduleHistory = loadSchedules(for: habitObject, habitID: id)
         let latestSchedule = scheduleHistory.sorted(by: isNewerSchedule).first
 
@@ -145,10 +156,11 @@ struct CoreDataHabitRepository: HabitRepository {
             scheduleDays: latestSchedule?.weekdays ?? .daily,
             reminderEnabled: reminderEnabled,
             reminderTime: reminderTime,
-            currentStreak: StreakEngine.currentStreak(completions: completions, schedules: scheduleHistory, today: today),
-            longestStreak: StreakEngine.longestStreak(completions: completions, schedules: scheduleHistory),
-            totalCompletedDays: completions.count,
-            completedDays: Set(completions.map { Calendar.current.startOfDay(for: $0.localDate) })
+            currentStreak: StreakEngine.currentStreak(completions: successfulCompletions, schedules: scheduleHistory, today: today),
+            longestStreak: StreakEngine.longestStreak(completions: successfulCompletions, schedules: scheduleHistory),
+            totalCompletedDays: Set(successfulCompletions.map { Calendar.current.startOfDay(for: $0.localDate) }).count,
+            completedDays: Set(successfulCompletions.map { Calendar.current.startOfDay(for: $0.localDate) }),
+            skippedDays: skippedDays
         )
     }
 
@@ -203,7 +215,19 @@ struct CoreDataHabitRepository: HabitRepository {
             guard let habit = try fetchHabit(id: id, in: context) else { return }
 
             let today = Calendar.current.startOfDay(for: Date())
-            if try fetchCompletion(for: id, on: today, in: context) != nil {
+            if let existingCompletion = try fetchCompletion(for: id, on: today, in: context) {
+                guard
+                    let sourceRaw = existingCompletion.value(forKey: "sourceRaw") as? String,
+                    let source = CompletionSource(rawValue: sourceRaw)
+                else {
+                    return
+                }
+
+                if source == .skipped {
+                    existingCompletion.setValue(CompletionSource.swipe.rawValue, forKey: "sourceRaw")
+                    existingCompletion.setValue(Date(), forKey: "createdAt")
+                    try context.save()
+                }
                 return
             }
 
@@ -219,7 +243,36 @@ struct CoreDataHabitRepository: HabitRepository {
         }
     }
 
-    func removeHabitCompletionToday(id: UUID) throws {
+    func skipHabitToday(id: UUID) throws {
+        try performWrite { context in
+            guard let habit = try fetchHabit(id: id, in: context) else { return }
+
+            let today = Calendar.current.startOfDay(for: Date())
+            if let existingCompletion = try fetchCompletion(for: id, on: today, in: context) {
+                guard
+                    let sourceRaw = existingCompletion.value(forKey: "sourceRaw") as? String,
+                    let source = CompletionSource(rawValue: sourceRaw)
+                else {
+                    return
+                }
+
+                guard source == .skipped else { return }
+                return
+            }
+
+            let completion = NSEntityDescription.insertNewObject(forEntityName: "HabitCompletion", into: context)
+            completion.setValue(UUID(), forKey: "id")
+            completion.setValue(id, forKey: "habitID")
+            completion.setValue(today, forKey: "localDate")
+            completion.setValue(CompletionSource.skipped.rawValue, forKey: "sourceRaw")
+            completion.setValue(Date(), forKey: "createdAt")
+            completion.setValue(habit, forKey: "habit")
+
+            try context.save()
+        }
+    }
+
+    func clearHabitDayStateToday(id: UUID) throws {
         try performWrite { context in
             let today = Calendar.current.startOfDay(for: Date())
             guard let completion = try fetchCompletion(for: id, on: today, in: context) else { return }
@@ -261,7 +314,7 @@ struct CoreDataHabitRepository: HabitRepository {
                 schedule.setValue(habit, forKey: "habit")
             }
 
-            let existingCompletionObjects = ((habit.mutableSetValue(forKey: "completions").allObjects as? [NSManagedObject]) ?? [])
+            let existingCompletionObjects = (habit.mutableSetValue(forKey: "completions").allObjects as? [NSManagedObject]) ?? []
             let startDate = Calendar.current.startOfDay(for: draft.startDate)
             let today = Calendar.current.startOfDay(for: Date())
             let editableStart = max(startDate, Calendar.current.date(byAdding: .day, value: -29, to: today) ?? startDate)
@@ -287,7 +340,27 @@ struct CoreDataHabitRepository: HabitRepository {
                     completion.setValue(CompletionSource.manualEdit.rawValue, forKey: "sourceRaw")
                     completion.setValue(Date(), forKey: "createdAt")
                     completion.setValue(habit, forKey: "habit")
+                } else if shouldExist, let existing {
+                    guard
+                        let sourceRaw = existing.value(forKey: "sourceRaw") as? String,
+                        let source = CompletionSource(rawValue: sourceRaw)
+                    else {
+                        continue
+                    }
+
+                    if !source.countsAsCompletion {
+                        existing.setValue(CompletionSource.manualEdit.rawValue, forKey: "sourceRaw")
+                        existing.setValue(Date(), forKey: "createdAt")
+                    }
                 } else if !shouldExist, let existing {
+                    guard
+                        let sourceRaw = existing.value(forKey: "sourceRaw") as? String,
+                        let source = CompletionSource(rawValue: sourceRaw),
+                        source.countsAsCompletion
+                    else {
+                        continue
+                    }
+
                     context.delete(existing)
                 }
             }

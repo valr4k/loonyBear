@@ -21,6 +21,11 @@ enum CompletionSource: String, Codable {
     case manualEdit = "manual edit"
     case notification = "notification"
     case restore = "restore"
+    case skipped = "skipped"
+
+    var countsAsCompletion: Bool {
+        self != .skipped
+    }
 }
 
 struct ReminderTime: Codable, Equatable {
@@ -132,6 +137,7 @@ struct HabitCardProjection: Identifiable, Equatable, Hashable {
     let reminderMinute: Int?
     let isReminderScheduledToday: Bool
     let isCompletedToday: Bool
+    let isSkippedToday: Bool
     let sortOrder: Int
 }
 
@@ -188,6 +194,7 @@ struct HabitDetailsProjection: Equatable {
     let longestStreak: Int
     let totalCompletedDays: Int
     let completedDays: Set<Date>
+    let skippedDays: Set<Date>
 
     var heatmapDays: [Date] {
         completedDays.sorted()
