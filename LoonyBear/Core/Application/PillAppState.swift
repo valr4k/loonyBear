@@ -11,12 +11,15 @@ final class PillAppState: ObservableObject {
 
     private let repository: PillRepository
     let notificationService: PillNotificationService
-    private let badgeService: AppBadgeService
+    private let sideEffectCoordinator: PillSideEffectCoordinator
 
     init(repository: PillRepository, notificationService: PillNotificationService, badgeService: AppBadgeService) {
         self.repository = repository
         self.notificationService = notificationService
-        self.badgeService = badgeService
+        sideEffectCoordinator = PillSideEffectCoordinator(
+            notificationService: notificationService,
+            badgeService: badgeService
+        )
     }
 
     func load() {
@@ -28,7 +31,7 @@ final class PillAppState: ObservableObject {
 
     func refreshDashboard() {
         dashboard = PillDashboardProjection(pills: repository.fetchDashboardPills())
-        badgeService.refreshBadge()
+        sideEffectCoordinator.refreshDerivedState()
     }
 
     func handleAppDidBecomeActive() {
@@ -65,8 +68,7 @@ final class PillAppState: ObservableObject {
     func markTakenToday(id: UUID) {
         do {
             try repository.markTakenToday(id: id)
-            notificationService.rescheduleAllNotifications()
-            notificationService.removeDeliveredNotifications(forPillID: id, on: Date())
+            sideEffectCoordinator.handleDailyMutation(forPillID: id)
             refreshDashboard()
             actionErrorMessage = nil
         } catch {
@@ -78,8 +80,7 @@ final class PillAppState: ObservableObject {
     func skipPillToday(id: UUID) {
         do {
             try repository.skipPillToday(id: id)
-            notificationService.rescheduleAllNotifications()
-            notificationService.removeDeliveredNotifications(forPillID: id, on: Date())
+            sideEffectCoordinator.handleDailyMutation(forPillID: id)
             refreshDashboard()
             actionErrorMessage = nil
         } catch {
@@ -91,8 +92,7 @@ final class PillAppState: ObservableObject {
     func clearPillDayStateToday(id: UUID) {
         do {
             try repository.clearPillDayStateToday(id: id)
-            notificationService.rescheduleAllNotifications()
-            notificationService.removeDeliveredNotifications(forPillID: id, on: Date())
+            sideEffectCoordinator.handleDailyMutation(forPillID: id)
             refreshDashboard()
             actionErrorMessage = nil
         } catch {
@@ -104,7 +104,7 @@ final class PillAppState: ObservableObject {
     func deletePill(id: UUID) {
         do {
             try repository.deletePill(id: id)
-            notificationService.removeNotifications(forPillID: id)
+            sideEffectCoordinator.handleDeletion(forPillID: id)
             refreshDashboard()
             actionErrorMessage = nil
         } catch {
@@ -133,11 +133,7 @@ final class PillAppState: ObservableObject {
     }
 
     func syncNotificationsAfterPillUpdate(from draft: EditPillDraft) async {
-        if draft.reminderEnabled {
-            await notificationService.prepareReminderNotifications(forPillID: draft.id)
-        } else {
-            notificationService.removeNotifications(forPillID: draft.id)
-        }
+        await sideEffectCoordinator.syncNotificationsAfterUpdate(from: draft)
     }
 
     func clearActionError() {

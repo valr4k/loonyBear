@@ -85,7 +85,7 @@ enum ProjectedBadgeCountCalculator {
         let localDay = calendar.startOfDay(for: date)
         let normalizedStartDate = calendar.startOfDay(for: habit.startDate)
         guard localDay >= normalizedStartDate else { return false }
-        guard habit.scheduleDays.contains(scheduledWeekdaySet(for: localDay, calendar: calendar)) else { return false }
+        guard habit.scheduleDays.contains(calendar.weekdaySet(for: localDay)) else { return false }
         guard !habit.completedDays.contains(localDay) else { return false }
         guard !habit.skippedDays.contains(localDay) else { return false }
 
@@ -103,7 +103,7 @@ enum ProjectedBadgeCountCalculator {
         let localDay = calendar.startOfDay(for: date)
         let normalizedStartDate = calendar.startOfDay(for: pill.startDate)
         guard localDay >= normalizedStartDate else { return false }
-        guard pill.scheduleDays.contains(scheduledWeekdaySet(for: localDay, calendar: calendar)) else { return false }
+        guard pill.scheduleDays.contains(calendar.weekdaySet(for: localDay)) else { return false }
         guard !pill.takenDays.contains(localDay) else { return false }
         guard !pill.skippedDays.contains(localDay) else { return false }
 
@@ -125,17 +125,6 @@ enum ProjectedBadgeCountCalculator {
         )
     }
 
-    private static func scheduledWeekdaySet(for date: Date, calendar: Calendar) -> WeekdaySet {
-        switch calendar.component(.weekday, from: date) {
-        case 2: return .monday
-        case 3: return .tuesday
-        case 4: return .wednesday
-        case 5: return .thursday
-        case 6: return .friday
-        case 7: return .saturday
-        default: return .sunday
-        }
-    }
 }
 
 @MainActor

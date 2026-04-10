@@ -192,7 +192,7 @@ struct NotificationServiceTests {
     }
 
     @Test
-    func individualNotificationCategoriesIncludeSkippedActions() {
+    func individualNotificationCategoriesIncludeSkippedActions() throws {
         let persistence = PersistenceController(inMemory: true)
         let habitService = NotificationService(
             context: persistence.container.viewContext,

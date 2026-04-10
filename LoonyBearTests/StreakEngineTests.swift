@@ -27,4 +27,22 @@ struct StreakEngineTests {
         #expect(StreakEngine.currentStreak(completions: completions, schedules: schedules, today: april5) == 1)
         #expect(StreakEngine.longestStreak(completions: completions, schedules: schedules) == 2)
     }
+
+    @Test
+    func uncompletedScheduledTodayDoesNotResetCurrentStreakYet() {
+        let habitID = UUID()
+        let april1 = TestSupport.makeDate(2026, 4, 1)
+        let april2 = TestSupport.makeDate(2026, 4, 2)
+        let april3 = TestSupport.makeDate(2026, 4, 3)
+
+        let schedules = [
+            TestSupport.makeSchedule(habitID: habitID, weekdays: .daily, effectiveFrom: april1, version: 1),
+        ]
+        let completions = [
+            TestSupport.makeCompletion(habitID: habitID, localDate: april1),
+            TestSupport.makeCompletion(habitID: habitID, localDate: april2),
+        ]
+
+        #expect(StreakEngine.currentStreak(completions: completions, schedules: schedules, today: april3) == 2)
+    }
 }

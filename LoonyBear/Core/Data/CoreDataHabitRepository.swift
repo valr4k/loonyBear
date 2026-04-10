@@ -14,14 +14,17 @@ enum HabitRepositoryError: LocalizedError {
 
 struct CoreDataHabitRepository: HabitRepository {
     private let readContext: NSManagedObjectContext
-    private let makeWriteContext: () -> NSManagedObjectContext
+    private let repositoryContext: CoreDataRepositoryContext
 
     init(
         context: NSManagedObjectContext,
         makeWriteContext: @escaping () -> NSManagedObjectContext
     ) {
         readContext = context
-        self.makeWriteContext = makeWriteContext
+        repositoryContext = CoreDataRepositoryContext(
+            readContext: context,
+            makeWriteContext: makeWriteContext
+        )
     }
 
     func fetchDashboardHabits() -> [HabitCardProjection] {
@@ -37,14 +40,14 @@ struct CoreDataHabitRepository: HabitRepository {
 
         return habits.compactMap { habitObject -> HabitCardProjection? in
             guard
-                let id = habitObject.value(forKey: "id") as? UUID,
-                let typeRaw = habitObject.value(forKey: "typeRaw") as? String,
+                let id = habitObject.uuidValue(forKey: "id"),
+                let typeRaw = habitObject.stringValue(forKey: "typeRaw"),
                 let type = HabitType(rawValue: typeRaw),
-                let name = habitObject.value(forKey: "name") as? String
+                let name = habitObject.stringValue(forKey: "name")
             else {
                 return nil
             }
-            let sortOrder = Int(habitObject.value(forKey: "sortOrder") as? Int32 ?? 0)
+            let sortOrder = Int(habitObject.int32Value(forKey: "sortOrder"))
 
             let completions = (habitObject.mutableSetValue(forKey: "completions").allObjects as? [NSManagedObject]) ?? []
             let completionModels: [HabitCompletion] = completions.compactMap { completionObject in
@@ -74,9 +77,9 @@ struct CoreDataHabitRepository: HabitRepository {
             let isSkippedToday = completionModels.contains {
                 !$0.source.countsAsCompletion && Calendar.current.isDate($0.localDate, inSameDayAs: today)
             }
-            let reminderEnabled = habitObject.value(forKey: "reminderEnabled") as? Bool ?? false
-            let reminderHour = Int(habitObject.value(forKey: "reminderHour") as? Int16 ?? 0)
-            let reminderMinute = Int(habitObject.value(forKey: "reminderMinute") as? Int16 ?? 0)
+            let reminderEnabled = habitObject.boolValue(forKey: "reminderEnabled")
+            let reminderHour = habitObject.int16Value(forKey: "reminderHour")
+            let reminderMinute = habitObject.int16Value(forKey: "reminderMinute")
             let scheduledToday = latestSchedule?.weekdays.contains(Calendar.current.weekdaySet(for: today)) ?? false
             let reminderText: String?
             let displayReminderHour: Int?
@@ -133,18 +136,18 @@ struct CoreDataHabitRepository: HabitRepository {
         let scheduleHistory = loadSchedules(for: habitObject, habitID: id)
         let latestSchedule = scheduleHistory.sorted(by: isNewerSchedule).first
 
-        guard
-            let typeRaw = habitObject.value(forKey: "typeRaw") as? String,
+            guard
+            let typeRaw = habitObject.stringValue(forKey: "typeRaw"),
             let type = HabitType(rawValue: typeRaw),
-            let name = habitObject.value(forKey: "name") as? String,
-            let startDate = habitObject.value(forKey: "startDate") as? Date
+            let name = habitObject.stringValue(forKey: "name"),
+            let startDate = habitObject.dateValue(forKey: "startDate")
         else {
             return nil
         }
 
-        let reminderEnabled = habitObject.value(forKey: "reminderEnabled") as? Bool ?? false
-        let reminderHour = Int(habitObject.value(forKey: "reminderHour") as? Int16 ?? 20)
-        let reminderMinute = Int(habitObject.value(forKey: "reminderMinute") as? Int16 ?? 0)
+        let reminderEnabled = habitObject.boolValue(forKey: "reminderEnabled")
+        let reminderHour = habitObject.int16Value(forKey: "reminderHour")
+        let reminderMinute = habitObject.int16Value(forKey: "reminderMinute")
         let reminderTime = reminderEnabled ? ReminderTime(hour: reminderHour, minute: reminderMinute) : nil
 
         return HabitDetailsProjection(
@@ -165,7 +168,7 @@ struct CoreDataHabitRepository: HabitRepository {
     }
 
     func createHabit(from draft: CreateHabitDraft) throws -> UUID {
-        try performWrite { context in
+        try repositoryContext.performWrite({ context in
             let countRequest = NSFetchRequest<NSFetchRequestResult>(entityName: "Habit")
             let totalHabits = try context.count(for: countRequest)
             guard totalHabits < 20 else {
@@ -207,11 +210,11 @@ struct CoreDataHabitRepository: HabitRepository {
 
             try context.save()
             return habitID
-        }
+        }, missingResultError: HabitRepositoryError.internalFailure)
     }
 
     func completeHabitToday(id: UUID) throws {
-        try performWrite { context in
+        try repositoryContext.performWrite { context in
             guard let habit = try fetchHabit(id: id, in: context) else { return }
 
             let today = Calendar.current.startOfDay(for: Date())
@@ -244,7 +247,7 @@ struct CoreDataHabitRepository: HabitRepository {
     }
 
     func skipHabitToday(id: UUID) throws {
-        try performWrite { context in
+        try repositoryContext.performWrite { context in
             guard let habit = try fetchHabit(id: id, in: context) else { return }
 
             let today = Calendar.current.startOfDay(for: Date())
@@ -273,7 +276,7 @@ struct CoreDataHabitRepository: HabitRepository {
     }
 
     func clearHabitDayStateToday(id: UUID) throws {
-        try performWrite { context in
+        try repositoryContext.performWrite { context in
             let today = Calendar.current.startOfDay(for: Date())
             guard let completion = try fetchCompletion(for: id, on: today, in: context) else { return }
 
@@ -283,7 +286,7 @@ struct CoreDataHabitRepository: HabitRepository {
     }
 
     func deleteHabit(id: UUID) throws {
-        try performWrite { context in
+        try repositoryContext.performWrite { context in
             guard let habit = try fetchHabit(id: id, in: context) else { return }
 
             context.delete(habit)
@@ -292,7 +295,7 @@ struct CoreDataHabitRepository: HabitRepository {
     }
 
     func updateHabit(from draft: EditHabitDraft) throws {
-        try performWrite { context in
+        try repositoryContext.performWrite { context in
             guard let habit = try fetchHabit(id: draft.id, in: context) else { return }
 
             habit.setValue(draft.trimmedName, forKey: "name")
@@ -302,7 +305,7 @@ struct CoreDataHabitRepository: HabitRepository {
             habit.setValue(Date(), forKey: "updatedAt")
 
             let currentSchedule = loadLatestScheduleObject(for: habit)
-            let currentWeekdayMask = Int(currentSchedule?.value(forKey: "weekdayMask") as? Int16 ?? 0)
+            let currentWeekdayMask = currentSchedule?.int16Value(forKey: "weekdayMask") ?? 0
             if currentWeekdayMask != draft.scheduleDays.rawValue {
                 let schedule = NSEntityDescription.insertNewObject(forEntityName: "HabitScheduleVersion", into: context)
                 schedule.setValue(UUID(), forKey: "id")
@@ -310,21 +313,14 @@ struct CoreDataHabitRepository: HabitRepository {
                 schedule.setValue(Int16(draft.scheduleDays.rawValue), forKey: "weekdayMask")
                 schedule.setValue(Calendar.current.startOfDay(for: Date()), forKey: "effectiveFrom")
                 schedule.setValue(Date(), forKey: "createdAt")
-                schedule.setValue(Int32((currentSchedule?.value(forKey: "version") as? Int32 ?? 0) + 1), forKey: "version")
+                schedule.setValue(currentSchedule.map { $0.int32Value(forKey: "version") + 1 } ?? 1, forKey: "version")
                 schedule.setValue(habit, forKey: "habit")
             }
 
             let existingCompletionObjects = (habit.mutableSetValue(forKey: "completions").allObjects as? [NSManagedObject]) ?? []
-            let startDate = Calendar.current.startOfDay(for: draft.startDate)
-            let today = Calendar.current.startOfDay(for: Date())
-            let editableStart = max(startDate, Calendar.current.date(byAdding: .day, value: -29, to: today) ?? startDate)
-            let editableDates = stride(from: 0, through: 29, by: 1).compactMap {
-                Calendar.current.date(byAdding: .day, value: -$0, to: today).map { Calendar.current.startOfDay(for: $0) }
-            }.filter { $0 >= editableStart && $0 <= today }
-
-            let editableSet = Set(editableDates)
+            let editableSet = EditableHistoryWindow.dates(startDate: draft.startDate)
             let existingByDay = Dictionary(uniqueKeysWithValues: existingCompletionObjects.compactMap { object -> (Date, NSManagedObject)? in
-                guard let localDate = object.value(forKey: "localDate") as? Date else { return nil }
+                guard let localDate = object.dateValue(forKey: "localDate") else { return nil }
                 return (Calendar.current.startOfDay(for: localDate), object)
             })
 
@@ -343,7 +339,7 @@ struct CoreDataHabitRepository: HabitRepository {
                     completion.setValue(habit, forKey: "habit")
                 } else if shouldBeCompleted, let existing {
                     guard
-                        let sourceRaw = existing.value(forKey: "sourceRaw") as? String,
+                        let sourceRaw = existing.stringValue(forKey: "sourceRaw"),
                         let source = CompletionSource(rawValue: sourceRaw)
                     else {
                         continue
@@ -363,7 +359,7 @@ struct CoreDataHabitRepository: HabitRepository {
                     completion.setValue(habit, forKey: "habit")
                 } else if shouldBeSkipped, let existing {
                     guard
-                        let sourceRaw = existing.value(forKey: "sourceRaw") as? String,
+                        let sourceRaw = existing.stringValue(forKey: "sourceRaw"),
                         let source = CompletionSource(rawValue: sourceRaw)
                     else {
                         continue
@@ -399,68 +395,15 @@ struct CoreDataHabitRepository: HabitRepository {
         return try context.fetch(request).first
     }
 
-    private func performWrite(_ work: (NSManagedObjectContext) throws -> Void) throws {
-        let context = makeWriteContext()
-        var thrownError: Error?
-
-        context.performAndWait {
-            do {
-                try work(context)
-            } catch {
-                context.rollback()
-                thrownError = error
-            }
-        }
-
-        if let thrownError {
-            throw thrownError
-        }
-
-        refreshReadContext()
-    }
-
-    private func performWrite<T>(_ work: (NSManagedObjectContext) throws -> T) throws -> T {
-        let context = makeWriteContext()
-        var result: T?
-        var thrownError: Error?
-
-        context.performAndWait {
-            do {
-                result = try work(context)
-            } catch {
-                context.rollback()
-                thrownError = error
-            }
-        }
-
-        if let thrownError {
-            throw thrownError
-        }
-
-        refreshReadContext()
-
-        guard let result else {
-            throw HabitRepositoryError.internalFailure
-        }
-
-        return result
-    }
-
-    private func refreshReadContext() {
-        readContext.performAndWait {
-            readContext.refreshAllObjects()
-        }
-    }
-
     private func loadCompletions(for habitObject: NSManagedObject, habitID: UUID) -> [HabitCompletion] {
         let completions = (habitObject.mutableSetValue(forKey: "completions").allObjects as? [NSManagedObject]) ?? []
         return completions.compactMap { completionObject in
             guard
-                let completionID = completionObject.value(forKey: "id") as? UUID,
-                let localDate = completionObject.value(forKey: "localDate") as? Date,
-                let sourceRaw = completionObject.value(forKey: "sourceRaw") as? String,
+                let completionID = completionObject.uuidValue(forKey: "id"),
+                let localDate = completionObject.dateValue(forKey: "localDate"),
+                let sourceRaw = completionObject.stringValue(forKey: "sourceRaw"),
                 let source = CompletionSource(rawValue: sourceRaw),
-                let createdAt = completionObject.value(forKey: "createdAt") as? Date
+                let createdAt = completionObject.dateValue(forKey: "createdAt")
             else {
                 return nil
             }
@@ -480,15 +423,15 @@ struct CoreDataHabitRepository: HabitRepository {
         return schedules
             .compactMap { scheduleObject -> HabitScheduleVersion? in
                 guard
-                    let scheduleID = scheduleObject.value(forKey: "id") as? UUID,
-                    let effectiveFrom = scheduleObject.value(forKey: "effectiveFrom") as? Date,
-                    let createdAt = scheduleObject.value(forKey: "createdAt") as? Date
+                    let scheduleID = scheduleObject.uuidValue(forKey: "id"),
+                    let effectiveFrom = scheduleObject.dateValue(forKey: "effectiveFrom"),
+                    let createdAt = scheduleObject.dateValue(forKey: "createdAt")
                 else {
                     return nil
                 }
 
-                let weekdayMask = Int(scheduleObject.value(forKey: "weekdayMask") as? Int16 ?? 0)
-                let version = Int(scheduleObject.value(forKey: "version") as? Int32 ?? 1)
+                let weekdayMask = scheduleObject.int16Value(forKey: "weekdayMask")
+                let version = Int(scheduleObject.int32Value(forKey: "version", default: 1))
 
                 return HabitScheduleVersion(
                     id: scheduleID,
@@ -502,24 +445,7 @@ struct CoreDataHabitRepository: HabitRepository {
     }
 
     private func loadLatestScheduleObject(for habitObject: NSManagedObject) -> NSManagedObject? {
-        let schedules = (habitObject.mutableSetValue(forKey: "scheduleVersions").allObjects as? [NSManagedObject]) ?? []
-        return schedules.sorted {
-            let lhs = $0.value(forKey: "effectiveFrom") as? Date ?? .distantPast
-            let rhs = $1.value(forKey: "effectiveFrom") as? Date ?? .distantPast
-            if lhs != rhs {
-                return lhs > rhs
-            }
-
-            let lhsVersion = $0.value(forKey: "version") as? Int32 ?? 0
-            let rhsVersion = $1.value(forKey: "version") as? Int32 ?? 0
-            if lhsVersion != rhsVersion {
-                return lhsVersion > rhsVersion
-            }
-
-            let lhsCreatedAt = $0.value(forKey: "createdAt") as? Date ?? .distantPast
-            let rhsCreatedAt = $1.value(forKey: "createdAt") as? Date ?? .distantPast
-            return lhsCreatedAt > rhsCreatedAt
-        }.first
+        CoreDataScheduleSupport.latestScheduleObject(in: habitObject.mutableSetValue(forKey: "scheduleVersions"))
     }
 
     private func isNewerSchedule(_ lhs: HabitScheduleVersion, _ rhs: HabitScheduleVersion) -> Bool {
@@ -559,19 +485,5 @@ struct CoreDataHabitRepository: HabitRepository {
         }
 
         return (hour * 60) + minute
-    }
-}
-
-private extension Calendar {
-    func weekdaySet(for date: Date) -> WeekdaySet {
-        switch component(.weekday, from: date) {
-        case 2: return .monday
-        case 3: return .tuesday
-        case 4: return .wednesday
-        case 5: return .thursday
-        case 6: return .friday
-        case 7: return .saturday
-        default: return .sunday
-        }
     }
 }

@@ -184,12 +184,12 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-			A1B2C3D42A7E4B3500AB1001 /* Auto Build Number */ = {
-				isa = PBXShellScriptBuildPhase;
-				alwaysOutOfDate = 1;
-				buildActionMask = 2147483647;
-				files = (
-				);
+		A1B2C3D42A7E4B3500AB1001 /* Auto Build Number */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
 			inputFileListPaths = (
 			);
 			inputPaths = (

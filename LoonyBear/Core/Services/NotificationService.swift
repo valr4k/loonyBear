@@ -3,13 +3,6 @@ import Foundation
 import UIKit
 import UserNotifications
 
-extension Notification.Name {
-    static let habitStoreDidChange = Notification.Name("habit_store_did_change")
-    static let pillStoreDidChange = Notification.Name("pill_store_did_change")
-    static let openMyHabitsTab = Notification.Name("open_my_habits_tab")
-    static let openMyPillsTab = Notification.Name("open_my_pills_tab")
-}
-
 private enum NotificationServiceError: Error {
     case habitNotFound
 }
@@ -21,8 +14,7 @@ final class NotificationService {
     private let skipActionIdentifier = "habit.skip"
     private let schedulingWindowDays = 2
     private let aggregationThreshold = 3
-    private let readContext: NSManagedObjectContext
-    private let makeWriteContext: () -> NSManagedObjectContext
+    private let storeContext: NotificationStoreContext
     private let center = UNUserNotificationCenter.current()
 
     private var calendar: Calendar {
@@ -33,22 +25,14 @@ final class NotificationService {
         context: NSManagedObjectContext,
         makeWriteContext: @escaping () -> NSManagedObjectContext
     ) {
-        readContext = context
-        self.makeWriteContext = makeWriteContext
+        storeContext = NotificationStoreContext(
+            readContext: context,
+            makeWriteContext: makeWriteContext
+        )
     }
 
     func ensureAuthorizationIfNeeded() async -> Bool {
-        let settings = await center.notificationSettings()
-        switch settings.authorizationStatus {
-        case .authorized, .provisional:
-            return true
-        case .notDetermined:
-            return (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
-        case .denied, .ephemeral:
-            return false
-        @unknown default:
-            return false
-        }
+        await LocalNotificationSupport.ensureAuthorizationIfNeeded(center: center)
     }
 
     func prepareReminderNotifications(forHabitID habitID: UUID) async {
@@ -93,15 +77,15 @@ final class NotificationService {
     func rescheduleAllNotifications() {
         removePendingHabitNotifications {
             self.removeDeliveredAggregatedNotifications(on: Date())
-            self.refreshReadContext()
+            self.storeContext.refreshReadContext()
 
-            let habits: [HabitReminderConfiguration] = self.performRead { context in
+            let habits: [HabitReminderConfiguration] = self.storeContext.performRead { context in
                 let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
                 let habits = try context.fetch(request)
                 return habits.compactMap(self.makeReminderConfiguration(from:))
             } ?? []
 
-            let pills: [PillReminderConfiguration] = self.performRead { context in
+            let pills: [PillReminderConfiguration] = self.storeContext.performRead { context in
                 let request = NSFetchRequest<NSManagedObject>(entityName: "Pill")
                 let pills = try context.fetch(request)
                 return pills.compactMap(self.makePillReminderConfiguration(from:))
@@ -174,21 +158,12 @@ final class NotificationService {
     }
 
     func removeDeliveredAggregatedNotifications(on localDate: Date) {
-        let normalizedDay = calendar.startOfDay(for: localDate)
-
-        center.getDeliveredNotifications { notifications in
-            let identifiers = notifications.compactMap { notification -> String? in
-                let userInfo = notification.request.content.userInfo
-                guard userInfo["type"] as? String == "aggregated" else {
-                    return nil
-                }
-
-                let deliveredDay = self.calendar.startOfDay(for: notification.date)
-                return deliveredDay == normalizedDay ? notification.request.identifier : nil
-            }
-
-            self.center.removeDeliveredNotifications(withIdentifiers: identifiers)
-        }
+        LocalNotificationSupport.removeDeliveredAggregatedNotifications(
+            center: center,
+            calendar: calendar,
+            type: "aggregated",
+            on: localDate
+        )
     }
 
     func handleAppDidBecomeActive() {
@@ -245,14 +220,7 @@ final class NotificationService {
     }
 
     private func cleanupStaleDeliveredNotifications() {
-        let today = calendar.startOfDay(for: Date())
-        center.getDeliveredNotifications { notifications in
-            let staleIdentifiers = notifications.compactMap { notification -> String? in
-                let notificationDay = self.calendar.startOfDay(for: notification.date)
-                return notificationDay < today ? notification.request.identifier : nil
-            }
-            self.center.removeDeliveredNotifications(withIdentifiers: staleIdentifiers)
-        }
+        LocalNotificationSupport.cleanupStaleDeliveredNotifications(center: center, calendar: calendar)
     }
 
     private func reminderCandidates(for reminder: HabitReminderConfiguration) -> [ScheduledHabitReminderCandidate] {
@@ -317,7 +285,7 @@ final class NotificationService {
     }
 
     private func loadHabit(id: UUID) -> HabitReminderConfiguration? {
-        performRead { context in
+        storeContext.performRead { context in
             let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
             request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
             request.fetchLimit = 1
@@ -335,43 +303,25 @@ final class NotificationService {
 
     private func makeReminderConfiguration(from object: NSManagedObject) -> HabitReminderConfiguration? {
         guard
-            let id = object.value(forKey: "id") as? UUID,
-            let name = object.value(forKey: "name") as? String,
-            let startDate = object.value(forKey: "startDate") as? Date
+            let id = object.uuidValue(forKey: "id"),
+            let name = object.stringValue(forKey: "name"),
+            let startDate = object.dateValue(forKey: "startDate")
         else {
             return nil
         }
 
-        let schedules = (object.mutableSetValue(forKey: "scheduleVersions").allObjects as? [NSManagedObject]) ?? []
-        let latestSchedule = schedules
-            .sorted {
-                let lhs = $0.value(forKey: "effectiveFrom") as? Date ?? .distantPast
-                let rhs = $1.value(forKey: "effectiveFrom") as? Date ?? .distantPast
-                if lhs != rhs {
-                    return lhs > rhs
-                }
-
-                let lhsVersion = $0.value(forKey: "version") as? Int32 ?? 0
-                let rhsVersion = $1.value(forKey: "version") as? Int32 ?? 0
-                if lhsVersion != rhsVersion {
-                    return lhsVersion > rhsVersion
-                }
-
-                let lhsCreatedAt = $0.value(forKey: "createdAt") as? Date ?? .distantPast
-                let rhsCreatedAt = $1.value(forKey: "createdAt") as? Date ?? .distantPast
-                return lhsCreatedAt > rhsCreatedAt
-            }
-            .first
-
-        let weekdayMask = Int(latestSchedule?.value(forKey: "weekdayMask") as? Int16 ?? 0)
-        let reminderEnabled = object.value(forKey: "reminderEnabled") as? Bool ?? false
-        let hour = Int(object.value(forKey: "reminderHour") as? Int16 ?? 0)
-        let minute = Int(object.value(forKey: "reminderMinute") as? Int16 ?? 0)
+        let latestSchedule = CoreDataScheduleSupport.latestScheduleObject(
+            in: object.mutableSetValue(forKey: "scheduleVersions")
+        )
+        let weekdayMask = latestSchedule?.int16Value(forKey: "weekdayMask") ?? 0
+        let reminderEnabled = object.boolValue(forKey: "reminderEnabled")
+        let hour = object.int16Value(forKey: "reminderHour")
+        let minute = object.int16Value(forKey: "reminderMinute")
         let completions = (object.mutableSetValue(forKey: "completions").allObjects as? [NSManagedObject]) ?? []
         let completionEntries = completions.compactMap { completion -> (Date, CompletionSource)? in
             guard
-                let localDate = completion.value(forKey: "localDate") as? Date,
-                let sourceRaw = completion.value(forKey: "sourceRaw") as? String,
+                let localDate = completion.dateValue(forKey: "localDate"),
+                let sourceRaw = completion.stringValue(forKey: "sourceRaw"),
                 let source = CompletionSource(rawValue: sourceRaw)
             else {
                 return nil
@@ -396,15 +346,15 @@ final class NotificationService {
 
     private func makePillReminderConfiguration(from object: NSManagedObject) -> PillReminderConfiguration? {
         guard
-            let id = object.value(forKey: "id") as? UUID,
-            let name = object.value(forKey: "name") as? String,
-            let dosage = object.value(forKey: "dosage") as? String,
-            let startDate = object.value(forKey: "startDate") as? Date
+            let id = object.uuidValue(forKey: "id"),
+            let name = object.stringValue(forKey: "name"),
+            let dosage = object.stringValue(forKey: "dosage"),
+            let startDate = object.dateValue(forKey: "startDate")
         else {
             return nil
         }
 
-        let reminderEnabled = object.value(forKey: "reminderEnabled") as? Bool ?? false
+        let reminderEnabled = object.boolValue(forKey: "reminderEnabled")
         let reminderHourValue = object.value(forKey: "reminderHour") as? Int16
         let reminderMinuteValue = object.value(forKey: "reminderMinute") as? Int16
         let reminderTime: ReminderTime?
@@ -414,31 +364,15 @@ final class NotificationService {
             reminderTime = nil
         }
 
-        let scheduleVersions = (object.mutableSetValue(forKey: "scheduleVersions").allObjects as? [NSManagedObject]) ?? []
-        let latestSchedule = scheduleVersions.sorted {
-            let lhs = $0.value(forKey: "effectiveFrom") as? Date ?? .distantPast
-            let rhs = $1.value(forKey: "effectiveFrom") as? Date ?? .distantPast
-            if lhs != rhs {
-                return lhs > rhs
-            }
-
-            let lhsVersion = $0.value(forKey: "version") as? Int32 ?? 0
-            let rhsVersion = $1.value(forKey: "version") as? Int32 ?? 0
-            if lhsVersion != rhsVersion {
-                return lhsVersion > rhsVersion
-            }
-
-            let lhsCreatedAt = $0.value(forKey: "createdAt") as? Date ?? .distantPast
-            let rhsCreatedAt = $1.value(forKey: "createdAt") as? Date ?? .distantPast
-            return lhsCreatedAt > rhsCreatedAt
-        }.first
-
-        let weekdayMask = Int(latestSchedule?.value(forKey: "weekdayMask") as? Int16 ?? 0)
+        let latestSchedule = CoreDataScheduleSupport.latestScheduleObject(
+            in: object.mutableSetValue(forKey: "scheduleVersions")
+        )
+        let weekdayMask = latestSchedule?.int16Value(forKey: "weekdayMask") ?? 0
         let intakes = (object.mutableSetValue(forKey: "intakes").allObjects as? [NSManagedObject]) ?? []
         let intakeEntries = intakes.compactMap { intakeObject -> (Date, PillCompletionSource)? in
             guard
-                let localDate = intakeObject.value(forKey: "localDate") as? Date,
-                let sourceRaw = intakeObject.value(forKey: "sourceRaw") as? String,
+                let localDate = intakeObject.dateValue(forKey: "localDate"),
+                let sourceRaw = intakeObject.stringValue(forKey: "sourceRaw"),
                 let source = PillCompletionSource(rawValue: sourceRaw)
             else {
                 return nil
@@ -466,7 +400,7 @@ final class NotificationService {
     private func createCompletionIfNeeded(for habitID: UUID, on localDate: Date, source: CompletionSource) -> Bool {
         let normalizedDate = calendar.startOfDay(for: localDate)
 
-        let didCreate = performWrite { context in
+        let didCreate = storeContext.performWrite({ context in
             let fetchRequest = NSFetchRequest<NSManagedObject>(entityName: "HabitCompletion")
             fetchRequest.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
                 NSPredicate(format: "habitID == %@", habitID as CVarArg),
@@ -510,7 +444,7 @@ final class NotificationService {
 
             try context.save()
             return true
-        }
+        }, refreshReadContext: false)
 
         if didCreate == true {
             DispatchQueue.main.async {
@@ -527,7 +461,7 @@ final class NotificationService {
     private func createSkippedCompletionIfNeeded(for habitID: UUID, on localDate: Date) -> Bool {
         let normalizedDate = calendar.startOfDay(for: localDate)
 
-        let didCreate = performWrite { context in
+        let didCreate = storeContext.performWrite({ context in
             let fetchRequest = NSFetchRequest<NSManagedObject>(entityName: "HabitCompletion")
             fetchRequest.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
                 NSPredicate(format: "habitID == %@", habitID as CVarArg),
@@ -565,7 +499,7 @@ final class NotificationService {
 
             try context.save()
             return true
-        }
+        }, refreshReadContext: false)
 
         if didCreate == true {
             DispatchQueue.main.async {
@@ -578,64 +512,8 @@ final class NotificationService {
         return false
     }
 
-    private func performRead<T>(_ work: (NSManagedObjectContext) throws -> T) -> T? {
-        var result: Result<T, Error>?
-        readContext.performAndWait {
-            do {
-                result = .success(try work(readContext))
-            } catch {
-                readContext.rollback()
-                result = .failure(error)
-            }
-        }
-
-        switch result {
-        case .success(let value):
-            return value
-        case .failure:
-            return nil
-        case .none:
-            return nil
-        }
-    }
-
-    private func refreshReadContext() {
-        readContext.performAndWait {
-            readContext.refreshAllObjects()
-        }
-    }
-
     private func removePendingHabitNotifications(completion: @escaping () -> Void) {
-        center.getPendingNotificationRequests { requests in
-            let identifiers = requests
-                .map(\.identifier)
-                .filter { $0.hasPrefix("habit_") }
-            self.center.removePendingNotificationRequests(withIdentifiers: identifiers)
-            completion()
-        }
-    }
-
-    private func performWrite<T>(_ work: (NSManagedObjectContext) throws -> T) -> T? {
-        let context = makeWriteContext()
-        var result: Result<T, Error>?
-
-        context.performAndWait {
-            do {
-                result = .success(try work(context))
-            } catch {
-                context.rollback()
-                result = .failure(error)
-            }
-        }
-
-        switch result {
-        case .success(let value):
-            return value
-        case .failure:
-            return nil
-        case .none:
-            return nil
-        }
+        LocalNotificationSupport.removePendingNotifications(center: center, prefix: "habit_", completion: completion)
     }
 
     private func notificationIdentifierPrefix(for habitID: UUID) -> String {
@@ -659,23 +537,11 @@ final class NotificationService {
     }
 
     private func localDateIdentifier(for localDate: Date) -> String {
-        let components = calendar.dateComponents([.year, .month, .day], from: calendar.startOfDay(for: localDate))
-        let year = components.year ?? 0
-        let month = components.month ?? 0
-        let day = components.day ?? 0
-        return String(format: "%04d%02d%02d", year, month, day)
+        LocalNotificationSupport.localDateIdentifier(for: localDate, calendar: calendar)
     }
 
     private func timestampString(for date: Date) -> String {
-        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
-        return String(
-            format: "%04d%02d%02d%02d%02d",
-            components.year ?? 0,
-            components.month ?? 0,
-            components.day ?? 0,
-            components.hour ?? 0,
-            components.minute ?? 0
-        )
+        LocalNotificationSupport.timestampString(for: date, calendar: calendar)
     }
 
     private func makeIndividualNotificationRequest(
@@ -754,18 +620,4 @@ private struct ScheduledHabitReminderCandidate {
     let habitName: String
     let localDate: Date
     let scheduledDateTime: Date
-}
-
-private extension Calendar {
-    func weekdaySet(for date: Date) -> WeekdaySet {
-        switch component(.weekday, from: date) {
-        case 2: return .monday
-        case 3: return .tuesday
-        case 4: return .wednesday
-        case 5: return .thursday
-        case 6: return .friday
-        case 7: return .saturday
-        default: return .sunday
-        }
-    }
 }

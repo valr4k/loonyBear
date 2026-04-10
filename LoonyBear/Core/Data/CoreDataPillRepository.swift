@@ -3,14 +3,17 @@ import Foundation
 
 struct CoreDataPillRepository: PillRepository {
     private let readContext: NSManagedObjectContext
-    private let makeWriteContext: () -> NSManagedObjectContext
+    private let repositoryContext: CoreDataRepositoryContext
 
     init(
         context: NSManagedObjectContext,
         makeWriteContext: @escaping () -> NSManagedObjectContext
     ) {
         readContext = context
-        self.makeWriteContext = makeWriteContext
+        repositoryContext = CoreDataRepositoryContext(
+            readContext: context,
+            makeWriteContext: makeWriteContext
+        )
     }
 
     func fetchDashboardPills() -> [PillCardProjection] {
@@ -25,9 +28,9 @@ struct CoreDataPillRepository: PillRepository {
 
         return pills.compactMap { pillObject in
             guard
-                let id = pillObject.value(forKey: "id") as? UUID,
-                let name = pillObject.value(forKey: "name") as? String,
-                let dosage = pillObject.value(forKey: "dosage") as? String
+                let id = pillObject.uuidValue(forKey: "id"),
+                let name = pillObject.stringValue(forKey: "name"),
+                let dosage = pillObject.stringValue(forKey: "dosage")
             else {
                 return nil
             }
@@ -39,9 +42,9 @@ struct CoreDataPillRepository: PillRepository {
             let isSkippedToday = intakes.contains {
                 !$0.source.countsAsIntake && Calendar.current.isDate($0.localDate, inSameDayAs: today)
             }
-            let reminderEnabled = pillObject.value(forKey: "reminderEnabled") as? Bool ?? false
-            let reminderHour = Int(pillObject.value(forKey: "reminderHour") as? Int16 ?? 0)
-            let reminderMinute = Int(pillObject.value(forKey: "reminderMinute") as? Int16 ?? 0)
+            let reminderEnabled = pillObject.boolValue(forKey: "reminderEnabled")
+            let reminderHour = pillObject.int16Value(forKey: "reminderHour")
+            let reminderMinute = pillObject.int16Value(forKey: "reminderMinute")
             let reminderText = reminderEnabled ? ReminderTime(hour: reminderHour, minute: reminderMinute).formatted : nil
             let isScheduledToday = latestSchedule?.weekdays.contains(Calendar.current.weekdaySet(for: today)) ?? false
 
@@ -58,7 +61,7 @@ struct CoreDataPillRepository: PillRepository {
                 isScheduledToday: isScheduledToday,
                 isTakenToday: isTakenToday,
                 isSkippedToday: isSkippedToday,
-                sortOrder: Int(pillObject.value(forKey: "sortOrder") as? Int32 ?? 0)
+                sortOrder: Int(pillObject.int32Value(forKey: "sortOrder"))
             )
         }
         .sorted(by: pillDashboardSort)
@@ -67,9 +70,9 @@ struct CoreDataPillRepository: PillRepository {
     func fetchPillDetails(id: UUID) -> PillDetailsProjection? {
         guard let pillObject = try? fetchPill(id: id, in: readContext) else { return nil }
         guard
-            let name = pillObject.value(forKey: "name") as? String,
-            let dosage = pillObject.value(forKey: "dosage") as? String,
-            let startDate = pillObject.value(forKey: "startDate") as? Date
+            let name = pillObject.stringValue(forKey: "name"),
+            let dosage = pillObject.stringValue(forKey: "dosage"),
+            let startDate = pillObject.dateValue(forKey: "startDate")
         else {
             return nil
         }
@@ -83,15 +86,15 @@ struct CoreDataPillRepository: PillRepository {
                 .filter { !$0.source.countsAsIntake }
                 .map { Calendar.current.startOfDay(for: $0.localDate) }
         )
-        let reminderEnabled = pillObject.value(forKey: "reminderEnabled") as? Bool ?? false
-        let reminderHour = Int(pillObject.value(forKey: "reminderHour") as? Int16 ?? 0)
-        let reminderMinute = Int(pillObject.value(forKey: "reminderMinute") as? Int16 ?? 0)
+        let reminderEnabled = pillObject.boolValue(forKey: "reminderEnabled")
+        let reminderHour = pillObject.int16Value(forKey: "reminderHour")
+        let reminderMinute = pillObject.int16Value(forKey: "reminderMinute")
 
         return PillDetailsProjection(
             id: id,
             name: name,
             dosage: dosage,
-            details: pillObject.value(forKey: "detailsText") as? String,
+            details: pillObject.stringValue(forKey: "detailsText"),
             startDate: startDate,
             scheduleSummary: latestSchedule?.weekdays.summary ?? "No days selected",
             scheduleDays: latestSchedule?.weekdays ?? .daily,
@@ -104,7 +107,7 @@ struct CoreDataPillRepository: PillRepository {
     }
 
     func createPill(from draft: PillDraft) throws -> UUID {
-        try performWrite { context in
+        try repositoryContext.performWrite({ context in
             let countRequest = NSFetchRequest<NSDictionary>(entityName: "Pill")
             countRequest.resultType = .dictionaryResultType
             countRequest.propertiesToFetch = ["sortOrder"]
@@ -150,11 +153,11 @@ struct CoreDataPillRepository: PillRepository {
 
             try context.save()
             return pillID
-        }
+        }, missingResultError: PillRepositoryError.internalFailure)
     }
 
     func updatePill(from draft: EditPillDraft) throws {
-        try performWrite { context in
+        try repositoryContext.performWrite { context in
             guard let pill = try fetchPill(id: draft.id, in: context) else { return }
 
             pill.setValue(draft.trimmedName, forKey: "name")
@@ -166,7 +169,7 @@ struct CoreDataPillRepository: PillRepository {
             pill.setValue(Date(), forKey: "updatedAt")
 
             let currentSchedule = loadLatestScheduleObject(for: pill)
-            let currentWeekdayMask = Int(currentSchedule?.value(forKey: "weekdayMask") as? Int16 ?? 0)
+            let currentWeekdayMask = currentSchedule?.int16Value(forKey: "weekdayMask") ?? 0
             if currentWeekdayMask != draft.scheduleDays.rawValue {
                 let schedule = NSEntityDescription.insertNewObject(forEntityName: "PillScheduleVersion", into: context)
                 schedule.setValue(UUID(), forKey: "id")
@@ -174,21 +177,14 @@ struct CoreDataPillRepository: PillRepository {
                 schedule.setValue(Int16(draft.scheduleDays.rawValue), forKey: "weekdayMask")
                 schedule.setValue(Calendar.current.startOfDay(for: Date()), forKey: "effectiveFrom")
                 schedule.setValue(Date(), forKey: "createdAt")
-                schedule.setValue(Int32((currentSchedule?.value(forKey: "version") as? Int32 ?? 0) + 1), forKey: "version")
+                schedule.setValue(currentSchedule.map { $0.int32Value(forKey: "version") + 1 } ?? 1, forKey: "version")
                 schedule.setValue(pill, forKey: "pill")
             }
 
             let existingIntakeObjects = (pill.mutableSetValue(forKey: "intakes").allObjects as? [NSManagedObject]) ?? []
-            let startDate = Calendar.current.startOfDay(for: draft.startDate)
-            let today = Calendar.current.startOfDay(for: Date())
-            let editableStart = max(startDate, Calendar.current.date(byAdding: .day, value: -29, to: today) ?? startDate)
-            let editableDates = stride(from: 0, through: 29, by: 1).compactMap {
-                Calendar.current.date(byAdding: .day, value: -$0, to: today).map { Calendar.current.startOfDay(for: $0) }
-            }.filter { $0 >= editableStart && $0 <= today }
-
-            let editableSet = Set(editableDates)
+            let editableSet = EditableHistoryWindow.dates(startDate: draft.startDate)
             let existingByDay = Dictionary(uniqueKeysWithValues: existingIntakeObjects.compactMap { object -> (Date, NSManagedObject)? in
-                guard let localDate = object.value(forKey: "localDate") as? Date else { return nil }
+                guard let localDate = object.dateValue(forKey: "localDate") else { return nil }
                 return (Calendar.current.startOfDay(for: localDate), object)
             })
 
@@ -207,7 +203,7 @@ struct CoreDataPillRepository: PillRepository {
                     intake.setValue(pill, forKey: "pill")
                 } else if shouldBeTaken, let existing {
                     guard
-                        let sourceRaw = existing.value(forKey: "sourceRaw") as? String,
+                        let sourceRaw = existing.stringValue(forKey: "sourceRaw"),
                         let source = PillCompletionSource(rawValue: sourceRaw)
                     else {
                         continue
@@ -227,7 +223,7 @@ struct CoreDataPillRepository: PillRepository {
                     intake.setValue(pill, forKey: "pill")
                 } else if shouldBeSkipped, let existing {
                     guard
-                        let sourceRaw = existing.value(forKey: "sourceRaw") as? String,
+                        let sourceRaw = existing.stringValue(forKey: "sourceRaw"),
                         let source = PillCompletionSource(rawValue: sourceRaw)
                     else {
                         continue
@@ -247,7 +243,7 @@ struct CoreDataPillRepository: PillRepository {
     }
 
     func deletePill(id: UUID) throws {
-        try performWrite { context in
+        try repositoryContext.performWrite { context in
             guard let pill = try fetchPill(id: id, in: context) else { return }
             context.delete(pill)
             try context.save()
@@ -255,7 +251,7 @@ struct CoreDataPillRepository: PillRepository {
     }
 
     func markTakenToday(id: UUID) throws {
-        try performWrite { context in
+        try repositoryContext.performWrite { context in
             guard let pill = try fetchPill(id: id, in: context) else { return }
             let today = Calendar.current.startOfDay(for: Date())
             if let existingIntake = try fetchIntake(for: id, on: today, in: context) {
@@ -287,7 +283,7 @@ struct CoreDataPillRepository: PillRepository {
     }
 
     func skipPillToday(id: UUID) throws {
-        try performWrite { context in
+        try repositoryContext.performWrite { context in
             guard let pill = try fetchPill(id: id, in: context) else { return }
             let today = Calendar.current.startOfDay(for: Date())
 
@@ -316,7 +312,7 @@ struct CoreDataPillRepository: PillRepository {
     }
 
     func clearPillDayStateToday(id: UUID) throws {
-        try performWrite { context in
+        try repositoryContext.performWrite { context in
             let today = Calendar.current.startOfDay(for: Date())
             guard let intake = try fetchIntake(for: id, on: today, in: context) else { return }
             context.delete(intake)
@@ -325,7 +321,7 @@ struct CoreDataPillRepository: PillRepository {
     }
 
     func movePills(from offsets: IndexSet, to destination: Int) throws {
-        try performWrite { context in
+        try repositoryContext.performWrite { context in
             let request = NSFetchRequest<NSManagedObject>(entityName: "Pill")
             request.sortDescriptors = [NSSortDescriptor(key: "sortOrder", ascending: true)]
             let pills = reorderedItems(try context.fetch(request), from: offsets, to: destination)
@@ -355,68 +351,15 @@ struct CoreDataPillRepository: PillRepository {
         return try context.fetch(request).first
     }
 
-    private func performWrite(_ work: (NSManagedObjectContext) throws -> Void) throws {
-        let context = makeWriteContext()
-        var thrownError: Error?
-
-        context.performAndWait {
-            do {
-                try work(context)
-            } catch {
-                context.rollback()
-                thrownError = error
-            }
-        }
-
-        if let thrownError {
-            throw thrownError
-        }
-
-        refreshReadContext()
-    }
-
-    private func performWrite<T>(_ work: (NSManagedObjectContext) throws -> T) throws -> T {
-        let context = makeWriteContext()
-        var result: T?
-        var thrownError: Error?
-
-        context.performAndWait {
-            do {
-                result = try work(context)
-            } catch {
-                context.rollback()
-                thrownError = error
-            }
-        }
-
-        if let thrownError {
-            throw thrownError
-        }
-
-        refreshReadContext()
-
-        guard let result else {
-            throw PillRepositoryError.internalFailure
-        }
-
-        return result
-    }
-
-    private func refreshReadContext() {
-        readContext.performAndWait {
-            readContext.refreshAllObjects()
-        }
-    }
-
     private func loadIntakes(for pillObject: NSManagedObject, pillID: UUID) -> [PillIntake] {
         let intakes = (pillObject.mutableSetValue(forKey: "intakes").allObjects as? [NSManagedObject]) ?? []
         return intakes.compactMap { intakeObject in
             guard
-                let intakeID = intakeObject.value(forKey: "id") as? UUID,
-                let localDate = intakeObject.value(forKey: "localDate") as? Date,
-                let sourceRaw = intakeObject.value(forKey: "sourceRaw") as? String,
+                let intakeID = intakeObject.uuidValue(forKey: "id"),
+                let localDate = intakeObject.dateValue(forKey: "localDate"),
+                let sourceRaw = intakeObject.stringValue(forKey: "sourceRaw"),
                 let source = PillCompletionSource(rawValue: sourceRaw),
-                let createdAt = intakeObject.value(forKey: "createdAt") as? Date
+                let createdAt = intakeObject.dateValue(forKey: "createdAt")
             else {
                 return nil
             }
@@ -435,15 +378,15 @@ struct CoreDataPillRepository: PillRepository {
         let schedules = (pillObject.mutableSetValue(forKey: "scheduleVersions").allObjects as? [NSManagedObject]) ?? []
         return schedules.compactMap { scheduleObject in
             guard
-                let scheduleID = scheduleObject.value(forKey: "id") as? UUID,
-                let effectiveFrom = scheduleObject.value(forKey: "effectiveFrom") as? Date,
-                let createdAt = scheduleObject.value(forKey: "createdAt") as? Date
+                let scheduleID = scheduleObject.uuidValue(forKey: "id"),
+                let effectiveFrom = scheduleObject.dateValue(forKey: "effectiveFrom"),
+                let createdAt = scheduleObject.dateValue(forKey: "createdAt")
             else {
                 return nil
             }
 
-            let weekdayMask = Int(scheduleObject.value(forKey: "weekdayMask") as? Int16 ?? 0)
-            let version = Int(scheduleObject.value(forKey: "version") as? Int32 ?? 1)
+            let weekdayMask = scheduleObject.int16Value(forKey: "weekdayMask")
+            let version = Int(scheduleObject.int32Value(forKey: "version", default: 1))
 
             return PillScheduleVersion(
                 id: scheduleID,
@@ -457,24 +400,7 @@ struct CoreDataPillRepository: PillRepository {
     }
 
     private func loadLatestScheduleObject(for pillObject: NSManagedObject) -> NSManagedObject? {
-        let schedules = (pillObject.mutableSetValue(forKey: "scheduleVersions").allObjects as? [NSManagedObject]) ?? []
-        return schedules.sorted {
-            let lhs = $0.value(forKey: "effectiveFrom") as? Date ?? .distantPast
-            let rhs = $1.value(forKey: "effectiveFrom") as? Date ?? .distantPast
-            if lhs != rhs {
-                return lhs > rhs
-            }
-
-            let lhsVersion = $0.value(forKey: "version") as? Int32 ?? 0
-            let rhsVersion = $1.value(forKey: "version") as? Int32 ?? 0
-            if lhsVersion != rhsVersion {
-                return lhsVersion > rhsVersion
-            }
-
-            let lhsCreatedAt = $0.value(forKey: "createdAt") as? Date ?? .distantPast
-            let rhsCreatedAt = $1.value(forKey: "createdAt") as? Date ?? .distantPast
-            return lhsCreatedAt > rhsCreatedAt
-        }.first
+        CoreDataScheduleSupport.latestScheduleObject(in: pillObject.mutableSetValue(forKey: "scheduleVersions"))
     }
 
     private func isNewerSchedule(_ lhs: PillScheduleVersion, _ rhs: PillScheduleVersion) -> Bool {
@@ -524,19 +450,5 @@ struct CoreDataPillRepository: PillRepository {
         )
         reordered.insert(contentsOf: movedItems, at: insertionIndex)
         return reordered
-    }
-}
-
-private extension Calendar {
-    func weekdaySet(for date: Date) -> WeekdaySet {
-        switch component(.weekday, from: date) {
-        case 2: return .monday
-        case 3: return .tuesday
-        case 4: return .wednesday
-        case 5: return .thursday
-        case 6: return .friday
-        case 7: return .saturday
-        default: return .sunday
-        }
     }
 }

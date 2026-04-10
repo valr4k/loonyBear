@@ -4,6 +4,7 @@ import Testing
 
 @testable import LoonyBear
 
+@MainActor
 @Suite
 struct BackupServiceTests {
     @Test
@@ -206,5 +207,57 @@ struct BackupServiceTests {
         }
 
         #expect(repository.fetchDashboardHabits().isEmpty)
+    }
+
+    @Test
+    func createBackupRotatesExistingPrimaryArchiveToPrevious() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataHabitRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        let defaults = try #require(UserDefaults(suiteName: "BackupServiceTests.\(UUID().uuidString)"))
+        let compressionService = CompressionService()
+        let service = BackupService(
+            context: context,
+            makeWorkContext: persistence.makeBackgroundContext,
+            defaults: defaults,
+            compressionService: compressionService
+        )
+
+        let folderURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+        try service.saveFolderBookmark(for: folderURL)
+
+        var firstDraft = CreateHabitDraft()
+        firstDraft.name = "First"
+        firstDraft.startDate = TestSupport.makeDate(2026, 4, 1)
+        firstDraft.scheduleDays = .daily
+        _ = try repository.createHabit(from: firstDraft)
+
+        try service.createBackup()
+
+        var secondDraft = CreateHabitDraft()
+        secondDraft.name = "Second"
+        secondDraft.startDate = TestSupport.makeDate(2026, 4, 2)
+        secondDraft.scheduleDays = .daily
+        _ = try repository.createHabit(from: secondDraft)
+
+        try service.createBackup()
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        let previousURL = folderURL.appendingPathComponent("LoonyBear.previous.json.gz")
+        let previousData = try Data(contentsOf: previousURL)
+        let previousArchive = try decoder.decode(
+            BackupArchive.self,
+            from: try compressionService.gzipDecompress(previousData)
+        )
+
+        #expect(previousArchive.habits.count == 1)
+        #expect(previousArchive.habits.first?.name == "First")
     }
 }

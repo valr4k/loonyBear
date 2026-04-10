@@ -15,8 +15,7 @@ final class HabitAppState: ObservableObject {
     private let updateHabitUseCase: UpdateHabitUseCase
     private let repository: HabitRepository
     let notificationService: NotificationService
-    private let widgetSyncService: WidgetSyncService
-    private let badgeService: AppBadgeService
+    private let sideEffectCoordinator: HabitSideEffectCoordinator
 
     init(
         loadDashboardUseCase: LoadDashboardUseCase,
@@ -32,8 +31,11 @@ final class HabitAppState: ObservableObject {
         self.updateHabitUseCase = updateHabitUseCase
         self.repository = repository
         self.notificationService = notificationService
-        self.widgetSyncService = widgetSyncService
-        self.badgeService = badgeService
+        sideEffectCoordinator = HabitSideEffectCoordinator(
+            notificationService: notificationService,
+            widgetSyncService: widgetSyncService,
+            badgeService: badgeService
+        )
     }
 
     func load() async {
@@ -65,8 +67,7 @@ final class HabitAppState: ObservableObject {
         }
         guard didComplete else { return }
 
-        notificationService.rescheduleAllNotifications()
-        notificationService.removeDeliveredNotifications(forHabitID: id, on: Date())
+        sideEffectCoordinator.handleDailyMutation(forHabitID: id)
     }
 
     func skipHabitToday(id: UUID) {
@@ -75,8 +76,7 @@ final class HabitAppState: ObservableObject {
         }
         guard didSkip else { return }
 
-        notificationService.rescheduleAllNotifications()
-        notificationService.removeDeliveredNotifications(forHabitID: id, on: Date())
+        sideEffectCoordinator.handleDailyMutation(forHabitID: id)
     }
 
     func clearHabitDayStateToday(id: UUID) {
@@ -85,17 +85,14 @@ final class HabitAppState: ObservableObject {
         }
         guard didClearDayState else { return }
 
-        notificationService.rescheduleAllNotifications()
-        notificationService.removeDeliveredNotifications(forHabitID: id, on: Date())
+        sideEffectCoordinator.handleDailyMutation(forHabitID: id)
     }
 
     func deleteHabit(id: UUID) {
         do {
             dashboard = dashboardRemovingHabit(id: id)
             try repository.deleteHabit(id: id)
-            widgetSyncService.syncSnapshot(from: dashboard)
-            notificationService.removeNotifications(forHabitID: id)
-            badgeService.refreshBadge()
+            sideEffectCoordinator.handleDeletion(forHabitID: id, dashboard: dashboard)
             actionErrorMessage = nil
         } catch {
             refreshDashboard()
@@ -131,17 +128,12 @@ final class HabitAppState: ObservableObject {
     }
 
     func syncNotificationsAfterHabitUpdate(from draft: EditHabitDraft) async {
-        if draft.reminderEnabled {
-            await notificationService.prepareReminderNotifications(forHabitID: draft.id)
-        } else {
-            notificationService.removeNotifications(forHabitID: draft.id)
-        }
+        await sideEffectCoordinator.syncNotificationsAfterUpdate(from: draft)
     }
 
     func refreshDashboard() {
         dashboard = loadDashboardUseCase.execute()
-        widgetSyncService.syncSnapshot(from: dashboard)
-        badgeService.refreshBadge()
+        sideEffectCoordinator.refreshDerivedState(with: dashboard)
     }
 
     private func performDashboardMutation(_ mutation: () throws -> Void) -> Bool {
