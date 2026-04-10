@@ -1,5 +1,28 @@
 import SwiftUI
 
+enum AppLayout {
+    static let screenSpacing: CGFloat = 24
+    static let rowHorizontalPadding: CGFloat = 18
+    static let rowVerticalPadding: CGFloat = 18
+    static let inlinePadding: CGFloat = 4
+    static let cardCornerRadius: CGFloat = 22
+    static let insetCardCornerRadius: CGFloat = 18
+    static let listIconWidth: CGFloat = 22
+    static let listIconSize: CGFloat = 18
+    static let actionIconSize: CGFloat = 20
+}
+
+enum AppCopy {
+    static let chooseAtLeastOneDay = "Choose at least one day."
+    static let notificationsRequired = "Turn on notifications in Settings to use reminders."
+    static let backupFolderHint = "Backups stay in the selected Files folder even if the app is deleted. After reinstalling, choose the same folder again before restoring."
+    static let pillHistoryFollowsSchedule = "History follows your selected schedule from the start date."
+    static let pillHistoryCountsEveryDay = "History counts every day from the start date."
+    static let pillDescriptionPlaceholder = "Notes (optional)"
+    static let habitHistoryHint = "Tap a day to switch between none, completed, and skipped.\nYou can edit only the last 30 days, but not before the start date."
+    static let pillHistoryHint = "Tap a day to switch between none, taken, and skipped.\nYou can edit only the last 30 days, but not before the start date."
+}
+
 enum AppBackgroundStyle {
     case `default`
     case habits
@@ -14,7 +37,7 @@ struct AppScreen<Content: View>: View {
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: AppLayout.screenSpacing) {
                 content
             }
             .padding(.horizontal, 20)
@@ -69,7 +92,7 @@ struct AppCard<Content: View>: View {
             content
         }
         .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: AppLayout.cardCornerRadius, style: .continuous)
                 .fill(Color(.secondarySystemGroupedBackground))
         )
     }
@@ -82,7 +105,7 @@ struct AppInsetCard<Content: View>: View {
         content
             .padding(14)
             .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: AppLayout.insetCardCornerRadius, style: .continuous)
                     .fill(Color(.secondarySystemGroupedBackground))
             )
     }
@@ -111,8 +134,8 @@ struct AppValueRow: View {
                     .foregroundStyle(.tertiary)
             }
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 18)
+        .padding(.horizontal, AppLayout.rowHorizontalPadding)
+        .padding(.vertical, AppLayout.rowVerticalPadding)
         .contentShape(Rectangle())
     }
 }
@@ -123,23 +146,36 @@ struct AppValidationBanner: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "exclamationmark.circle.fill")
+                .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(.red)
 
             Text(message)
                 .font(.footnote)
                 .foregroundStyle(.primary)
+                .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.red.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.red.opacity(0.12), lineWidth: 1)
+        )
+        .transition(.move(edge: .top).combined(with: .opacity))
     }
 }
 
 struct AppSectionDivider: View {
+    var inset: CGFloat = AppLayout.rowHorizontalPadding
+
     var body: some View {
         Divider()
-            .padding(.leading, 18)
+            .padding(.leading, inset)
     }
 }
 
@@ -209,12 +245,12 @@ struct InlineDaysSelector: View {
                     Spacer()
                     if selection.contains(day.1) {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 18, weight: .semibold))
+                            .font(.system(size: AppLayout.listIconSize, weight: .semibold))
                             .foregroundStyle(.blue)
                     }
                 }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 18)
+                .padding(.horizontal, AppLayout.rowHorizontalPadding)
+                .padding(.vertical, AppLayout.rowVerticalPadding)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     toggle(day.1)
@@ -236,5 +272,86 @@ struct InlineDaysSelector: View {
             updatedSelection.insert(weekday)
         }
         selection = updatedSelection
+    }
+}
+
+struct AppInlineErrorText: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(.red)
+            .lineSpacing(1)
+    }
+}
+
+struct AppHelperText: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .lineSpacing(2)
+            .padding(.horizontal, AppLayout.inlinePadding)
+    }
+}
+
+struct AppLegend: View {
+    let items: [(label: String, color: Color)]
+
+    var body: some View {
+        HStack(spacing: 16) {
+            ForEach(items, id: \.label) { item in
+                AppLegendItem(label: item.label, color: item.color)
+            }
+        }
+        .padding(.horizontal, AppLayout.inlinePadding)
+    }
+}
+
+private struct AppLegendItem: View {
+    let label: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(color.opacity(0.2))
+                .overlay {
+                    Circle()
+                        .stroke(color.opacity(0.35), lineWidth: 1)
+                }
+                .frame(width: 18, height: 18)
+
+            Text(label)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+struct AppListIcon: View {
+    let symbol: String
+    var tint: Color = .blue
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: AppLayout.listIconSize, weight: .regular))
+            .foregroundStyle(tint)
+            .frame(width: AppLayout.listIconWidth)
+    }
+}
+
+struct AppActionIcon: View {
+    let symbol: String
+    var tint: Color = .blue
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: AppLayout.actionIconSize, weight: .semibold))
+            .foregroundStyle(tint)
+            .frame(width: AppLayout.listIconWidth, height: AppLayout.listIconWidth)
     }
 }

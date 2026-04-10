@@ -43,12 +43,12 @@ final class BackupSettingsViewModel: ObservableObject {
             status = try service.loadStatus()
             if status.requiresFolderReselection {
                 alert = BackupAlert(
-                    title: "Backup folder unavailable",
-                    message: "The selected backup folder is no longer accessible. Please choose the folder again."
+                    title: "Backup Folder Unavailable",
+                    message: "The selected backup folder is no longer accessible. Choose the folder again to keep using backups."
                 )
             }
         } catch {
-            alert = BackupAlert(title: "Backup failed", message: error.localizedDescription)
+            alert = BackupAlert(title: "Backup Failed", message: Self.createFailureMessage(for: error))
         }
     }
 
@@ -61,7 +61,7 @@ final class BackupSettingsViewModel: ObservableObject {
             try service.saveFolderBookmark(for: url)
             status = try service.loadStatus()
         } catch {
-            alert = BackupAlert(title: "Backup failed", message: error.localizedDescription)
+            alert = BackupAlert(title: "Backup Failed", message: Self.createFailureMessage(for: error))
         }
     }
 
@@ -100,10 +100,10 @@ final class BackupSettingsViewModel: ObservableObject {
         case .success(let updatedStatus):
             status = updatedStatus
             await finishLoading(startedAt: start, kind: .create)
-            alert = BackupAlert(title: "Backup created", message: "The backup was created successfully.")
+            alert = BackupAlert(title: "Backup Created", message: "Your backup is ready in the selected folder.")
         case .failure(let message):
             await finishLoading(startedAt: start, kind: .create)
-            alert = BackupAlert(title: "Backup failed", message: message)
+            alert = BackupAlert(title: "Backup Failed", message: message)
         }
     }
 
@@ -122,19 +122,19 @@ final class BackupSettingsViewModel: ObservableObject {
             pillNotificationService.rescheduleAllNotifications()
             status = updatedStatus
             await finishLoading(startedAt: start, kind: .restore)
-            alert = BackupAlert(title: "Restore completed", message: "Backup data was restored successfully.")
+            alert = BackupAlert(title: "Restore Complete", message: "Your backup was restored successfully.")
             return true
         case .failure(let message):
             await finishLoading(startedAt: start, kind: .restore)
-            alert = BackupAlert(title: "Restore failed", message: message)
+            alert = BackupAlert(title: "Restore Failed", message: message)
             return false
         }
     }
 
     private func promptFolderReselection() {
         alert = BackupAlert(
-            title: "Backup folder unavailable",
-            message: "The selected backup folder is no longer accessible. Please choose the folder again."
+            title: "Backup Folder Unavailable",
+            message: "The selected backup folder is no longer accessible. Choose the folder again to keep using backups."
         )
         isShowingFolderPicker = true
     }
@@ -184,12 +184,12 @@ final class BackupSettingsViewModel: ObservableObject {
     }
 
     private nonisolated static func createFailureMessage(for error: Error) -> String {
-        error.localizedDescription
+        "Couldn’t create a backup. \(error.localizedDescription)"
     }
 
     private nonisolated static func restoreFailureMessage(for error: Error) -> String {
         let detail = error.localizedDescription
-        return "\(detail) Existing local data was preserved."
+        return "\(detail) Your current data was left unchanged."
     }
 }
 

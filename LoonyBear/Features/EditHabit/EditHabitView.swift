@@ -79,7 +79,7 @@ struct EditHabitView: View {
 
                 if draft.scheduleDays.rawValue == 0 {
                     HStack {
-                        validationText("Select at least one day.")
+                        validationText(AppCopy.chooseAtLeastOneDay)
                         Spacer()
                     }
                     .padding(.horizontal, 18)
@@ -102,11 +102,7 @@ struct EditHabitView: View {
                 }
 
                 HabitHistoryLegend()
-
-                Text("Tap a day to switch between none, completed, and skipped.\nYou can edit only the last 30 days, but not before the start date.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 4)
+                AppHelperText(text: AppCopy.habitHistoryHint)
             }
 
             if let validationMessage {
@@ -142,11 +138,12 @@ struct EditHabitView: View {
             Task {
                 let granted = await appState.requestNotificationAuthorizationIfNeeded()
                 if !granted {
-                    validationMessage = "Enable notifications in Settings to use reminders."
+                    validationMessage = AppCopy.notificationsRequired
                     draft.reminderEnabled = false
                 }
             }
         }
+        .animation(.easeInOut(duration: 0.18), value: validationMessage)
     }
 
     private var editableHistoryDays: [Date] {
@@ -204,7 +201,7 @@ struct EditHabitView: View {
 
     private func save() {
         guard isFormValid else {
-            validationMessage = draft.trimmedName.isEmpty ? "Habit name is required." : "Select at least one day."
+            validationMessage = draft.trimmedName.isEmpty ? "Habit name is required." : AppCopy.chooseAtLeastOneDay
             return
         }
 
@@ -235,9 +232,7 @@ struct EditHabitView: View {
 
     @ViewBuilder
     private func validationText(_ text: String) -> some View {
-        Text(text)
-            .font(.footnote)
-            .foregroundStyle(.red)
+        AppInlineErrorText(text: text)
     }
 }
 
@@ -514,32 +509,10 @@ private struct HabitEditCalendarWidthPreferenceKey: PreferenceKey {
 
 private struct HabitHistoryLegend: View {
     var body: some View {
-        HStack(spacing: 16) {
-            HabitHistoryLegendItem(label: "Completed", color: .blue)
-            HabitHistoryLegendItem(label: "Skipped", color: .red)
-        }
-        .padding(.horizontal, 4)
-    }
-}
-
-private struct HabitHistoryLegendItem: View {
-    let label: String
-    let color: Color
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(color.opacity(0.2))
-                .overlay {
-                    Circle()
-                        .stroke(color.opacity(0.35), lineWidth: 1)
-                }
-                .frame(width: 18, height: 18)
-
-            Text(label)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
+        AppLegend(items: [
+            (label: "Completed", color: .blue),
+            (label: "Skipped", color: .red),
+        ])
     }
 }
 

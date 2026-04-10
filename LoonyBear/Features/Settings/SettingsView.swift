@@ -8,7 +8,7 @@ struct SettingsView: View {
     private var buildVersionText: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "-"
-        return "Build Version: \(version) (\(build))"
+        return "Version \(version) • Build \(build)"
     }
 
     var body: some View {
@@ -73,10 +73,7 @@ struct SettingsView: View {
 
     private func settingsRow(icon: String, title: String, subtitle: String) -> some View {
         HStack(spacing: 14) {
-            Image(systemName: icon)
-                .font(.system(size: 18, weight: .regular))
-                .foregroundStyle(.blue)
-                .frame(width: 22)
+            AppListIcon(symbol: icon)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
@@ -92,25 +89,22 @@ struct SettingsView: View {
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.tertiary)
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 18)
+        .padding(.horizontal, AppLayout.rowHorizontalPadding)
+        .padding(.vertical, AppLayout.rowVerticalPadding)
         .contentShape(Rectangle())
     }
 
     private func settingsInfoRow(icon: String, title: String) -> some View {
         HStack(spacing: 14) {
-            Image(systemName: icon)
-                .font(.system(size: 18, weight: .regular))
-                .foregroundStyle(.blue)
-                .frame(width: 22)
+            AppListIcon(symbol: icon)
 
             Text(title)
                 .foregroundStyle(.primary)
 
             Spacer()
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 18)
+        .padding(.horizontal, AppLayout.rowHorizontalPadding)
+        .padding(.vertical, AppLayout.rowVerticalPadding)
     }
 }
 

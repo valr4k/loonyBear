@@ -66,7 +66,7 @@ struct CreatePillView: View {
                 Task {
                     let granted = await pillAppState.requestNotificationAuthorizationIfNeeded()
                     if !granted {
-                        validationMessage = "Enable notifications in Settings to use reminders."
+                        validationMessage = AppCopy.notificationsRequired
                         draft.reminderEnabled = false
                     }
                 }
@@ -80,6 +80,7 @@ struct CreatePillView: View {
                 guard focusedField == .description, !isDismissingKeyboardForNonTextControl else { return }
                 scrollDescriptionIntoView(with: proxy)
             }
+            .animation(.easeInOut(duration: 0.18), value: validationMessage)
         }
     }
 
@@ -179,9 +180,7 @@ struct CreatePillView: View {
 
                     if draft.scheduleDays.rawValue == 0 {
                         HStack {
-                            Text("Select at least one day.")
-                                .font(.footnote)
-                                .foregroundStyle(.red)
+                            AppInlineErrorText(text: AppCopy.chooseAtLeastOneDay)
                             Spacer()
                         }
                         .padding(.horizontal, 18)
@@ -190,16 +189,13 @@ struct CreatePillView: View {
                 }
             }
 
-            Text(historyHelperText)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 4)
+            AppHelperText(text: historyHelperText)
         }
     }
 
     private var descriptionSection: some View {
         AppCard {
-            TextField("Description (optional)", text: $draft.details, axis: .vertical)
+            TextField(AppCopy.pillDescriptionPlaceholder, text: $draft.details, axis: .vertical)
                 .focused($focusedField, equals: .description)
                 .lineLimit(3 ... 6)
                 .padding(.horizontal, 18)
@@ -245,8 +241,8 @@ struct CreatePillView: View {
 
     private var historyHelperText: String {
         draft.useScheduleForHistory
-            ? "Count only scheduled days from the start date."
-            : "Count every day from the start date."
+            ? AppCopy.pillHistoryFollowsSchedule
+            : AppCopy.pillHistoryCountsEveryDay
     }
 
     private func savePill() {
@@ -310,7 +306,7 @@ struct CreatePillView: View {
         if draft.trimmedDosage.isEmpty {
             return "Dosage is required."
         }
-        return "Select at least one day."
+        return AppCopy.chooseAtLeastOneDay
     }
 
     private func scrollDescriptionIntoView(with proxy: ScrollViewProxy) {

@@ -53,11 +53,12 @@ struct CreateHabitView: View {
             Task {
                 let granted = await appState.requestNotificationAuthorizationIfNeeded()
                 if !granted {
-                    validationMessage = "Enable notifications in Settings to use reminders."
+                    validationMessage = AppCopy.notificationsRequired
                     draft.reminderEnabled = false
                 }
             }
         }
+        .animation(.easeInOut(duration: 0.18), value: validationMessage)
     }
 
     private var typeSection: some View {
@@ -136,9 +137,7 @@ struct CreateHabitView: View {
             InlineDaysSelector(selection: scheduleDaysBinding)
             if shouldShowScheduleValidation {
                 HStack {
-                    Text("Select at least one day.")
-                        .font(.footnote)
-                        .foregroundStyle(.red)
+                    AppInlineErrorText(text: AppCopy.chooseAtLeastOneDay)
                     Spacer()
                 }
                 .padding(.horizontal, 18)
@@ -148,18 +147,7 @@ struct CreateHabitView: View {
     }
 
     private func validationBanner(_ message: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "exclamationmark.circle.fill")
-                .foregroundStyle(.red)
-
-            Text(message)
-                .font(.footnote)
-                .foregroundStyle(.primary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        AppValidationBanner(message: message)
     }
 
     private var reminderDateBinding: Binding<Date> {
@@ -206,7 +194,7 @@ struct CreateHabitView: View {
         guard isFormValid else {
             validationMessage = draft.trimmedName.isEmpty
                 ? "Habit name is required."
-                : "Select at least one day."
+                : AppCopy.chooseAtLeastOneDay
             return
         }
 

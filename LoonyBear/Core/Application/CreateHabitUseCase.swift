@@ -10,7 +10,7 @@ enum CreateHabitError: LocalizedError, Equatable {
         case .emptyName:
             return "Habit name is required."
         case .noScheduleDays:
-            return "Select at least one day."
+            return AppCopy.chooseAtLeastOneDay
         case .tooManyHabits:
             return "You can create up to 20 habits."
         }

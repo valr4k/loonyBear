@@ -105,9 +105,7 @@ struct EditPillView: View {
                         })
                     if draft.scheduleDays.rawValue == 0 {
                         HStack {
-                            Text("Select at least one day.")
-                                .font(.footnote)
-                                .foregroundStyle(.red)
+                            AppInlineErrorText(text: AppCopy.chooseAtLeastOneDay)
                             Spacer()
                         }
                         .padding(.horizontal, 18)
@@ -133,15 +131,11 @@ struct EditPillView: View {
                     }
 
                     PillHistoryLegend()
-
-                    Text("Tap a day to switch between none, taken, and skipped.\nYou can edit only the last 30 days, but not before the start date.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 4)
+                    AppHelperText(text: AppCopy.pillHistoryHint)
                 }
 
                 AppCard {
-                    TextField("Description (optional)", text: $draft.details, axis: .vertical)
+                    TextField(AppCopy.pillDescriptionPlaceholder, text: $draft.details, axis: .vertical)
                         .focused($focusedField, equals: .description)
                         .lineLimit(3 ... 6)
                         .padding(.horizontal, 18)
@@ -195,7 +189,7 @@ struct EditPillView: View {
                 Task {
                     let granted = await pillAppState.requestNotificationAuthorizationIfNeeded()
                     if !granted {
-                        validationMessage = "Enable notifications in Settings to use reminders."
+                        validationMessage = AppCopy.notificationsRequired
                         draft.reminderEnabled = false
                     }
                 }
@@ -205,6 +199,7 @@ struct EditPillView: View {
                 isDismissingKeyboardForNonTextControl = false
                 scrollDescriptionIntoView(with: proxy)
             }
+            .animation(.easeInOut(duration: 0.18), value: validationMessage)
         }
     }
 
@@ -297,7 +292,7 @@ struct EditPillView: View {
         if draft.trimmedDosage.isEmpty {
             return "Dosage is required."
         }
-        return "Select at least one day."
+        return AppCopy.chooseAtLeastOneDay
     }
 
     private func scrollDescriptionIntoView(with proxy: ScrollViewProxy) {
@@ -325,31 +320,9 @@ struct EditPillView: View {
 
 private struct PillHistoryLegend: View {
     var body: some View {
-        HStack(spacing: 16) {
-            PillHistoryLegendItem(label: "Taken", color: .blue)
-            PillHistoryLegendItem(label: "Skipped", color: .red)
-        }
-        .padding(.horizontal, 4)
-    }
-}
-
-private struct PillHistoryLegendItem: View {
-    let label: String
-    let color: Color
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(color.opacity(0.2))
-                .overlay {
-                    Circle()
-                        .stroke(color.opacity(0.35), lineWidth: 1)
-                }
-                .frame(width: 18, height: 18)
-
-            Text(label)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
+        AppLegend(items: [
+            (label: "Taken", color: .blue),
+            (label: "Skipped", color: .red),
+        ])
     }
 }

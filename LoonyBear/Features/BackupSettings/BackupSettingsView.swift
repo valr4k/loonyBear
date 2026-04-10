@@ -18,10 +18,7 @@ struct BackupSettingsView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     actionsCard
 
-                    Text("Backups stay in the selected Files folder even if the app is deleted. After reinstalling, choose the same folder again before tapping Restore Backup.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 4)
+                    AppHelperText(text: AppCopy.backupFolderHint)
                 }
             }
         }
@@ -55,8 +52,7 @@ struct BackupSettingsView: View {
                 action: nil
             )
 
-            Divider()
-                .padding(.leading, 52)
+            AppSectionDivider(inset: 52)
 
             BackupInfoRow(
                 icon: "folder",
@@ -66,8 +62,7 @@ struct BackupSettingsView: View {
                 action: viewModel.chooseFolder
             )
 
-            Divider()
-                .padding(.leading, 52)
+            AppSectionDivider(inset: 52)
 
             BackupInfoRow(
                 icon: "trash",
@@ -109,8 +104,7 @@ struct BackupSettingsView: View {
                 Text("A new backup file will be created in the selected folder.")
             }
 
-            Divider()
-                .padding(.leading, 52)
+            AppSectionDivider(inset: 52)
 
             BackupActionRow(
                 icon: "arrow.counterclockwise",
@@ -168,10 +162,7 @@ private struct BackupInfoRow: View {
 
     private var content: some View {
         HStack(spacing: 14) {
-            Image(systemName: icon)
-                .font(.system(size: 19, weight: .regular))
-                .foregroundStyle(.blue)
-                .frame(width: 22)
+            AppListIcon(symbol: icon)
 
             Text(title)
                 .foregroundStyle(.primary)
@@ -182,8 +173,8 @@ private struct BackupInfoRow: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.trailing)
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 18)
+        .padding(.horizontal, AppLayout.rowHorizontalPadding)
+        .padding(.vertical, AppLayout.rowVerticalPadding)
         .contentShape(Rectangle())
     }
 }
@@ -203,20 +194,18 @@ private struct BackupActionRow: View {
                         ProgressView()
                             .tint(.blue)
                     } else {
-                        Image(systemName: icon)
-                            .font(.system(size: 21, weight: .regular))
-                            .foregroundStyle(.blue)
+                        AppActionIcon(symbol: icon)
                     }
                 }
-                .frame(width: 22, height: 22)
+                .frame(width: AppLayout.listIconWidth, height: AppLayout.listIconWidth)
 
                 Text(title)
                     .foregroundStyle(isEnabled ? .blue : .secondary)
 
                 Spacer()
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 18)
+            .padding(.horizontal, AppLayout.rowHorizontalPadding)
+            .padding(.vertical, AppLayout.rowVerticalPadding)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
