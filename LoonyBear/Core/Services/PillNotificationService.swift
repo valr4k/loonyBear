@@ -174,10 +174,11 @@ final class PillNotificationService {
         default:
             return true
         }
-        guard didMutateStore else { return true }
 
         removeDeliveredNotifications(forPillID: pillID, on: deliveryDay)
-        rescheduleAllNotifications()
+        if didMutateStore {
+            rescheduleAllNotifications()
+        }
         return true
     }
 

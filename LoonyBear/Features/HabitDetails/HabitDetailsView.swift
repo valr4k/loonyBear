@@ -156,34 +156,17 @@ private struct HabitHeatmapView: View {
 }
 
 private struct ReadOnlyMonthCalendarView: View {
+    private let calendarSpacing: CGFloat = 6
+    private let weekdayRowHeight: CGFloat = 20
     let month: Date
     let completedDays: Set<Date>
     let availableMonths: [Date]
     let onMonthChange: (Date) -> Void
     @State private var availableWidth: CGFloat = 0
-    @State private var transitionDirection: HabitDetailsCalendarTransitionDirection = .forward
-    @State private var renderedMonth: Date
-    @State private var outgoingMonth: Date?
-    @State private var incomingOffset: CGFloat = 0
-    @State private var outgoingOffset: CGFloat = 0
-
     private var calendar: Calendar {
         var calendar = Calendar.autoupdatingCurrent
         calendar.firstWeekday = 2
         return calendar
-    }
-
-    init(
-        month: Date,
-        completedDays: Set<Date>,
-        availableMonths: [Date],
-        onMonthChange: @escaping (Date) -> Void
-    ) {
-        self.month = month
-        self.completedDays = completedDays
-        self.availableMonths = availableMonths
-        self.onMonthChange = onMonthChange
-        _renderedMonth = State(initialValue: month)
     }
 
     var body: some View {
@@ -217,19 +200,35 @@ private struct ReadOnlyMonthCalendarView: View {
                 }
             }
 
-            ZStack {
-                if let outgoingMonth {
-                    monthGridContent(for: outgoingMonth)
-                        .frame(width: availableWidth == 0 ? nil : availableWidth, alignment: .top)
-                        .offset(x: outgoingOffset)
+            VStack(spacing: calendarSpacing) {
+                HStack(spacing: calendarSpacing) {
+                    ForEach(weekdaySymbols, id: \.self) { symbol in
+                        Text(symbol)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: cellSize, height: weekdayRowHeight)
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .center)
 
-                monthGridContent(for: renderedMonth)
-                    .frame(width: availableWidth == 0 ? nil : availableWidth, alignment: .top)
-                    .offset(x: incomingOffset)
+                ForEach(dayRows.indices, id: \.self) { rowIndex in
+                    HStack(spacing: calendarSpacing) {
+                        ForEach(dayRows[rowIndex]) { day in
+                            if let date = day.date {
+                                HabitCalendarDayView(
+                                    dayNumber: calendar.component(.day, from: date),
+                                    style: completedDays.contains(calendar.startOfDay(for: date)) ? HabitCalendarDayStyle.selected : HabitCalendarDayStyle.disabled,
+                                    cellSize: cellSize
+                                )
+                            } else {
+                                Color.clear
+                                    .frame(width: cellSize, height: cellSize)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .clipped()
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
@@ -241,9 +240,6 @@ private struct ReadOnlyMonthCalendarView: View {
         )
         .onPreferenceChange(HabitCalendarWidthPreferenceKey.self) { width in
             availableWidth = width
-        }
-        .onChange(of: month) {
-            animateMonthChange(to: month)
         }
         .gesture(
             DragGesture(minimumDistance: 24)
@@ -257,36 +253,6 @@ private struct ReadOnlyMonthCalendarView: View {
         )
     }
 
-    private func monthGridContent(for displayMonth: Date) -> some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                ForEach(weekdaySymbols, id: \.self) { symbol in
-                    Text(symbol)
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-
-            ForEach(dayRows(for: displayMonth).indices, id: \.self) { rowIndex in
-                HStack(spacing: 8) {
-                    ForEach(dayRows(for: displayMonth)[rowIndex]) { day in
-                        if let date = day.date {
-                            HabitCalendarDayView(
-                                dayNumber: calendar.component(.day, from: date),
-                                style: completedDays.contains(calendar.startOfDay(for: date)) ? HabitCalendarDayStyle.selected : HabitCalendarDayStyle.disabled,
-                                cellSize: cellSize
-                            )
-                        } else {
-                            Color.clear
-                                .frame(maxWidth: .infinity, minHeight: cellSize)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     private var weekdaySymbols: [String] {
         let formatter = DateFormatter()
         formatter.locale = Calendar.autoupdatingCurrent.locale ?? Locale.autoupdatingCurrent
@@ -295,9 +261,9 @@ private struct ReadOnlyMonthCalendarView: View {
         return (Array(symbols[1...]) + [symbols[0]]).map { $0.uppercased() }
     }
 
-    private func days(for displayMonth: Date) -> [ReadOnlyCalendarDayCell] {
+    private var days: [ReadOnlyCalendarDayCell] {
         guard
-            let monthInterval = calendar.dateInterval(of: .month, for: displayMonth),
+            let monthInterval = calendar.dateInterval(of: .month, for: month),
             let firstWeekInterval = calendar.dateInterval(of: .weekOfMonth, for: monthInterval.start),
             let lastDay = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: monthInterval.start),
             let lastWeekInterval = calendar.dateInterval(of: .weekOfMonth, for: lastDay)
@@ -310,7 +276,7 @@ private struct ReadOnlyMonthCalendarView: View {
         let end = calendar.startOfDay(for: lastWeekInterval.end)
 
         while cursor < end {
-            let isInDisplayedMonth = calendar.isDate(cursor, equalTo: displayMonth, toGranularity: .month)
+            let isInDisplayedMonth = calendar.isDate(cursor, equalTo: month, toGranularity: .month)
             result.append(ReadOnlyCalendarDayCell(id: cursor, date: isInDisplayedMonth ? cursor : nil))
 
             guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else {
@@ -322,12 +288,13 @@ private struct ReadOnlyMonthCalendarView: View {
         return result
     }
 
-    private func dayRows(for displayMonth: Date) -> [[ReadOnlyCalendarDayCell]] {
-        days(for: displayMonth).chunked(into: 7)
+    private var dayRows: [[ReadOnlyCalendarDayCell]] {
+        days.chunked(into: 7)
     }
 
     private var cellSize: CGFloat {
-        let raw = floor((availableWidth - 8 * 6) / 7)
+        guard availableWidth > 0 else { return 40 }
+        let raw = floor((availableWidth - calendarSpacing * 6) / 7)
         return min(max(raw, 35), 40)
     }
 
@@ -345,46 +312,8 @@ private struct ReadOnlyMonthCalendarView: View {
         guard let currentIndex = availableMonths.firstIndex(of: month) else { return }
         let nextIndex = currentIndex + step
         guard availableMonths.indices.contains(nextIndex) else { return }
-        transitionDirection = step > 0 ? .forward : .backward
         onMonthChange(availableMonths[nextIndex])
     }
-
-    private func animateMonthChange(to newMonth: Date) {
-        guard newMonth != renderedMonth else { return }
-        guard availableWidth > 0 else {
-            renderedMonth = newMonth
-            outgoingMonth = nil
-            return
-        }
-
-        let width = availableWidth
-        let incomingStart = transitionDirection == .forward ? width : -width
-        let outgoingEnd = -incomingStart
-
-        outgoingMonth = renderedMonth
-        renderedMonth = newMonth
-        incomingOffset = incomingStart
-        outgoingOffset = 0
-
-        DispatchQueue.main.async {
-            withAnimation(.easeInOut(duration: 0.24)) {
-                incomingOffset = 0
-                outgoingOffset = outgoingEnd
-            }
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) {
-            guard renderedMonth == newMonth else { return }
-            outgoingMonth = nil
-            incomingOffset = 0
-            outgoingOffset = 0
-        }
-    }
-}
-
-private enum HabitDetailsCalendarTransitionDirection {
-    case forward
-    case backward
 }
 
 private struct ReadOnlyCalendarDayCell: Identifiable {

@@ -225,10 +225,11 @@ final class NotificationService {
         default:
             return true
         }
-        guard didMutateStore else { return true }
 
         removeDeliveredNotifications(forHabitID: habitID, on: deliveryDay)
-        rescheduleAllNotifications()
+        if didMutateStore {
+            rescheduleAllNotifications()
+        }
         return true
     }
 
