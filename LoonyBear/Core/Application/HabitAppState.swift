@@ -2,6 +2,12 @@ import Combine
 import Foundation
 import UserNotifications
 
+enum HabitDetailsLoadState {
+    case found(HabitDetailsProjection)
+    case notFound
+    case integrityError(String)
+}
+
 @MainActor
 final class HabitAppState: ObservableObject {
     @Published private(set) var dashboard = DashboardProjection.empty
@@ -9,6 +15,7 @@ final class HabitAppState: ObservableObject {
     @Published private(set) var hasLoadedOnce = false
     @Published private(set) var createHabitErrorMessage: String?
     @Published private(set) var actionErrorMessage: String?
+    @Published private(set) var detailErrorMessage: String?
 
     private let loadDashboardUseCase: LoadDashboardUseCase
     private let createHabitUseCase: CreateHabitUseCase
@@ -108,8 +115,30 @@ final class HabitAppState: ObservableObject {
         await notificationService.ensureAuthorizationIfNeeded()
     }
 
-    func habitDetails(id: UUID) -> HabitDetailsProjection? {
-        repository.fetchHabitDetails(id: id)
+    func habitDetails(id: UUID) throws -> HabitDetailsProjection? {
+        try repository.fetchHabitDetails(id: id)
+    }
+
+    func inspectHabitDetailsState(id: UUID) -> HabitDetailsLoadState {
+        do {
+            guard let details = try repository.fetchHabitDetails(id: id) else {
+                return .notFound
+            }
+            return .found(details)
+        } catch {
+            return .integrityError(error.localizedDescription)
+        }
+    }
+
+    func loadHabitDetailsState(id: UUID) -> HabitDetailsLoadState {
+        let state = inspectHabitDetailsState(id: id)
+        switch state {
+        case .found, .notFound:
+            detailErrorMessage = nil
+        case .integrityError(let message):
+            detailErrorMessage = message
+        }
+        return state
     }
 
     func updateHabit(from draft: EditHabitDraft) throws {
@@ -132,8 +161,13 @@ final class HabitAppState: ObservableObject {
     }
 
     func refreshDashboard() {
-        dashboard = loadDashboardUseCase.execute()
-        sideEffectCoordinator.refreshDerivedState(with: dashboard)
+        do {
+            dashboard = try loadDashboardUseCase.execute()
+            sideEffectCoordinator.refreshDerivedState(with: dashboard)
+            actionErrorMessage = nil
+        } catch {
+            actionErrorMessage = error.localizedDescription
+        }
     }
 
     private func performDashboardMutation(_ mutation: () throws -> Void) -> Bool {

@@ -105,6 +105,10 @@ enum CoreDataScheduleSupport {
 }
 
 extension NSManagedObject {
+    var entityName: String {
+        entity.name ?? "UnknownEntity"
+    }
+
     func uuidValue(forKey key: String) -> UUID? {
         value(forKey: key) as? UUID
     }

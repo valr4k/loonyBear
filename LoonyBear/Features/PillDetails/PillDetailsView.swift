@@ -6,6 +6,8 @@ struct PillDetailsView: View {
     let pill: PillCardProjection
 
     @State private var details: PillDetailsProjection?
+    @State private var detailErrorMessage: String?
+    @State private var isIntegrityError = false
     @State private var isLoadingDetails = true
     @State private var needsReloadOnAppear = false
     @State private var displayedMonth: Date = {
@@ -81,6 +83,12 @@ struct PillDetailsView: View {
                         .padding(.vertical, 18)
                     }
                 }
+            } else if isIntegrityError {
+                ContentUnavailableView(
+                    "Pill data problem",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(detailErrorMessage ?? "This pill exists, but its details are corrupted.")
+                )
             } else {
                 ContentUnavailableView(
                     "Pill not found",
@@ -116,7 +124,20 @@ struct PillDetailsView: View {
 
     private func reloadDetails() {
         isLoadingDetails = true
-        details = pillAppState.pillDetails(id: pill.id)
+        switch pillAppState.loadPillDetailsState(id: pill.id) {
+        case .found(let loadedDetails):
+            details = loadedDetails
+            detailErrorMessage = nil
+            isIntegrityError = false
+        case .notFound:
+            details = nil
+            detailErrorMessage = nil
+            isIntegrityError = false
+        case .integrityError(let message):
+            details = nil
+            detailErrorMessage = message
+            isIntegrityError = true
+        }
         isLoadingDetails = false
     }
 

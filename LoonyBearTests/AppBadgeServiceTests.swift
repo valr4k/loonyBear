@@ -1,3 +1,4 @@
+import CoreData
 import Foundation
 import Testing
 
@@ -7,7 +8,7 @@ import Testing
 @Suite
 struct AppBadgeServiceTests {
     @Test
-    func overdueCountIncludesOverdueItemsAndExcludesCompletedTakenAndFutureOnes() {
+    func overdueCountIncludesOverdueItemsAndExcludesCompletedTakenAndFutureOnes() throws {
         let now = Calendar.current.date(from: DateComponents(year: 2025, month: 1, day: 15, hour: 12, minute: 0))!
 
         let habits = [
@@ -108,7 +109,7 @@ struct AppBadgeServiceTests {
             pillRepository: FakePillRepository(pills: pills)
         )
 
-        #expect(service.overdueCount(now: now) == 2)
+        #expect(try service.overdueCount(now: now) == 2)
     }
 
     @Test
@@ -196,7 +197,7 @@ struct AppBadgeServiceTests {
     }
 
     @Test
-    func overdueCountExcludesSkippedItems() {
+    func overdueCountExcludesSkippedItems() throws {
         let now = Calendar.current.date(from: DateComponents(year: 2025, month: 1, day: 15, hour: 12, minute: 0))!
 
         let habits = [
@@ -239,15 +240,264 @@ struct AppBadgeServiceTests {
             pillRepository: FakePillRepository(pills: pills)
         )
 
-        #expect(service.overdueCount(now: now) == 0)
+        #expect(try service.overdueCount(now: now) == 0)
+    }
+
+    @Test
+    func badgeRecomputationTracksRepositoryMutations() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let calendar = Calendar.current
+        let now = calendar.date(
+            bySettingHour: 23,
+            minute: 59,
+            second: 0,
+            of: Date()
+        ) ?? Date()
+        let habitRepository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let pillRepository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = AppBadgeService(
+            loadDashboardUseCase: LoadDashboardUseCase(repository: habitRepository),
+            pillRepository: pillRepository
+        )
+
+        var habitDraft = CreateHabitDraft()
+        habitDraft.name = "Walk"
+        habitDraft.startDate = Calendar.current.startOfDay(for: Date())
+        habitDraft.scheduleDays = .daily
+        habitDraft.reminderEnabled = true
+        habitDraft.reminderTime = ReminderTime(hour: 0, minute: 1)
+        let habitID = try habitRepository.createHabit(from: habitDraft)
+
+        var pillDraft = PillDraft()
+        pillDraft.name = "Magnesium"
+        pillDraft.dosage = "1 capsule"
+        pillDraft.startDate = Calendar.current.startOfDay(for: Date())
+        pillDraft.scheduleDays = .daily
+        pillDraft.reminderEnabled = true
+        pillDraft.reminderTime = ReminderTime(hour: 0, minute: 1)
+        let pillID = try pillRepository.createPill(from: pillDraft)
+
+        #expect(try service.overdueCount(now: now) == 2)
+
+        try habitRepository.completeHabitToday(id: habitID)
+        try pillRepository.markTakenToday(id: pillID)
+
+        #expect(try service.overdueCount(now: now) == 0)
+    }
+
+    @Test
+    func badgeComputationFailsWhenHabitReminderHourIsMissingInsteadOfUsingMidnight() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let habitRepository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let pillRepository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = AppBadgeService(
+            loadDashboardUseCase: LoadDashboardUseCase(repository: habitRepository),
+            pillRepository: pillRepository
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Read"
+        draft.startDate = Calendar.current.startOfDay(for: Date())
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = ReminderTime(hour: 9, minute: 0)
+        let habitID = try habitRepository.createHabit(from: draft)
+
+        let context = persistence.container.viewContext
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
+        request.predicate = NSPredicate(format: "id == %@", habitID as CVarArg)
+        request.fetchLimit = 1
+        let object = try #require(context.fetch(request).first)
+        object.setValue(nil, forKey: "reminderHour")
+        try context.save()
+
+        do {
+            _ = try service.overdueCount(now: Date())
+            Issue.record("Expected data integrity error.")
+        } catch let error as DataIntegrityError {
+            #expect(error.operation == "fetchDashboardHabits")
+        }
+    }
+
+    @Test
+    func badgeComputationFailsWhenHabitReminderMinuteIsMissingInsteadOfUsingMidnight() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let habitRepository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let pillRepository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = AppBadgeService(
+            loadDashboardUseCase: LoadDashboardUseCase(repository: habitRepository),
+            pillRepository: pillRepository
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Read"
+        draft.startDate = Calendar.current.startOfDay(for: Date())
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = ReminderTime(hour: 9, minute: 0)
+        let habitID = try habitRepository.createHabit(from: draft)
+
+        let context = persistence.container.viewContext
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
+        request.predicate = NSPredicate(format: "id == %@", habitID as CVarArg)
+        request.fetchLimit = 1
+        let object = try #require(context.fetch(request).first)
+        object.setValue(nil, forKey: "reminderMinute")
+        try context.save()
+
+        do {
+            _ = try service.overdueCount(now: Date())
+            Issue.record("Expected data integrity error.")
+        } catch let error as DataIntegrityError {
+            #expect(error.operation == "fetchDashboardHabits")
+        }
+    }
+
+    @Test
+    func badgeComputationFailsWhenHabitReminderHourIsOutOfRangeInsteadOfUsingMidnight() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let habitRepository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let pillRepository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = AppBadgeService(
+            loadDashboardUseCase: LoadDashboardUseCase(repository: habitRepository),
+            pillRepository: pillRepository
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Read"
+        draft.startDate = Calendar.current.startOfDay(for: Date())
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = ReminderTime(hour: 9, minute: 0)
+        let habitID = try habitRepository.createHabit(from: draft)
+
+        let context = persistence.container.viewContext
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
+        request.predicate = NSPredicate(format: "id == %@", habitID as CVarArg)
+        request.fetchLimit = 1
+        let object = try #require(context.fetch(request).first)
+        object.setValue(Int16(24), forKey: "reminderHour")
+        try context.save()
+
+        do {
+            _ = try service.overdueCount(now: Date())
+            Issue.record("Expected data integrity error.")
+        } catch let error as DataIntegrityError {
+            #expect(error.operation == "fetchDashboardHabits")
+        }
+    }
+
+    @Test
+    func badgeComputationFailsWhenHabitReminderMinuteIsOutOfRangeInsteadOfUsingMidnight() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let habitRepository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let pillRepository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = AppBadgeService(
+            loadDashboardUseCase: LoadDashboardUseCase(repository: habitRepository),
+            pillRepository: pillRepository
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Read"
+        draft.startDate = Calendar.current.startOfDay(for: Date())
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = ReminderTime(hour: 9, minute: 0)
+        let habitID = try habitRepository.createHabit(from: draft)
+
+        let context = persistence.container.viewContext
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
+        request.predicate = NSPredicate(format: "id == %@", habitID as CVarArg)
+        request.fetchLimit = 1
+        let object = try #require(context.fetch(request).first)
+        object.setValue(Int16(60), forKey: "reminderMinute")
+        try context.save()
+
+        do {
+            _ = try service.overdueCount(now: Date())
+            Issue.record("Expected data integrity error.")
+        } catch let error as DataIntegrityError {
+            #expect(error.operation == "fetchDashboardHabits")
+        }
+    }
+
+    @Test
+    func badgeComputationFailsWhenPillReminderMinuteIsMissingInsteadOfUsingMidnight() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let habitRepository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let pillRepository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = AppBadgeService(
+            loadDashboardUseCase: LoadDashboardUseCase(repository: habitRepository),
+            pillRepository: pillRepository
+        )
+
+        var draft = PillDraft()
+        draft.name = "Vitamin D"
+        draft.dosage = "1 tablet"
+        draft.startDate = Calendar.current.startOfDay(for: Date())
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = ReminderTime(hour: 9, minute: 15)
+        let pillID = try pillRepository.createPill(from: draft)
+
+        let context = persistence.container.viewContext
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Pill")
+        request.predicate = NSPredicate(format: "id == %@", pillID as CVarArg)
+        request.fetchLimit = 1
+        let object = try #require(context.fetch(request).first)
+        object.setValue(nil, forKey: "reminderMinute")
+        try context.save()
+
+        do {
+            _ = try service.overdueCount(now: Date())
+            Issue.record("Expected data integrity error.")
+        } catch let error as DataIntegrityError {
+            #expect(error.operation == "fetchDashboardPills")
+        }
     }
 }
 
 private struct FakeHabitRepository: HabitRepository {
     let habits: [HabitCardProjection]
 
-    func fetchDashboardHabits() -> [HabitCardProjection] { habits }
-    func fetchHabitDetails(id: UUID) -> HabitDetailsProjection? { nil }
+    func fetchDashboardHabits() throws -> [HabitCardProjection] { habits }
+    func fetchHabitDetails(id: UUID) throws -> HabitDetailsProjection? { nil }
     func createHabit(from draft: CreateHabitDraft) throws -> UUID { fatalError("Unused in tests") }
     func completeHabitToday(id: UUID) throws { fatalError("Unused in tests") }
     func skipHabitToday(id: UUID) throws { fatalError("Unused in tests") }
@@ -259,8 +509,8 @@ private struct FakeHabitRepository: HabitRepository {
 private struct FakePillRepository: PillRepository {
     let pills: [PillCardProjection]
 
-    func fetchDashboardPills() -> [PillCardProjection] { pills }
-    func fetchPillDetails(id: UUID) -> PillDetailsProjection? { nil }
+    func fetchDashboardPills() throws -> [PillCardProjection] { pills }
+    func fetchPillDetails(id: UUID) throws -> PillDetailsProjection? { nil }
     func createPill(from draft: PillDraft) throws -> UUID { fatalError("Unused in tests") }
     func updatePill(from draft: EditPillDraft) throws { fatalError("Unused in tests") }
     func deletePill(id: UUID) throws { fatalError("Unused in tests") }

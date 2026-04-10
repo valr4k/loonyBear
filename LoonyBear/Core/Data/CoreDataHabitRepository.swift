@@ -27,7 +27,7 @@ struct CoreDataHabitRepository: HabitRepository {
         )
     }
 
-    func fetchDashboardHabits() -> [HabitCardProjection] {
+    func fetchDashboardHabits() throws -> [HabitCardProjection] {
         let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
         request.sortDescriptors = [
             NSSortDescriptor(key: "typeRaw", ascending: true),
@@ -35,120 +35,93 @@ struct CoreDataHabitRepository: HabitRepository {
             NSSortDescriptor(key: "createdAt", ascending: true),
         ]
 
-        let habits = (try? readContext.fetch(request)) ?? []
+        let habits = try readContext.fetch(request)
         let today = Calendar.current.startOfDay(for: Date())
+        var report = IntegrityReportBuilder()
+        var projections: [HabitCardProjection] = []
 
-        return habits.compactMap { habitObject -> HabitCardProjection? in
-            guard
-                let id = habitObject.uuidValue(forKey: "id"),
-                let typeRaw = habitObject.stringValue(forKey: "typeRaw"),
-                let type = HabitType(rawValue: typeRaw),
-                let name = habitObject.stringValue(forKey: "name")
-            else {
-                return nil
+        for habitObject in habits {
+            if let projection = makeDashboardProjection(
+                from: habitObject,
+                today: today,
+                report: &report
+            ) {
+                projections.append(projection)
             }
-            let sortOrder = Int(habitObject.int32Value(forKey: "sortOrder"))
-
-            let completions = (habitObject.mutableSetValue(forKey: "completions").allObjects as? [NSManagedObject]) ?? []
-            let completionModels: [HabitCompletion] = completions.compactMap { completionObject in
-                guard
-                    let completionID = completionObject.value(forKey: "id") as? UUID,
-                    let localDate = completionObject.value(forKey: "localDate") as? Date,
-                    let sourceRaw = completionObject.value(forKey: "sourceRaw") as? String,
-                    let source = CompletionSource(rawValue: sourceRaw),
-                    let createdAt = completionObject.value(forKey: "createdAt") as? Date
-                else {
-                    return nil
-                }
-
-                return HabitCompletion(
-                    id: completionID,
-                    habitID: id,
-                    localDate: localDate,
-                    source: source,
-                    createdAt: createdAt
-                )
-            }
-
-            let scheduleHistory = loadSchedules(for: habitObject, habitID: id)
-            let latestSchedule = scheduleHistory.sorted(by: isNewerSchedule).first
-            let successfulCompletions = completionModels.filter { $0.source.countsAsCompletion }
-            let isCompletedToday = successfulCompletions.contains { Calendar.current.isDate($0.localDate, inSameDayAs: today) }
-            let isSkippedToday = completionModels.contains {
-                !$0.source.countsAsCompletion && Calendar.current.isDate($0.localDate, inSameDayAs: today)
-            }
-            let reminderEnabled = habitObject.boolValue(forKey: "reminderEnabled")
-            let reminderHour = habitObject.int16Value(forKey: "reminderHour")
-            let reminderMinute = habitObject.int16Value(forKey: "reminderMinute")
-            let scheduledToday = latestSchedule?.weekdays.contains(Calendar.current.weekdaySet(for: today)) ?? false
-            let reminderText: String?
-            let displayReminderHour: Int?
-            let displayReminderMinute: Int?
-
-            if reminderEnabled {
-                let reminderTime = ReminderTime(hour: reminderHour, minute: reminderMinute)
-                reminderText = reminderTime.formatted
-                displayReminderHour = reminderHour
-                displayReminderMinute = reminderMinute
-            } else {
-                reminderText = nil
-                displayReminderHour = nil
-                displayReminderMinute = nil
-            }
-
-            let streak = StreakEngine.currentStreak(
-                completions: successfulCompletions,
-                schedules: scheduleHistory,
-                today: today
-            )
-
-            return HabitCardProjection(
-                id: id,
-                type: type,
-                name: name,
-                scheduleSummary: latestSchedule?.weekdays.summary ?? "No days selected",
-                currentStreak: streak,
-                reminderText: reminderText,
-                reminderHour: displayReminderHour,
-                reminderMinute: displayReminderMinute,
-                isReminderScheduledToday: scheduledToday,
-                isCompletedToday: isCompletedToday,
-                isSkippedToday: isSkippedToday,
-                sortOrder: sortOrder
-            )
         }
-        .sorted(by: habitDashboardSort)
+
+        if report.hasIssues {
+            throw report.makeError(operation: "fetchDashboardHabits")
+        }
+
+        return projections.sorted(by: habitDashboardSort)
     }
 
-    func fetchHabitDetails(id: UUID) -> HabitDetailsProjection? {
-        guard let habitObject = try? fetchHabit(id: id, in: readContext) else {
+    func fetchHabitDetails(id: UUID) throws -> HabitDetailsProjection? {
+        guard let habitObject = try fetchHabit(id: id, in: readContext) else {
             return nil
         }
 
         let today = Calendar.current.startOfDay(for: Date())
-        let completions = loadCompletions(for: habitObject, habitID: id)
+        var report = IntegrityReportBuilder()
+        guard
+            let completions = loadCompletions(for: habitObject, habitID: id, report: &report),
+            let scheduleHistory = loadSchedules(for: habitObject, habitID: id, report: &report)
+        else {
+            report.append(
+                area: "details",
+                entityName: habitObject.entityName,
+                object: habitObject,
+                message: "Habit details failed because related rows are corrupted."
+            )
+            let error = report.makeError(operation: "fetchHabitDetails")
+            ReliabilityLog.error("habit.details integrity failure: \(error.localizedDescription)")
+            throw error
+        }
+
         let successfulCompletions = completions.filter { $0.source.countsAsCompletion }
         let skippedDays = Set(
             completions
                 .filter { !$0.source.countsAsCompletion }
                 .map { Calendar.current.startOfDay(for: $0.localDate) }
         )
-        let scheduleHistory = loadSchedules(for: habitObject, habitID: id)
         let latestSchedule = scheduleHistory.sorted(by: isNewerSchedule).first
 
-            guard
+        guard
             let typeRaw = habitObject.stringValue(forKey: "typeRaw"),
             let type = HabitType(rawValue: typeRaw),
             let name = habitObject.stringValue(forKey: "name"),
             let startDate = habitObject.dateValue(forKey: "startDate")
         else {
-            return nil
+            report.append(
+                area: "details",
+                entityName: habitObject.entityName,
+                object: habitObject,
+                message: "Habit details row is missing required fields or has invalid typeRaw."
+            )
+            let error = report.makeError(operation: "fetchHabitDetails")
+            ReliabilityLog.error("habit.details integrity failure: \(error.localizedDescription)")
+            throw error
         }
 
         let reminderEnabled = habitObject.boolValue(forKey: "reminderEnabled")
-        let reminderHour = habitObject.int16Value(forKey: "reminderHour")
-        let reminderMinute = habitObject.int16Value(forKey: "reminderMinute")
-        let reminderTime = reminderEnabled ? ReminderTime(hour: reminderHour, minute: reminderMinute) : nil
+        let reminderTime = ReminderValidation.validatedReminderTime(
+            from: habitObject,
+            reminderEnabled: reminderEnabled,
+            area: "details",
+            report: &report
+        )
+        guard !reminderEnabled || reminderTime != nil else {
+            report.append(
+                area: "details",
+                entityName: habitObject.entityName,
+                object: habitObject,
+                message: "Habit details failed because reminder fields are corrupted."
+            )
+            let error = report.makeError(operation: "fetchHabitDetails")
+            ReliabilityLog.error("habit.details integrity failure: \(error.localizedDescription)")
+            throw error
+        }
 
         return HabitDetailsProjection(
             id: id,
@@ -418,6 +391,45 @@ struct CoreDataHabitRepository: HabitRepository {
         }
     }
 
+    private func loadCompletions(
+        for habitObject: NSManagedObject,
+        habitID: UUID,
+        report: inout IntegrityReportBuilder
+    ) -> [HabitCompletion]? {
+        let completions = (habitObject.mutableSetValue(forKey: "completions").allObjects as? [NSManagedObject]) ?? []
+        var models: [HabitCompletion] = []
+
+        for completionObject in completions {
+            guard
+                let completionID = completionObject.uuidValue(forKey: "id"),
+                let localDate = completionObject.dateValue(forKey: "localDate"),
+                let sourceRaw = completionObject.stringValue(forKey: "sourceRaw"),
+                let source = CompletionSource(rawValue: sourceRaw),
+                let createdAt = completionObject.dateValue(forKey: "createdAt")
+            else {
+                report.append(
+                    area: "dashboard",
+                    entityName: completionObject.entityName,
+                    object: completionObject,
+                    message: "Habit completion row is missing required fields or has invalid sourceRaw."
+                )
+                return nil
+            }
+
+            models.append(
+                HabitCompletion(
+                    id: completionID,
+                    habitID: habitID,
+                    localDate: localDate,
+                    source: source,
+                    createdAt: createdAt
+                )
+            )
+        }
+
+        return models
+    }
+
     private func loadSchedules(for habitObject: NSManagedObject, habitID: UUID) -> [HabitScheduleVersion] {
         let schedules = (habitObject.mutableSetValue(forKey: "scheduleVersions").allObjects as? [NSManagedObject]) ?? []
         return schedules
@@ -442,6 +454,137 @@ struct CoreDataHabitRepository: HabitRepository {
                     version: version
                 )
             }
+    }
+
+    private func loadSchedules(
+        for habitObject: NSManagedObject,
+        habitID: UUID,
+        report: inout IntegrityReportBuilder
+    ) -> [HabitScheduleVersion]? {
+        let schedules = (habitObject.mutableSetValue(forKey: "scheduleVersions").allObjects as? [NSManagedObject]) ?? []
+        var models: [HabitScheduleVersion] = []
+
+        for scheduleObject in schedules {
+            guard
+                let scheduleID = scheduleObject.uuidValue(forKey: "id"),
+                let effectiveFrom = scheduleObject.dateValue(forKey: "effectiveFrom"),
+                let createdAt = scheduleObject.dateValue(forKey: "createdAt")
+            else {
+                report.append(
+                    area: "dashboard",
+                    entityName: scheduleObject.entityName,
+                    object: scheduleObject,
+                    message: "Habit schedule row is missing required fields."
+                )
+                return nil
+            }
+
+            models.append(
+                HabitScheduleVersion(
+                    id: scheduleID,
+                    habitID: habitID,
+                    weekdays: WeekdaySet(rawValue: Int(scheduleObject.int16Value(forKey: "weekdayMask"))),
+                    effectiveFrom: effectiveFrom,
+                    createdAt: createdAt,
+                    version: Int(scheduleObject.int32Value(forKey: "version", default: 1))
+                )
+            )
+        }
+
+        return models
+    }
+
+    private func makeDashboardProjection(
+        from habitObject: NSManagedObject,
+        today: Date,
+        report: inout IntegrityReportBuilder
+    ) -> HabitCardProjection? {
+        guard
+            let id = habitObject.uuidValue(forKey: "id"),
+            let typeRaw = habitObject.stringValue(forKey: "typeRaw"),
+            let type = HabitType(rawValue: typeRaw),
+            let name = habitObject.stringValue(forKey: "name")
+        else {
+            report.append(
+                area: "dashboard",
+                entityName: habitObject.entityName,
+                object: habitObject,
+                message: "Habit row is missing required fields or has invalid typeRaw."
+            )
+            return nil
+        }
+
+        guard
+            let completionModels = loadCompletions(for: habitObject, habitID: id, report: &report),
+            let scheduleHistory = loadSchedules(for: habitObject, habitID: id, report: &report)
+        else {
+            report.append(
+                area: "dashboard",
+                entityName: habitObject.entityName,
+                object: habitObject,
+                message: "Habit dashboard projection was skipped because related rows are corrupted."
+            )
+            return nil
+        }
+
+        let sortOrder = Int(habitObject.int32Value(forKey: "sortOrder"))
+        let latestSchedule = scheduleHistory.sorted(by: isNewerSchedule).first
+        let successfulCompletions = completionModels.filter { $0.source.countsAsCompletion }
+        let isCompletedToday = successfulCompletions.contains { Calendar.current.isDate($0.localDate, inSameDayAs: today) }
+        let isSkippedToday = completionModels.contains {
+            !$0.source.countsAsCompletion && Calendar.current.isDate($0.localDate, inSameDayAs: today)
+        }
+        let reminderEnabled = habitObject.boolValue(forKey: "reminderEnabled")
+        let validatedReminderTime = ReminderValidation.validatedReminderTime(
+            from: habitObject,
+            reminderEnabled: reminderEnabled,
+            area: "dashboard",
+            report: &report
+        )
+        guard !reminderEnabled || validatedReminderTime != nil else {
+            report.append(
+                area: "dashboard",
+                entityName: habitObject.entityName,
+                object: habitObject,
+                message: "Habit dashboard projection was skipped because reminder fields are corrupted."
+            )
+            return nil
+        }
+        let scheduledToday = latestSchedule?.weekdays.contains(Calendar.current.weekdaySet(for: today)) ?? false
+        let reminderText: String?
+        let displayReminderHour: Int?
+        let displayReminderMinute: Int?
+
+        if let validatedReminderTime {
+            reminderText = validatedReminderTime.formatted
+            displayReminderHour = validatedReminderTime.hour
+            displayReminderMinute = validatedReminderTime.minute
+        } else {
+            reminderText = nil
+            displayReminderHour = nil
+            displayReminderMinute = nil
+        }
+
+        let streak = StreakEngine.currentStreak(
+            completions: successfulCompletions,
+            schedules: scheduleHistory,
+            today: today
+        )
+
+        return HabitCardProjection(
+            id: id,
+            type: type,
+            name: name,
+            scheduleSummary: latestSchedule?.weekdays.summary ?? "No days selected",
+            currentStreak: streak,
+            reminderText: reminderText,
+            reminderHour: displayReminderHour,
+            reminderMinute: displayReminderMinute,
+            isReminderScheduledToday: scheduledToday,
+            isCompletedToday: isCompletedToday,
+            isSkippedToday: isSkippedToday,
+            sortOrder: sortOrder
+        )
     }
 
     private func loadLatestScheduleObject(for habitObject: NSManagedObject) -> NSManagedObject? {

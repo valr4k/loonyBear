@@ -75,34 +75,27 @@ final class NotificationService {
     }
 
     func rescheduleAllNotifications() {
-        removePendingHabitNotifications {
-            self.removeDeliveredAggregatedNotifications(on: Date())
-            self.storeContext.refreshReadContext()
-
-            let habits: [HabitReminderConfiguration] = self.storeContext.performRead { context in
-                let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
-                let habits = try context.fetch(request)
-                return habits.compactMap(self.makeReminderConfiguration(from:))
-            } ?? []
-
-            let pills: [PillReminderConfiguration] = self.storeContext.performRead { context in
-                let request = NSFetchRequest<NSManagedObject>(entityName: "Pill")
-                let pills = try context.fetch(request)
-                return pills.compactMap(self.makePillReminderConfiguration(from:))
-            } ?? []
-
-            let candidates = habits.flatMap(self.reminderCandidates(for:))
-            let groupedCandidates = Dictionary(grouping: candidates, by: \.scheduledDateTime)
-
-            for group in groupedCandidates.values {
-                for request in self.notificationRequests(for: group, habits: habits, pills: pills) {
+        ReliabilityLog.info("notification.habit.reschedule started")
+        removeDeliveredAggregatedNotifications(on: Date())
+        storeContext.refreshReadContext()
+        do {
+            let requests = try makePendingNotificationRequests()
+            removePendingHabitNotifications {
+                for request in requests {
                     self.center.add(request) { error in
                         if let error {
-                            print("Failed to schedule notification \(request.identifier): \(error.localizedDescription)")
+                            ReliabilityLog.error(
+                                "notification.habit.reschedule request \(request.identifier) failed: \(error.localizedDescription)"
+                            )
                         }
                     }
                 }
+                ReliabilityLog.info("notification.habit.reschedule finished with \(requests.count) request(s)")
             }
+        } catch let error as DataIntegrityError {
+            ReliabilityLog.error("notification.habit.reschedule failed: \(error.localizedDescription)")
+        } catch {
+            ReliabilityLog.error("notification.habit.reschedule failed: \(error.localizedDescription)")
         }
     }
 
@@ -213,8 +206,13 @@ final class NotificationService {
         guard actionIdentifier == UNNotificationDefaultActionIdentifier else { return false }
         guard type == "aggregated" || type == "individual" else { return false }
 
-        DispatchQueue.main.async {
+        let postSignal = {
             NotificationCenter.default.post(name: .openMyHabitsTab, object: nil)
+        }
+        if Thread.isMainThread {
+            postSignal()
+        } else {
+            DispatchQueue.main.async(execute: postSignal)
         }
         return true
     }
@@ -284,50 +282,130 @@ final class NotificationService {
         ]
     }
 
-    private func loadHabit(id: UUID) -> HabitReminderConfiguration? {
-        storeContext.performRead { context in
+    func makePendingNotificationRequests() throws -> [UNNotificationRequest] {
+        let habits = try storeContext.performRead(fetchHabitReminderConfigurations)
+        let pills = try storeContext.performRead(fetchPillReminderConfigurations)
+        let candidates = habits.flatMap(reminderCandidates(for:))
+        let groupedCandidates = Dictionary(grouping: candidates, by: \.scheduledDateTime)
+
+        return groupedCandidates.values.flatMap { group in
+            notificationRequests(for: group, habits: habits, pills: pills)
+        }
+    }
+
+    private func loadHabit(id: UUID) throws -> HabitReminderConfiguration {
+        try storeContext.performRead { context in
             let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
             request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
             request.fetchLimit = 1
 
-            guard
-                let object = try context.fetch(request).first,
-                let configuration = makeReminderConfiguration(from: object)
-            else {
+            guard let object = try context.fetch(request).first else {
                 throw NotificationServiceError.habitNotFound
+            }
+
+            var report = IntegrityReportBuilder()
+            guard let configuration = makeReminderConfiguration(from: object, report: &report) else {
+                throw report.makeError(operation: "notification.loadHabit")
+            }
+
+            if report.hasIssues {
+                throw report.makeError(operation: "notification.loadHabit")
             }
 
             return configuration
         }
     }
 
-    private func makeReminderConfiguration(from object: NSManagedObject) -> HabitReminderConfiguration? {
+    private func fetchHabitReminderConfigurations(context: NSManagedObjectContext) throws -> [HabitReminderConfiguration] {
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
+        let objects = try context.fetch(request)
+        var report = IntegrityReportBuilder()
+        var configurations: [HabitReminderConfiguration] = []
+
+        for object in objects {
+            if let configuration = makeReminderConfiguration(from: object, report: &report) {
+                configurations.append(configuration)
+            }
+        }
+
+        if report.hasIssues {
+            throw report.makeError(operation: "notification.fetchHabitReminderConfigurations")
+        }
+
+        return configurations
+    }
+
+    private func fetchPillReminderConfigurations(context: NSManagedObjectContext) throws -> [PillReminderConfiguration] {
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Pill")
+        let objects = try context.fetch(request)
+        var report = IntegrityReportBuilder()
+        var configurations: [PillReminderConfiguration] = []
+
+        for object in objects {
+            if let configuration = makePillReminderConfiguration(from: object, report: &report) {
+                configurations.append(configuration)
+            }
+        }
+
+        if report.hasIssues {
+            throw report.makeError(operation: "notification.fetchPillReminderConfigurations")
+        }
+
+        return configurations
+    }
+
+    private func makeReminderConfiguration(
+        from object: NSManagedObject,
+        report: inout IntegrityReportBuilder
+    ) -> HabitReminderConfiguration? {
         guard
             let id = object.uuidValue(forKey: "id"),
             let name = object.stringValue(forKey: "name"),
             let startDate = object.dateValue(forKey: "startDate")
         else {
+            report.append(
+                area: "notification",
+                entityName: object.entityName,
+                object: object,
+                message: "Habit reminder row is missing required fields."
+            )
             return nil
         }
 
-        let latestSchedule = CoreDataScheduleSupport.latestScheduleObject(
-            in: object.mutableSetValue(forKey: "scheduleVersions")
-        )
-        let weekdayMask = latestSchedule?.int16Value(forKey: "weekdayMask") ?? 0
-        let reminderEnabled = object.boolValue(forKey: "reminderEnabled")
-        let hour = object.int16Value(forKey: "reminderHour")
-        let minute = object.int16Value(forKey: "reminderMinute")
-        let completions = (object.mutableSetValue(forKey: "completions").allObjects as? [NSManagedObject]) ?? []
-        let completionEntries = completions.compactMap { completion -> (Date, CompletionSource)? in
-            guard
-                let localDate = completion.dateValue(forKey: "localDate"),
-                let sourceRaw = completion.stringValue(forKey: "sourceRaw"),
-                let source = CompletionSource(rawValue: sourceRaw)
-            else {
-                return nil
-            }
+        guard let scheduleDays = loadHabitScheduleDays(for: object, report: &report) else {
+            report.append(
+                area: "notification",
+                entityName: object.entityName,
+                object: object,
+                message: "Habit reminder configuration failed because schedule rows are corrupted."
+            )
+            return nil
+        }
 
-            return (calendar.startOfDay(for: localDate), source)
+        let reminderEnabled = object.boolValue(forKey: "reminderEnabled")
+        let reminderTime = ReminderValidation.validatedReminderTime(
+            from: object,
+            reminderEnabled: reminderEnabled,
+            area: "notification",
+            report: &report
+        )
+        guard !reminderEnabled || reminderTime != nil else {
+            report.append(
+                area: "notification",
+                entityName: object.entityName,
+                object: object,
+                message: "Habit reminder configuration failed because reminder fields are corrupted."
+            )
+            return nil
+        }
+        guard let completionEntries = loadHabitCompletionEntries(for: object, report: &report) else {
+            report.append(
+                area: "notification",
+                entityName: object.entityName,
+                object: object,
+                message: "Habit reminder configuration failed because completion rows are corrupted."
+            )
+            return nil
         }
         let completedDays = Set(completionEntries.compactMap { $0.1.countsAsCompletion ? $0.0 : nil })
         let skippedDays = Set(completionEntries.compactMap { !$0.1.countsAsCompletion ? $0.0 : nil })
@@ -336,49 +414,66 @@ final class NotificationService {
             id: id,
             name: name,
             startDate: startDate,
-            scheduleDays: WeekdaySet(rawValue: weekdayMask),
+            scheduleDays: scheduleDays,
             reminderEnabled: reminderEnabled,
-            reminderTime: reminderEnabled ? ReminderTime(hour: hour, minute: minute) : nil,
+            reminderTime: reminderTime,
             completedDays: completedDays,
             skippedDays: skippedDays
         )
     }
 
-    private func makePillReminderConfiguration(from object: NSManagedObject) -> PillReminderConfiguration? {
+    private func makePillReminderConfiguration(
+        from object: NSManagedObject,
+        report: inout IntegrityReportBuilder
+    ) -> PillReminderConfiguration? {
         guard
             let id = object.uuidValue(forKey: "id"),
             let name = object.stringValue(forKey: "name"),
             let dosage = object.stringValue(forKey: "dosage"),
             let startDate = object.dateValue(forKey: "startDate")
         else {
+            report.append(
+                area: "notification",
+                entityName: object.entityName,
+                object: object,
+                message: "Pill reminder row is missing required fields."
+            )
             return nil
         }
 
         let reminderEnabled = object.boolValue(forKey: "reminderEnabled")
-        let reminderHourValue = object.value(forKey: "reminderHour") as? Int16
-        let reminderMinuteValue = object.value(forKey: "reminderMinute") as? Int16
-        let reminderTime: ReminderTime?
-        if let reminderHourValue, let reminderMinuteValue {
-            reminderTime = ReminderTime(hour: Int(reminderHourValue), minute: Int(reminderMinuteValue))
-        } else {
-            reminderTime = nil
-        }
-
-        let latestSchedule = CoreDataScheduleSupport.latestScheduleObject(
-            in: object.mutableSetValue(forKey: "scheduleVersions")
+        let reminderTime = ReminderValidation.validatedReminderTime(
+            from: object,
+            reminderEnabled: reminderEnabled,
+            area: "notification",
+            report: &report
         )
-        let weekdayMask = latestSchedule?.int16Value(forKey: "weekdayMask") ?? 0
-        let intakes = (object.mutableSetValue(forKey: "intakes").allObjects as? [NSManagedObject]) ?? []
-        let intakeEntries = intakes.compactMap { intakeObject -> (Date, PillCompletionSource)? in
-            guard
-                let localDate = intakeObject.dateValue(forKey: "localDate"),
-                let sourceRaw = intakeObject.stringValue(forKey: "sourceRaw"),
-                let source = PillCompletionSource(rawValue: sourceRaw)
-            else {
-                return nil
-            }
-
-            return (calendar.startOfDay(for: localDate), source)
+        guard !reminderEnabled || reminderTime != nil else {
+            report.append(
+                area: "notification",
+                entityName: object.entityName,
+                object: object,
+                message: "Pill reminder configuration failed because reminder fields are corrupted."
+            )
+            return nil
+        }
+        guard let scheduleDays = loadPillScheduleDays(for: object, report: &report) else {
+            report.append(
+                area: "notification",
+                entityName: object.entityName,
+                object: object,
+                message: "Pill reminder configuration failed because schedule rows are corrupted."
+            )
+            return nil
+        }
+        guard let intakeEntries = loadPillIntakeEntries(for: object, report: &report) else {
+            report.append(
+                area: "notification",
+                entityName: object.entityName,
+                object: object,
+                message: "Pill reminder configuration failed because intake rows are corrupted."
+            )
+            return nil
         }
         let takenDays = Set(intakeEntries.compactMap { $0.1.countsAsIntake ? $0.0 : nil })
         let skippedDays = Set(intakeEntries.compactMap { !$0.1.countsAsIntake ? $0.0 : nil })
@@ -388,12 +483,140 @@ final class NotificationService {
             name: name,
             dosage: dosage,
             startDate: startDate,
-            scheduleDays: WeekdaySet(rawValue: weekdayMask),
+            scheduleDays: scheduleDays,
             reminderEnabled: reminderEnabled,
             reminderTime: reminderTime,
             takenDays: takenDays,
             skippedDays: skippedDays
         )
+    }
+
+    private func loadHabitScheduleDays(
+        for object: NSManagedObject,
+        report: inout IntegrityReportBuilder
+    ) -> WeekdaySet? {
+        let schedules = (object.mutableSetValue(forKey: "scheduleVersions").allObjects as? [NSManagedObject]) ?? []
+        let validatedSchedules = schedules.compactMap { schedule -> (Date, Int32, Date, Int)? in
+            guard
+                let effectiveFrom = schedule.dateValue(forKey: "effectiveFrom"),
+                let createdAt = schedule.dateValue(forKey: "createdAt")
+            else {
+                report.append(
+                    area: "notification",
+                    entityName: schedule.entityName,
+                    object: schedule,
+                    message: "Habit schedule row is missing required fields."
+                )
+                return nil
+            }
+
+            return (
+                effectiveFrom,
+                schedule.int32Value(forKey: "version", default: 1),
+                createdAt,
+                Int(schedule.int16Value(forKey: "weekdayMask"))
+            )
+        }
+
+        guard validatedSchedules.count == schedules.count else { return nil }
+        let latest = validatedSchedules.max {
+            if $0.0 != $1.0 { return $0.0 < $1.0 }
+            if $0.1 != $1.1 { return $0.1 < $1.1 }
+            return $0.2 < $1.2
+        }
+        return WeekdaySet(rawValue: latest?.3 ?? 0)
+    }
+
+    private func loadPillScheduleDays(
+        for object: NSManagedObject,
+        report: inout IntegrityReportBuilder
+    ) -> WeekdaySet? {
+        let schedules = (object.mutableSetValue(forKey: "scheduleVersions").allObjects as? [NSManagedObject]) ?? []
+        let validatedSchedules = schedules.compactMap { schedule -> (Date, Int32, Date, Int)? in
+            guard
+                let effectiveFrom = schedule.dateValue(forKey: "effectiveFrom"),
+                let createdAt = schedule.dateValue(forKey: "createdAt")
+            else {
+                report.append(
+                    area: "notification",
+                    entityName: schedule.entityName,
+                    object: schedule,
+                    message: "Pill schedule row is missing required fields."
+                )
+                return nil
+            }
+
+            return (
+                effectiveFrom,
+                schedule.int32Value(forKey: "version", default: 1),
+                createdAt,
+                Int(schedule.int16Value(forKey: "weekdayMask"))
+            )
+        }
+
+        guard validatedSchedules.count == schedules.count else { return nil }
+        let latest = validatedSchedules.max {
+            if $0.0 != $1.0 { return $0.0 < $1.0 }
+            if $0.1 != $1.1 { return $0.1 < $1.1 }
+            return $0.2 < $1.2
+        }
+        return WeekdaySet(rawValue: latest?.3 ?? 0)
+    }
+
+    private func loadHabitCompletionEntries(
+        for object: NSManagedObject,
+        report: inout IntegrityReportBuilder
+    ) -> [(Date, CompletionSource)]? {
+        let completions = (object.mutableSetValue(forKey: "completions").allObjects as? [NSManagedObject]) ?? []
+        var entries: [(Date, CompletionSource)] = []
+
+        for completion in completions {
+            guard
+                let localDate = completion.dateValue(forKey: "localDate"),
+                let sourceRaw = completion.stringValue(forKey: "sourceRaw"),
+                let source = CompletionSource(rawValue: sourceRaw)
+            else {
+                report.append(
+                    area: "notification",
+                    entityName: completion.entityName,
+                    object: completion,
+                    message: "Habit completion row is missing required fields or has invalid sourceRaw."
+                )
+                return nil
+            }
+
+            entries.append((calendar.startOfDay(for: localDate), source))
+        }
+
+        return entries
+    }
+
+    private func loadPillIntakeEntries(
+        for object: NSManagedObject,
+        report: inout IntegrityReportBuilder
+    ) -> [(Date, PillCompletionSource)]? {
+        let intakes = (object.mutableSetValue(forKey: "intakes").allObjects as? [NSManagedObject]) ?? []
+        var entries: [(Date, PillCompletionSource)] = []
+
+        for intake in intakes {
+            guard
+                let localDate = intake.dateValue(forKey: "localDate"),
+                let sourceRaw = intake.stringValue(forKey: "sourceRaw"),
+                let source = PillCompletionSource(rawValue: sourceRaw)
+            else {
+                report.append(
+                    area: "notification",
+                    entityName: intake.entityName,
+                    object: intake,
+                    message: "Pill intake row is missing required fields or has invalid sourceRaw."
+                )
+                return nil
+            }
+
+            entries.append((calendar.startOfDay(for: localDate), source))
+        }
+
+        return entries
     }
 
     @discardableResult

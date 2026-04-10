@@ -2,12 +2,19 @@ import Combine
 import Foundation
 import UserNotifications
 
+enum PillDetailsLoadState {
+    case found(PillDetailsProjection)
+    case notFound
+    case integrityError(String)
+}
+
 @MainActor
 final class PillAppState: ObservableObject {
     @Published private(set) var dashboard = PillDashboardProjection.empty
     @Published private(set) var isLoading = false
     @Published private(set) var hasLoadedOnce = false
     @Published private(set) var actionErrorMessage: String?
+    @Published private(set) var detailErrorMessage: String?
 
     private let repository: PillRepository
     let notificationService: PillNotificationService
@@ -30,16 +37,43 @@ final class PillAppState: ObservableObject {
     }
 
     func refreshDashboard() {
-        dashboard = PillDashboardProjection(pills: repository.fetchDashboardPills())
-        sideEffectCoordinator.refreshDerivedState()
+        do {
+            dashboard = PillDashboardProjection(pills: try repository.fetchDashboardPills())
+            sideEffectCoordinator.refreshDerivedState()
+            actionErrorMessage = nil
+        } catch {
+            actionErrorMessage = error.localizedDescription
+        }
     }
 
     func handleAppDidBecomeActive() {
         notificationService.handleAppDidBecomeActive()
     }
 
-    func pillDetails(id: UUID) -> PillDetailsProjection? {
-        repository.fetchPillDetails(id: id)
+    func pillDetails(id: UUID) throws -> PillDetailsProjection? {
+        try repository.fetchPillDetails(id: id)
+    }
+
+    func inspectPillDetailsState(id: UUID) -> PillDetailsLoadState {
+        do {
+            guard let details = try repository.fetchPillDetails(id: id) else {
+                return .notFound
+            }
+            return .found(details)
+        } catch {
+            return .integrityError(error.localizedDescription)
+        }
+    }
+
+    func loadPillDetailsState(id: UUID) -> PillDetailsLoadState {
+        let state = inspectPillDetailsState(id: id)
+        switch state {
+        case .found, .notFound:
+            detailErrorMessage = nil
+        case .integrityError(let message):
+            detailErrorMessage = message
+        }
+        return state
     }
 
     func createPill(from draft: PillDraft) throws -> UUID {

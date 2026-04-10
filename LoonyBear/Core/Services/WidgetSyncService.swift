@@ -32,9 +32,10 @@ final class WidgetSyncService {
 
         do {
             try snapshotStore.save(snapshot)
+            ReliabilityLog.info("widget.snapshot.save succeeded with \(snapshot.sections.count) section(s)")
             reloadWidgets()
         } catch {
-            // Ignore snapshot write failures until the widget extension is added.
+            ReliabilityLog.error("widget.snapshot.save failed: \(error.localizedDescription)")
         }
     }
 

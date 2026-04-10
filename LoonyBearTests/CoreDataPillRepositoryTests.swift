@@ -58,7 +58,7 @@ struct CoreDataPillRepositoryTests {
         noReminder.reminderEnabled = false
         _ = try repository.createPill(from: noReminder)
 
-        let pills = repository.fetchDashboardPills().map(\.name)
+        let pills = try repository.fetchDashboardPills().map(\.name)
 
         #expect(pills == [
             "Earlier",
@@ -89,9 +89,9 @@ struct CoreDataPillRepositoryTests {
         try repository.skipPillToday(id: pillID)
 
         let skippedDashboardPill = try #require(
-            repository.fetchDashboardPills().first { $0.id == pillID }
+            try repository.fetchDashboardPills().first { $0.id == pillID }
         )
-        let skippedDetails = try #require(repository.fetchPillDetails(id: pillID))
+        let skippedDetails = try #require(try repository.fetchPillDetails(id: pillID))
 
         #expect(skippedDashboardPill.isSkippedToday)
         #expect(!skippedDashboardPill.isTakenToday)
@@ -102,9 +102,9 @@ struct CoreDataPillRepositoryTests {
         try repository.markTakenToday(id: pillID)
 
         let takenDashboardPill = try #require(
-            repository.fetchDashboardPills().first { $0.id == pillID }
+            try repository.fetchDashboardPills().first { $0.id == pillID }
         )
-        let takenDetails = try #require(repository.fetchPillDetails(id: pillID))
+        let takenDetails = try #require(try repository.fetchPillDetails(id: pillID))
 
         #expect(!takenDashboardPill.isSkippedToday)
         #expect(takenDashboardPill.isTakenToday)
@@ -137,7 +137,7 @@ struct CoreDataPillRepositoryTests {
         let pillID = try repository.createPill(from: draft)
         try repository.skipPillToday(id: pillID)
 
-        let details = try #require(repository.fetchPillDetails(id: pillID))
+        let details = try #require(try repository.fetchPillDetails(id: pillID))
         let editDraft = EditPillDraft(
             id: pillID,
             name: details.name,
@@ -153,7 +153,7 @@ struct CoreDataPillRepositoryTests {
 
         try repository.updatePill(from: editDraft)
 
-        let updatedDetails = try #require(repository.fetchPillDetails(id: pillID))
+        let updatedDetails = try #require(try repository.fetchPillDetails(id: pillID))
         #expect(updatedDetails.takenDays.isEmpty)
         #expect(updatedDetails.skippedDays.isEmpty)
     }
@@ -178,14 +178,127 @@ struct CoreDataPillRepositoryTests {
         try repository.clearPillDayStateToday(id: pillID)
 
         let dashboardPill = try #require(
-            repository.fetchDashboardPills().first { $0.id == pillID }
+            try repository.fetchDashboardPills().first { $0.id == pillID }
         )
-        let details = try #require(repository.fetchPillDetails(id: pillID))
+        let details = try #require(try repository.fetchPillDetails(id: pillID))
 
         #expect(!dashboardPill.isSkippedToday)
         #expect(!dashboardPill.isTakenToday)
         #expect(details.takenDays.isEmpty)
         #expect(details.skippedDays.isEmpty)
         #expect(details.totalTakenDays == 0)
+    }
+
+    @Test
+    func fetchDashboardPillsFailsOnCorruptedRow() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataPillRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        let pillID = UUID()
+        let object = NSEntityDescription.insertNewObject(forEntityName: "Pill", into: context)
+        object.setValue(pillID, forKey: "id")
+        object.setValue("Vitamin D", forKey: "name")
+        object.setValue("1 tablet", forKey: "dosage")
+        object.setValue(Date(), forKey: "startDate")
+        object.setValue(false, forKey: "reminderEnabled")
+        object.setValue(Date(), forKey: "createdAt")
+        object.setValue(Date(), forKey: "updatedAt")
+
+        let intake = NSEntityDescription.insertNewObject(forEntityName: "PillIntake", into: context)
+        intake.setValue(UUID(), forKey: "id")
+        intake.setValue(pillID, forKey: "pillID")
+        intake.setValue(Calendar.current.startOfDay(for: Date()), forKey: "localDate")
+        intake.setValue("broken_source", forKey: "sourceRaw")
+        intake.setValue(Date(), forKey: "createdAt")
+        intake.setValue(object, forKey: "pill")
+        try context.save()
+
+        do {
+            _ = try repository.fetchDashboardPills()
+            Issue.record("Expected data integrity error.")
+        } catch let error as DataIntegrityError {
+            #expect(error.operation == "fetchDashboardPills")
+            #expect(error.report.issues.count > 0)
+        }
+    }
+
+    @Test
+    func fetchPillDetailsFailsWhenReminderMinuteIsMissing() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataPillRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        var draft = PillDraft()
+        draft.name = "Corrupted Details"
+        draft.dosage = "1 tablet"
+        draft.startDate = Calendar.current.startOfDay(for: Date())
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = ReminderTime(hour: 9, minute: 15)
+        let pillID = try repository.createPill(from: draft)
+
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Pill")
+        request.predicate = NSPredicate(format: "id == %@", pillID as CVarArg)
+        request.fetchLimit = 1
+        let object = try #require(context.fetch(request).first)
+        object.setValue(nil, forKey: "reminderMinute")
+        try context.save()
+
+        do {
+            _ = try repository.fetchPillDetails(id: pillID)
+            Issue.record("Expected data integrity error.")
+        } catch let error as DataIntegrityError {
+            #expect(error.operation == "fetchPillDetails")
+            #expect(!error.report.isEmpty)
+        }
+    }
+
+    @Test
+    func createEditDeletePillSmoke() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        var draft = PillDraft()
+        draft.name = "Vitamin D"
+        draft.dosage = "1 tablet"
+        draft.startDate = TestSupport.makeDate(2026, 4, 1)
+        draft.scheduleDays = .daily
+        let pillID = try repository.createPill(from: draft)
+
+        let created = try #require(try repository.fetchPillDetails(id: pillID))
+        #expect(created.name == "Vitamin D")
+
+        let editDraft = EditPillDraft(
+            id: pillID,
+            name: "Vitamin D3",
+            dosage: "2 tablets",
+            details: "After breakfast",
+            startDate: created.startDate,
+            scheduleDays: .weekends,
+            reminderEnabled: true,
+            reminderTime: ReminderTime(hour: 8, minute: 15),
+            takenDays: [],
+            skippedDays: []
+        )
+        try repository.updatePill(from: editDraft)
+
+        let updated = try #require(try repository.fetchPillDetails(id: pillID))
+        #expect(updated.name == "Vitamin D3")
+        #expect(updated.dosage == "2 tablets")
+        #expect(updated.scheduleDays == .weekends)
+        #expect(updated.reminderEnabled)
+
+        try repository.deletePill(id: pillID)
+        #expect(try repository.fetchDashboardPills().isEmpty)
     }
 }

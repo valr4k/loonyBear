@@ -7,7 +7,7 @@ import XCTest
 @testable import LoonyBear
 
 @MainActor
-@Suite
+@Suite(.serialized)
 struct NotificationServiceTests {
     @Test
     func habitSchedulingUsesCurrentTwoDayWindow() async throws {
@@ -28,7 +28,7 @@ struct NotificationServiceTests {
         draft.startDate = Calendar.current.startOfDay(for: Date())
         draft.scheduleDays = .daily
         draft.reminderEnabled = true
-        draft.reminderTime = reminderTimeOneHourFromNow()
+        draft.reminderTime = reminderTimeMinutesFromNow(5)
 
         let expectedCount = expectedRequestCount(
             reminderTime: draft.reminderTime,
@@ -69,7 +69,7 @@ struct NotificationServiceTests {
         draft.startDate = Calendar.current.startOfDay(for: Date())
         draft.scheduleDays = .daily
         draft.reminderEnabled = true
-        draft.reminderTime = reminderTimeOneHourFromNow()
+        draft.reminderTime = reminderTimeHoursFromNow(2)
 
         let expectedCount = expectedRequestCount(
             reminderTime: draft.reminderTime,
@@ -214,8 +214,446 @@ struct NotificationServiceTests {
         #expect(pillCategory.actions.map(\.identifier) == ["pill.take", "pill.skip"])
     }
 
+    @Test
+    func habitReminderReschedulesAfterEdit() async throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = NotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        try await clearNotifications()
+
+        var draft = CreateHabitDraft()
+        draft.name = "Walk"
+        draft.startDate = Calendar.current.startOfDay(for: Date())
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = reminderTimeOneHourFromNow()
+        let habitID = try repository.createHabit(from: draft)
+
+        service.rescheduleAllNotifications()
+        let initialRequests = try await waitForPendingRequests(
+            expectedCount: expectedRequestCount(reminderTime: draft.reminderTime, schedulingWindowDays: 2)
+        )
+        let initialIdentifiers = Set(initialRequests.map(\.identifier))
+
+        let details = try #require(try repository.fetchHabitDetails(id: habitID))
+        let updatedDraft = EditHabitDraft(
+            id: habitID,
+            type: details.type,
+            startDate: details.startDate,
+            name: details.name,
+            scheduleDays: details.scheduleDays,
+            reminderEnabled: true,
+            reminderTime: reminderTimeHoursFromNow(3),
+            completedDays: [],
+            skippedDays: []
+        )
+        try repository.updateHabit(from: updatedDraft)
+
+        service.rescheduleAllNotifications()
+        _ = try await waitForPendingRequests(
+            expectedCount: expectedRequestCount(reminderTime: updatedDraft.reminderTime, schedulingWindowDays: 2)
+        )
+        let updatedIdentifiers = try await waitForPendingIdentifiers(
+            expectedCount: expectedRequestCount(reminderTime: updatedDraft.reminderTime, schedulingWindowDays: 2)
+        ) { identifiers in
+            identifiers != initialIdentifiers
+        }
+
+        #expect(!updatedIdentifiers.isEmpty)
+        #expect(updatedIdentifiers != initialIdentifiers)
+
+        try await clearNotifications()
+    }
+
+    @Test
+    func habitNotificationRequestsFailOnCorruptedCompletionRow() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = NotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Walk"
+        draft.startDate = Calendar.current.startOfDay(for: Date())
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = reminderTimeOneHourFromNow()
+        let habitID = try repository.createHabit(from: draft)
+
+        let context = persistence.container.viewContext
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
+        request.predicate = NSPredicate(format: "id == %@", habitID as CVarArg)
+        request.fetchLimit = 1
+        let habitObject = try #require(context.fetch(request).first)
+        let completion = NSEntityDescription.insertNewObject(forEntityName: "HabitCompletion", into: context)
+        completion.setValue(UUID(), forKey: "id")
+        completion.setValue(habitID, forKey: "habitID")
+        completion.setValue(Calendar.current.startOfDay(for: Date()), forKey: "localDate")
+        completion.setValue("broken_source", forKey: "sourceRaw")
+        completion.setValue(Date(), forKey: "createdAt")
+        completion.setValue(habitObject, forKey: "habit")
+        try context.save()
+
+        do {
+            _ = try service.makePendingNotificationRequests()
+            Issue.record("Expected data integrity error.")
+        } catch let error as DataIntegrityError {
+            #expect(error.operation == "notification.fetchHabitReminderConfigurations")
+            #expect(!error.report.isEmpty)
+        }
+    }
+
+    @Test
+    func pillNotificationRequestsFailOnCorruptedIntakeRow() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = PillNotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        var draft = PillDraft()
+        draft.name = "Vitamin D"
+        draft.dosage = "1 tablet"
+        draft.startDate = Calendar.current.startOfDay(for: Date())
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = reminderTimeOneHourFromNow()
+        let pillID = try repository.createPill(from: draft)
+
+        let context = persistence.container.viewContext
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Pill")
+        request.predicate = NSPredicate(format: "id == %@", pillID as CVarArg)
+        request.fetchLimit = 1
+        let pillObject = try #require(context.fetch(request).first)
+        let intake = NSEntityDescription.insertNewObject(forEntityName: "PillIntake", into: context)
+        intake.setValue(UUID(), forKey: "id")
+        intake.setValue(pillID, forKey: "pillID")
+        intake.setValue(Calendar.current.startOfDay(for: Date()), forKey: "localDate")
+        intake.setValue("broken_source", forKey: "sourceRaw")
+        intake.setValue(Date(), forKey: "createdAt")
+        intake.setValue(pillObject, forKey: "pill")
+        try context.save()
+
+        do {
+            _ = try service.makePendingNotificationRequests()
+            Issue.record("Expected data integrity error.")
+        } catch let error as DataIntegrityError {
+            #expect(error.operation == "notification.fetchPillReminderConfigurations")
+            #expect(!error.report.isEmpty)
+        }
+    }
+
+    @Test
+    func habitNotificationRequestsFailWhenReminderHourIsMissing() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = NotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Read"
+        draft.startDate = Calendar.current.startOfDay(for: Date())
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = reminderTimeOneHourFromNow()
+        let habitID = try repository.createHabit(from: draft)
+
+        let context = persistence.container.viewContext
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
+        request.predicate = NSPredicate(format: "id == %@", habitID as CVarArg)
+        request.fetchLimit = 1
+        let object = try #require(context.fetch(request).first)
+        object.setValue(nil, forKey: "reminderHour")
+        try context.save()
+
+        do {
+            _ = try service.makePendingNotificationRequests()
+            Issue.record("Expected data integrity error.")
+        } catch let error as DataIntegrityError {
+            #expect(error.operation == "notification.fetchHabitReminderConfigurations")
+            #expect(!error.report.isEmpty)
+        }
+    }
+
+    @Test
+    func habitNotificationRequestsFailWhenReminderMinuteIsMissing() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = NotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Read"
+        draft.startDate = Calendar.current.startOfDay(for: Date())
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = reminderTimeOneHourFromNow()
+        let habitID = try repository.createHabit(from: draft)
+
+        let context = persistence.container.viewContext
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
+        request.predicate = NSPredicate(format: "id == %@", habitID as CVarArg)
+        request.fetchLimit = 1
+        let object = try #require(context.fetch(request).first)
+        object.setValue(nil, forKey: "reminderMinute")
+        try context.save()
+
+        do {
+            _ = try service.makePendingNotificationRequests()
+            Issue.record("Expected data integrity error.")
+        } catch let error as DataIntegrityError {
+            #expect(error.operation == "notification.fetchHabitReminderConfigurations")
+            #expect(!error.report.isEmpty)
+        }
+    }
+
+    @Test
+    func habitNotificationRequestsFailWhenReminderHourIsOutOfRange() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = NotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Read"
+        draft.startDate = Calendar.current.startOfDay(for: Date())
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = reminderTimeOneHourFromNow()
+        let habitID = try repository.createHabit(from: draft)
+
+        let context = persistence.container.viewContext
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
+        request.predicate = NSPredicate(format: "id == %@", habitID as CVarArg)
+        request.fetchLimit = 1
+        let object = try #require(context.fetch(request).first)
+        object.setValue(Int16(24), forKey: "reminderHour")
+        try context.save()
+
+        do {
+            _ = try service.makePendingNotificationRequests()
+            Issue.record("Expected data integrity error.")
+        } catch let error as DataIntegrityError {
+            #expect(error.operation == "notification.fetchHabitReminderConfigurations")
+            #expect(!error.report.isEmpty)
+        }
+    }
+
+    @Test
+    func habitNotificationRequestsFailWhenReminderMinuteIsOutOfRange() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = NotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Read"
+        draft.startDate = Calendar.current.startOfDay(for: Date())
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = reminderTimeOneHourFromNow()
+        let habitID = try repository.createHabit(from: draft)
+
+        let context = persistence.container.viewContext
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
+        request.predicate = NSPredicate(format: "id == %@", habitID as CVarArg)
+        request.fetchLimit = 1
+        let object = try #require(context.fetch(request).first)
+        object.setValue(Int16(60), forKey: "reminderMinute")
+        try context.save()
+
+        do {
+            _ = try service.makePendingNotificationRequests()
+            Issue.record("Expected data integrity error.")
+        } catch let error as DataIntegrityError {
+            #expect(error.operation == "notification.fetchHabitReminderConfigurations")
+            #expect(!error.report.isEmpty)
+        }
+    }
+
+    @Test
+    func habitRescheduleFailureKeepsExistingPendingNotifications() async throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = NotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        try await clearNotifications()
+
+        var draft = CreateHabitDraft()
+        draft.name = "Read"
+        draft.startDate = Calendar.current.startOfDay(for: Date())
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = reminderTimeMinutesFromNow(20)
+        let habitID = try repository.createHabit(from: draft)
+
+        let expectedCount = expectedRequestCount(reminderTime: draft.reminderTime, schedulingWindowDays: 2)
+        service.rescheduleAllNotifications()
+        let initialRequests = try await waitForPendingRequests(expectedCount: expectedCount)
+        let initialIdentifiers = Set(initialRequests.map(\.identifier))
+
+        let context = persistence.container.viewContext
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
+        request.predicate = NSPredicate(format: "id == %@", habitID as CVarArg)
+        request.fetchLimit = 1
+        let object = try #require(context.fetch(request).first)
+        object.setValue(nil, forKey: "reminderHour")
+        try context.save()
+
+        service.rescheduleAllNotifications()
+        try await Task.sleep(for: .milliseconds(300))
+
+        let preservedRequests = await pendingRequests()
+        #expect(Set(preservedRequests.map(\.identifier)) == initialIdentifiers)
+
+        try await clearNotifications()
+    }
+
+    @Test
+    func pillNotificationRequestsFailWhenReminderMinuteIsMissing() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = PillNotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        var draft = PillDraft()
+        draft.name = "Omega 3"
+        draft.dosage = "2 capsules"
+        draft.startDate = Calendar.current.startOfDay(for: Date())
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = reminderTimeOneHourFromNow()
+        let pillID = try repository.createPill(from: draft)
+
+        let context = persistence.container.viewContext
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Pill")
+        request.predicate = NSPredicate(format: "id == %@", pillID as CVarArg)
+        request.fetchLimit = 1
+        let object = try #require(context.fetch(request).first)
+        object.setValue(nil, forKey: "reminderMinute")
+        try context.save()
+
+        do {
+            _ = try service.makePendingNotificationRequests()
+            Issue.record("Expected data integrity error.")
+        } catch let error as DataIntegrityError {
+            #expect(error.operation == "notification.fetchPillReminderConfigurations")
+            #expect(!error.report.isEmpty)
+        }
+    }
+
+    @Test
+    func pillRescheduleFailureKeepsExistingPendingNotifications() async throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = PillNotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        try await clearNotifications()
+
+        var draft = PillDraft()
+        draft.name = "Omega 3"
+        draft.dosage = "2 capsules"
+        draft.startDate = Calendar.current.startOfDay(for: Date())
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = reminderTimeMinutesFromNow(20)
+        let pillID = try repository.createPill(from: draft)
+
+        let expectedCount = expectedRequestCount(reminderTime: draft.reminderTime, schedulingWindowDays: 2)
+        service.rescheduleAllNotifications()
+        let initialRequests = try await waitForPendingRequests(expectedCount: expectedCount)
+        let initialIdentifiers = Set(initialRequests.map(\.identifier))
+
+        let context = persistence.container.viewContext
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Pill")
+        request.predicate = NSPredicate(format: "id == %@", pillID as CVarArg)
+        request.fetchLimit = 1
+        let object = try #require(context.fetch(request).first)
+        object.setValue(nil, forKey: "reminderMinute")
+        try context.save()
+
+        service.rescheduleAllNotifications()
+        try await Task.sleep(for: .milliseconds(300))
+
+        let preservedRequests = await pendingRequests()
+        #expect(Set(preservedRequests.map(\.identifier)) == initialIdentifiers)
+
+        try await clearNotifications()
+    }
+
     private func reminderTimeOneHourFromNow() -> ReminderTime {
         let futureTime = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date()
+        let components = Calendar.current.dateComponents([.hour, .minute], from: futureTime)
+        return ReminderTime(
+            hour: components.hour ?? 20,
+            minute: components.minute ?? 0
+        )
+    }
+
+    private func reminderTimeHoursFromNow(_ hours: Int) -> ReminderTime {
+        let futureTime = Calendar.current.date(byAdding: .hour, value: hours, to: Date()) ?? Date()
+        let components = Calendar.current.dateComponents([.hour, .minute], from: futureTime)
+        return ReminderTime(
+            hour: components.hour ?? 20,
+            minute: components.minute ?? 0
+        )
+    }
+
+    private func reminderTimeMinutesFromNow(_ minutes: Int) -> ReminderTime {
+        let futureTime = Calendar.current.date(byAdding: .minute, value: minutes, to: Date()) ?? Date()
         let components = Calendar.current.dateComponents([.hour, .minute], from: futureTime)
         return ReminderTime(
             hour: components.hour ?? 20,
@@ -261,6 +699,21 @@ struct NotificationServiceTests {
         }
 
         return await pendingRequests()
+    }
+
+    private func waitForPendingIdentifiers(
+        expectedCount: Int,
+        until predicate: (Set<String>) -> Bool
+    ) async throws -> Set<String> {
+        for _ in 0..<20 {
+            let identifiers = Set(await pendingRequests().map(\.identifier))
+            if identifiers.count == expectedCount, predicate(identifiers) {
+                return identifiers
+            }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+
+        return Set(await pendingRequests().map(\.identifier))
     }
 
     private func pendingRequests() async -> [UNNotificationRequest] {

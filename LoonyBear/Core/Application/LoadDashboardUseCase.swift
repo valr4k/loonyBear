@@ -3,8 +3,8 @@ import Foundation
 struct LoadDashboardUseCase {
     let repository: HabitRepository
 
-    func execute() -> DashboardProjection {
-        let habits = repository.fetchDashboardHabits()
+    func execute() throws -> DashboardProjection {
+        let habits = try repository.fetchDashboardHabits()
 
         let grouped = Dictionary(grouping: habits, by: \.type)
         let sections = HabitType.allCases.compactMap { type -> HabitSectionProjection? in

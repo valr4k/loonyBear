@@ -1,8 +1,8 @@
 import Foundation
 
 protocol HabitRepository {
-    func fetchDashboardHabits() -> [HabitCardProjection]
-    func fetchHabitDetails(id: UUID) -> HabitDetailsProjection?
+    func fetchDashboardHabits() throws -> [HabitCardProjection]
+    func fetchHabitDetails(id: UUID) throws -> HabitDetailsProjection?
     func createHabit(from draft: CreateHabitDraft) throws -> UUID
     func completeHabitToday(id: UUID) throws
     func skipHabitToday(id: UUID) throws

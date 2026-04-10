@@ -5,6 +5,8 @@ struct HabitDetailsView: View {
     @EnvironmentObject private var appState: HabitAppState
     let habit: HabitCardProjection
     @State private var details: HabitDetailsProjection?
+    @State private var detailErrorMessage: String?
+    @State private var isIntegrityError = false
     @State private var isLoadingDetails = true
     @State private var needsReloadOnAppear = false
     @State private var displayedMonth: Date = {
@@ -58,6 +60,12 @@ struct HabitDetailsView: View {
                         Spacer()
                     }
                 }
+            } else if isIntegrityError {
+                ContentUnavailableView(
+                    "Habit data problem",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(detailErrorMessage ?? "This habit exists, but its details are corrupted.")
+                )
             } else {
                 ContentUnavailableView(
                     "Habit not found",
@@ -93,7 +101,20 @@ struct HabitDetailsView: View {
 
     private func reloadDetails() {
         isLoadingDetails = true
-        details = appState.habitDetails(id: habit.id)
+        switch appState.loadHabitDetailsState(id: habit.id) {
+        case .found(let loadedDetails):
+            details = loadedDetails
+            detailErrorMessage = nil
+            isIntegrityError = false
+        case .notFound:
+            details = nil
+            detailErrorMessage = nil
+            isIntegrityError = false
+        case .integrityError(let message):
+            details = nil
+            detailErrorMessage = message
+            isIntegrityError = true
+        }
         isLoadingDetails = false
     }
 }

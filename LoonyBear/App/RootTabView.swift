@@ -111,14 +111,21 @@ struct RootTabView: View {
                 )
             }
         case .edit(let habitID):
-            if let details = appState.habitDetails(id: habitID) {
+            switch appState.inspectHabitDetailsState(id: habitID) {
+            case .found(let details):
                 EditHabitView(details: details)
                     .environmentObject(appState)
-            } else {
+            case .notFound:
                 ContentUnavailableView(
                     "Habit not found",
                     systemImage: "checklist",
                     description: Text("This habit is no longer available.")
+                )
+            case .integrityError(let message):
+                ContentUnavailableView(
+                    "Habit data problem",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(message)
                 )
             }
         }
@@ -142,14 +149,21 @@ struct RootTabView: View {
                 )
             }
         case .edit(let pillID):
-            if let details = pillAppState.pillDetails(id: pillID) {
+            switch pillAppState.inspectPillDetailsState(id: pillID) {
+            case .found(let details):
                 EditPillView(details: details)
                     .environmentObject(pillAppState)
-            } else {
+            case .notFound:
                 ContentUnavailableView(
                     "Pill not found",
                     systemImage: "pills",
                     description: Text("This pill is no longer available.")
+                )
+            case .integrityError(let message):
+                ContentUnavailableView(
+                    "Pill data problem",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(message)
                 )
             }
         }

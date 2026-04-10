@@ -12,8 +12,8 @@ enum PillRepositoryError: LocalizedError {
 }
 
 protocol PillRepository {
-    func fetchDashboardPills() -> [PillCardProjection]
-    func fetchPillDetails(id: UUID) -> PillDetailsProjection?
+    func fetchDashboardPills() throws -> [PillCardProjection]
+    func fetchPillDetails(id: UUID) throws -> PillDetailsProjection?
     func createPill(from draft: PillDraft) throws -> UUID
     func updatePill(from draft: EditPillDraft) throws
     func deletePill(id: UUID) throws

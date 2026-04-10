@@ -16,70 +16,71 @@ struct CoreDataPillRepository: PillRepository {
         )
     }
 
-    func fetchDashboardPills() -> [PillCardProjection] {
+    func fetchDashboardPills() throws -> [PillCardProjection] {
         let request = NSFetchRequest<NSManagedObject>(entityName: "Pill")
         request.sortDescriptors = [
             NSSortDescriptor(key: "sortOrder", ascending: true),
             NSSortDescriptor(key: "createdAt", ascending: true),
         ]
 
-        let pills = (try? readContext.fetch(request)) ?? []
+        let pills = try readContext.fetch(request)
         let today = Calendar.current.startOfDay(for: Date())
+        var report = IntegrityReportBuilder()
+        var projections: [PillCardProjection] = []
 
-        return pills.compactMap { pillObject in
-            guard
-                let id = pillObject.uuidValue(forKey: "id"),
-                let name = pillObject.stringValue(forKey: "name"),
-                let dosage = pillObject.stringValue(forKey: "dosage")
-            else {
-                return nil
+        for pillObject in pills {
+            if let projection = makeDashboardProjection(
+                from: pillObject,
+                today: today,
+                report: &report
+            ) {
+                projections.append(projection)
             }
-
-            let latestSchedule = loadSchedules(for: pillObject, pillID: id).sorted(by: isNewerSchedule).first
-            let intakes = loadIntakes(for: pillObject, pillID: id)
-            let successfulIntakes = intakes.filter { $0.source.countsAsIntake }
-            let isTakenToday = successfulIntakes.contains { Calendar.current.isDate($0.localDate, inSameDayAs: today) }
-            let isSkippedToday = intakes.contains {
-                !$0.source.countsAsIntake && Calendar.current.isDate($0.localDate, inSameDayAs: today)
-            }
-            let reminderEnabled = pillObject.boolValue(forKey: "reminderEnabled")
-            let reminderHour = pillObject.int16Value(forKey: "reminderHour")
-            let reminderMinute = pillObject.int16Value(forKey: "reminderMinute")
-            let reminderText = reminderEnabled ? ReminderTime(hour: reminderHour, minute: reminderMinute).formatted : nil
-            let isScheduledToday = latestSchedule?.weekdays.contains(Calendar.current.weekdaySet(for: today)) ?? false
-
-            return PillCardProjection(
-                id: id,
-                name: name,
-                dosage: dosage,
-                scheduleSummary: latestSchedule?.weekdays.summary ?? "No days selected",
-                totalTakenDays: Set(successfulIntakes.map { Calendar.current.startOfDay(for: $0.localDate) }).count,
-                reminderText: reminderText,
-                reminderHour: reminderEnabled ? reminderHour : nil,
-                reminderMinute: reminderEnabled ? reminderMinute : nil,
-                isReminderScheduledToday: isScheduledToday,
-                isScheduledToday: isScheduledToday,
-                isTakenToday: isTakenToday,
-                isSkippedToday: isSkippedToday,
-                sortOrder: Int(pillObject.int32Value(forKey: "sortOrder"))
-            )
         }
-        .sorted(by: pillDashboardSort)
+
+        if report.hasIssues {
+            throw report.makeError(operation: "fetchDashboardPills")
+        }
+
+        return projections.sorted(by: pillDashboardSort)
     }
 
-    func fetchPillDetails(id: UUID) -> PillDetailsProjection? {
-        guard let pillObject = try? fetchPill(id: id, in: readContext) else { return nil }
+    func fetchPillDetails(id: UUID) throws -> PillDetailsProjection? {
+        guard let pillObject = try fetchPill(id: id, in: readContext) else { return nil }
+
+        var report = IntegrityReportBuilder()
         guard
             let name = pillObject.stringValue(forKey: "name"),
             let dosage = pillObject.stringValue(forKey: "dosage"),
             let startDate = pillObject.dateValue(forKey: "startDate")
         else {
-            return nil
+            report.append(
+                area: "details",
+                entityName: pillObject.entityName,
+                object: pillObject,
+                message: "Pill details row is missing required fields."
+            )
+            let error = report.makeError(operation: "fetchPillDetails")
+            ReliabilityLog.error("pill.details integrity failure: \(error.localizedDescription)")
+            throw error
         }
 
-        let schedules = loadSchedules(for: pillObject, pillID: id)
+        guard
+            let schedules = loadSchedules(for: pillObject, pillID: id, report: &report),
+            let intakes = loadIntakes(for: pillObject, pillID: id, report: &report)
+        else {
+            report.append(
+                area: "details",
+                entityName: pillObject.entityName,
+                object: pillObject,
+                message: "Pill details failed because related rows are corrupted."
+            )
+            let error = report.makeError(operation: "fetchPillDetails")
+            ReliabilityLog.error("pill.details integrity failure: \(error.localizedDescription)")
+            throw error
+        }
+
         let latestSchedule = schedules.sorted(by: isNewerSchedule).first
-        let intakes = loadIntakes(for: pillObject, pillID: id)
         let successfulIntakes = intakes.filter { $0.source.countsAsIntake }
         let skippedDays = Set(
             intakes
@@ -87,8 +88,23 @@ struct CoreDataPillRepository: PillRepository {
                 .map { Calendar.current.startOfDay(for: $0.localDate) }
         )
         let reminderEnabled = pillObject.boolValue(forKey: "reminderEnabled")
-        let reminderHour = pillObject.int16Value(forKey: "reminderHour")
-        let reminderMinute = pillObject.int16Value(forKey: "reminderMinute")
+        let reminderTime = ReminderValidation.validatedReminderTime(
+            from: pillObject,
+            reminderEnabled: reminderEnabled,
+            area: "details",
+            report: &report
+        )
+        guard !reminderEnabled || reminderTime != nil else {
+            report.append(
+                area: "details",
+                entityName: pillObject.entityName,
+                object: pillObject,
+                message: "Pill details failed because reminder fields are corrupted."
+            )
+            let error = report.makeError(operation: "fetchPillDetails")
+            ReliabilityLog.error("pill.details integrity failure: \(error.localizedDescription)")
+            throw error
+        }
 
         return PillDetailsProjection(
             id: id,
@@ -99,7 +115,7 @@ struct CoreDataPillRepository: PillRepository {
             scheduleSummary: latestSchedule?.weekdays.summary ?? "No days selected",
             scheduleDays: latestSchedule?.weekdays ?? .daily,
             reminderEnabled: reminderEnabled,
-            reminderTime: reminderEnabled ? ReminderTime(hour: reminderHour, minute: reminderMinute) : nil,
+            reminderTime: reminderTime,
             totalTakenDays: Set(successfulIntakes.map { Calendar.current.startOfDay(for: $0.localDate) }).count,
             takenDays: Set(successfulIntakes.map { Calendar.current.startOfDay(for: $0.localDate) }),
             skippedDays: skippedDays
@@ -374,6 +390,45 @@ struct CoreDataPillRepository: PillRepository {
         }
     }
 
+    private func loadIntakes(
+        for pillObject: NSManagedObject,
+        pillID: UUID,
+        report: inout IntegrityReportBuilder
+    ) -> [PillIntake]? {
+        let intakes = (pillObject.mutableSetValue(forKey: "intakes").allObjects as? [NSManagedObject]) ?? []
+        var models: [PillIntake] = []
+
+        for intakeObject in intakes {
+            guard
+                let intakeID = intakeObject.uuidValue(forKey: "id"),
+                let localDate = intakeObject.dateValue(forKey: "localDate"),
+                let sourceRaw = intakeObject.stringValue(forKey: "sourceRaw"),
+                let source = PillCompletionSource(rawValue: sourceRaw),
+                let createdAt = intakeObject.dateValue(forKey: "createdAt")
+            else {
+                report.append(
+                    area: "dashboard",
+                    entityName: intakeObject.entityName,
+                    object: intakeObject,
+                    message: "Pill intake row is missing required fields or has invalid sourceRaw."
+                )
+                return nil
+            }
+
+            models.append(
+                PillIntake(
+                    id: intakeID,
+                    pillID: pillID,
+                    localDate: localDate,
+                    source: source,
+                    createdAt: createdAt
+                )
+            )
+        }
+
+        return models
+    }
+
     private func loadSchedules(for pillObject: NSManagedObject, pillID: UUID) -> [PillScheduleVersion] {
         let schedules = (pillObject.mutableSetValue(forKey: "scheduleVersions").allObjects as? [NSManagedObject]) ?? []
         return schedules.compactMap { scheduleObject in
@@ -397,6 +452,118 @@ struct CoreDataPillRepository: PillRepository {
                 version: version
             )
         }
+    }
+
+    private func loadSchedules(
+        for pillObject: NSManagedObject,
+        pillID: UUID,
+        report: inout IntegrityReportBuilder
+    ) -> [PillScheduleVersion]? {
+        let schedules = (pillObject.mutableSetValue(forKey: "scheduleVersions").allObjects as? [NSManagedObject]) ?? []
+        var models: [PillScheduleVersion] = []
+
+        for scheduleObject in schedules {
+            guard
+                let scheduleID = scheduleObject.uuidValue(forKey: "id"),
+                let effectiveFrom = scheduleObject.dateValue(forKey: "effectiveFrom"),
+                let createdAt = scheduleObject.dateValue(forKey: "createdAt")
+            else {
+                report.append(
+                    area: "dashboard",
+                    entityName: scheduleObject.entityName,
+                    object: scheduleObject,
+                    message: "Pill schedule row is missing required fields."
+                )
+                return nil
+            }
+
+            models.append(
+                PillScheduleVersion(
+                    id: scheduleID,
+                    pillID: pillID,
+                    weekdays: WeekdaySet(rawValue: Int(scheduleObject.int16Value(forKey: "weekdayMask"))),
+                    effectiveFrom: effectiveFrom,
+                    createdAt: createdAt,
+                    version: Int(scheduleObject.int32Value(forKey: "version", default: 1))
+                )
+            )
+        }
+
+        return models
+    }
+
+    private func makeDashboardProjection(
+        from pillObject: NSManagedObject,
+        today: Date,
+        report: inout IntegrityReportBuilder
+    ) -> PillCardProjection? {
+        guard
+            let id = pillObject.uuidValue(forKey: "id"),
+            let name = pillObject.stringValue(forKey: "name"),
+            let dosage = pillObject.stringValue(forKey: "dosage")
+        else {
+            report.append(
+                area: "dashboard",
+                entityName: pillObject.entityName,
+                object: pillObject,
+                message: "Pill row is missing required fields."
+            )
+            return nil
+        }
+
+        guard
+            let schedules = loadSchedules(for: pillObject, pillID: id, report: &report),
+            let intakes = loadIntakes(for: pillObject, pillID: id, report: &report)
+        else {
+            report.append(
+                area: "dashboard",
+                entityName: pillObject.entityName,
+                object: pillObject,
+                message: "Pill dashboard projection was skipped because related rows are corrupted."
+            )
+            return nil
+        }
+
+        let latestSchedule = schedules.sorted(by: isNewerSchedule).first
+        let successfulIntakes = intakes.filter { $0.source.countsAsIntake }
+        let isTakenToday = successfulIntakes.contains { Calendar.current.isDate($0.localDate, inSameDayAs: today) }
+        let isSkippedToday = intakes.contains {
+            !$0.source.countsAsIntake && Calendar.current.isDate($0.localDate, inSameDayAs: today)
+        }
+        let reminderEnabled = pillObject.boolValue(forKey: "reminderEnabled")
+        let validatedReminderTime = ReminderValidation.validatedReminderTime(
+            from: pillObject,
+            reminderEnabled: reminderEnabled,
+            area: "dashboard",
+            report: &report
+        )
+        guard !reminderEnabled || validatedReminderTime != nil else {
+            report.append(
+                area: "dashboard",
+                entityName: pillObject.entityName,
+                object: pillObject,
+                message: "Pill dashboard projection was skipped because reminder fields are corrupted."
+            )
+            return nil
+        }
+        let reminderText = validatedReminderTime?.formatted
+        let isScheduledToday = latestSchedule?.weekdays.contains(Calendar.current.weekdaySet(for: today)) ?? false
+
+        return PillCardProjection(
+            id: id,
+            name: name,
+            dosage: dosage,
+            scheduleSummary: latestSchedule?.weekdays.summary ?? "No days selected",
+            totalTakenDays: Set(successfulIntakes.map { Calendar.current.startOfDay(for: $0.localDate) }).count,
+            reminderText: reminderText,
+            reminderHour: validatedReminderTime?.hour,
+            reminderMinute: validatedReminderTime?.minute,
+            isReminderScheduledToday: isScheduledToday,
+            isScheduledToday: isScheduledToday,
+            isTakenToday: isTakenToday,
+            isSkippedToday: isSkippedToday,
+            sortOrder: Int(pillObject.int32Value(forKey: "sortOrder"))
+        )
     }
 
     private func loadLatestScheduleObject(for pillObject: NSManagedObject) -> NSManagedObject? {

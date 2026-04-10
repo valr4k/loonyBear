@@ -28,6 +28,8 @@ enum BackupServiceError: LocalizedError, Equatable {
 }
 
 final class BackupService {
+    typealias SnapshotWriter = (_ data: Data, _ url: URL) throws -> Void
+
     static let shared = BackupService(
         context: PersistenceController.shared.container.viewContext,
         makeWorkContext: PersistenceController.shared.makeBackgroundContext
@@ -37,6 +39,7 @@ final class BackupService {
     private let makeWorkContext: () -> NSManagedObjectContext
     private let defaults: UserDefaults
     private let compressionService: CompressionService
+    private let snapshotWriter: SnapshotWriter
     private let bookmarkKey = "backup_folder_bookmark"
     private let folderNameKey = "backup_folder_name"
     private let appName = "LoonyBear"
@@ -46,12 +49,16 @@ final class BackupService {
         context: NSManagedObjectContext,
         makeWorkContext: @escaping () -> NSManagedObjectContext,
         defaults: UserDefaults = .standard,
-        compressionService: CompressionService = CompressionService()
+        compressionService: CompressionService = CompressionService(),
+        snapshotWriter: @escaping SnapshotWriter = { data, url in
+            try data.write(to: url, options: .atomic)
+        }
     ) {
         readContext = context
         self.makeWorkContext = makeWorkContext
         self.defaults = defaults
         self.compressionService = compressionService
+        self.snapshotWriter = snapshotWriter
     }
 
     func saveFolderBookmark(for url: URL) throws {
@@ -102,7 +109,9 @@ final class BackupService {
     }
 
     func createBackup() throws {
+        ReliabilityLog.info("backup.create started")
         guard let folderURL = try resolveFolderURL() else {
+            ReliabilityLog.error("backup.create failed: folder not selected")
             throw BackupServiceError.folderNotSelected
         }
 
@@ -110,26 +119,34 @@ final class BackupService {
             folderURL.stopAccessingSecurityScopedResource()
         }
 
-        let archive = try makeArchive()
-        let encoded = try JSONEncoder.backupEncoder.encode(archive)
-        let data = try compressionService.gzipCompress(encoded)
+        do {
+            let archive = try makeArchive()
+            let encoded = try JSONEncoder.backupEncoder.encode(archive)
+            let data = try compressionService.gzipCompress(encoded)
 
-        let previousURL = folderURL.appendingPathComponent("\(appName).previous.json.gz")
-        let primaryURL = folderURL.appendingPathComponent("\(appName).json.gz")
+            let previousURL = folderURL.appendingPathComponent("\(appName).previous.json.gz")
+            let primaryURL = folderURL.appendingPathComponent("\(appName).json.gz")
 
-        if FileManager.default.fileExists(atPath: previousURL.path) {
-            try? FileManager.default.removeItem(at: previousURL)
+            if FileManager.default.fileExists(atPath: previousURL.path) {
+                try? FileManager.default.removeItem(at: previousURL)
+            }
+
+            if FileManager.default.fileExists(atPath: primaryURL.path) {
+                try FileManager.default.moveItem(at: primaryURL, to: previousURL)
+            }
+
+            try data.write(to: primaryURL, options: .atomic)
+            ReliabilityLog.info("backup.create succeeded")
+        } catch {
+            ReliabilityLog.error("backup.create failed: \(error.localizedDescription)")
+            throw error
         }
-
-        if FileManager.default.fileExists(atPath: primaryURL.path) {
-            try FileManager.default.moveItem(at: primaryURL, to: previousURL)
-        }
-
-        try data.write(to: primaryURL, options: .atomic)
     }
 
     func restoreBackup() throws {
+        ReliabilityLog.info("backup.restore started")
         guard let folderURL = try resolveFolderURL() else {
+            ReliabilityLog.error("backup.restore failed: folder not selected")
             throw BackupServiceError.folderNotSelected
         }
 
@@ -137,12 +154,36 @@ final class BackupService {
             folderURL.stopAccessingSecurityScopedResource()
         }
 
-        let snapshotURL = folderURL.appendingPathComponent("\(appName).restore-snapshot.json.gz")
-        let snapshot = try compressionService.gzipCompress(JSONEncoder.backupEncoder.encode(makeArchive()))
-        try snapshot.write(to: snapshotURL, options: .atomic)
+        do {
+            let snapshotURL = folderURL.appendingPathComponent("\(appName).restore-snapshot.json.gz")
+            do {
+                let snapshotPayload = try makeArchive()
+                do {
+                    let snapshotData = try compressionService.gzipCompress(
+                        JSONEncoder.backupEncoder.encode(snapshotPayload)
+                    )
+                    try snapshotWriter(snapshotData, snapshotURL)
+                    ReliabilityLog.info("backup.restore snapshot succeeded")
+                } catch {
+                    ReliabilityLog.error("backup.restore snapshot write failed, restore aborted: \(error.localizedDescription)")
+                    throw error
+                }
+            } catch let error as DataIntegrityError {
+                ReliabilityLog.error(
+                    "backup.restore snapshot skipped because local store is corrupted: \(error.localizedDescription)"
+                )
+            } catch {
+                ReliabilityLog.error("backup.restore snapshot payload failed, restore aborted: \(error.localizedDescription)")
+                throw error
+            }
 
-        let archive = try loadPreferredArchive(in: folderURL)
-        try restoreArchive(archive)
+            let archive = try loadPreferredArchive(in: folderURL)
+            try restoreArchive(archive)
+            ReliabilityLog.info("backup.restore succeeded")
+        } catch {
+            ReliabilityLog.error("backup.restore failed: \(error.localizedDescription)")
+            throw error
+        }
     }
 
     func restoreArchive(_ archive: BackupArchive) throws {
@@ -150,7 +191,16 @@ final class BackupService {
             throw BackupServiceError.unsupportedSchemaVersion(archive.schemaVersion)
         }
 
+        do {
+            try validateArchive(archive)
+            ReliabilityLog.info("backup.restore archive validation passed")
+        } catch {
+            ReliabilityLog.error("backup.restore validation failed: \(error.localizedDescription)")
+            throw error
+        }
+
         try replaceStore(with: archive)
+        ReliabilityLog.info("backup.restore store replacement succeeded")
     }
 
     private func resolveFolderURL() throws -> URL? {
@@ -187,12 +237,13 @@ final class BackupService {
 
     private func makeArchive() throws -> BackupArchive {
         try performWork { context in
+            var report = IntegrityReportBuilder()
             let habitsRequest = NSFetchRequest<NSManagedObject>(entityName: "Habit")
             habitsRequest.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: true)]
 
             let habits = try context.fetch(habitsRequest)
-
-            let backupHabits = habits.compactMap { habit -> BackupHabit? in
+            var backupHabits: [BackupHabit] = []
+            for habit in habits {
                 guard
                     let id = habit.value(forKey: "id") as? UUID,
                     let type = habit.value(forKey: "typeRaw") as? String,
@@ -201,48 +252,98 @@ final class BackupService {
                     let createdAt = habit.value(forKey: "createdAt") as? Date,
                     let updatedAt = habit.value(forKey: "updatedAt") as? Date
                 else {
-                    return nil
+                    report.append(
+                        area: "backup",
+                        entityName: habit.entityName,
+                        object: habit,
+                        message: "Habit row is missing required fields."
+                    )
+                    continue
+                }
+                guard HabitType(rawValue: type) != nil else {
+                    report.append(
+                        area: "backup",
+                        entityName: habit.entityName,
+                        object: habit,
+                        message: "Habit row contains invalid typeRaw."
+                    )
+                    continue
                 }
 
                 let reminderEnabled = habit.value(forKey: "reminderEnabled") as? Bool ?? false
-                let reminderHour = Int(habit.value(forKey: "reminderHour") as? Int16 ?? 0)
-                let reminderMinute = Int(habit.value(forKey: "reminderMinute") as? Int16 ?? 0)
-
-                return BackupHabit(
-                    id: id,
-                    type: type,
-                    name: name,
-                    sortOrder: Int(habit.value(forKey: "sortOrder") as? Int32 ?? 0),
-                    startDate: startDate,
+                let reminderTime = ReminderValidation.validatedReminderTime(
+                    from: habit,
                     reminderEnabled: reminderEnabled,
-                    reminderTime: reminderEnabled ? BackupReminderTime(hour: reminderHour, minute: reminderMinute) : nil,
-                    createdAt: createdAt,
-                    updatedAt: updatedAt,
-                    version: Int(habit.value(forKey: "version") as? Int32 ?? 1)
+                    area: "backup",
+                    report: &report
+                )
+                guard !reminderEnabled || reminderTime != nil else {
+                    report.append(
+                        area: "backup",
+                        entityName: habit.entityName,
+                        object: habit,
+                        message: "Habit backup row failed because reminder fields are corrupted."
+                    )
+                    continue
+                }
+
+                backupHabits.append(
+                    BackupHabit(
+                        id: id,
+                        type: type,
+                        name: name,
+                        sortOrder: Int(habit.value(forKey: "sortOrder") as? Int32 ?? 0),
+                        startDate: startDate,
+                        reminderEnabled: reminderEnabled,
+                        reminderTime: reminderTime.map { BackupReminderTime(hour: $0.hour, minute: $0.minute) },
+                        createdAt: createdAt,
+                        updatedAt: updatedAt,
+                        version: Int(habit.value(forKey: "version") as? Int32 ?? 1)
+                    )
                 )
             }
 
-            let scheduleVersions = try fetchObjects(entityName: "HabitScheduleVersion", in: context).compactMap { object -> BackupScheduleVersion? in
+            var scheduleVersions: [BackupScheduleVersion] = []
+            for object in try fetchObjects(entityName: "HabitScheduleVersion", in: context) {
                 guard
                     let id = object.value(forKey: "id") as? UUID,
                     let habitId = object.value(forKey: "habitID") as? UUID,
                     let effectiveFrom = object.value(forKey: "effectiveFrom") as? Date,
                     let createdAt = object.value(forKey: "createdAt") as? Date
                 else {
-                    return nil
+                    report.append(
+                        area: "backup",
+                        entityName: object.entityName,
+                        object: object,
+                        message: "Habit schedule row is missing required fields."
+                    )
+                    continue
+                }
+                let weekdayMask = Int(object.value(forKey: "weekdayMask") as? Int16 ?? 0)
+                guard WeekdayValidation.isValidMask(weekdayMask) else {
+                    report.append(
+                        area: "backup",
+                        entityName: object.entityName,
+                        object: object,
+                        message: "Habit schedule row contains invalid weekdayMask."
+                    )
+                    continue
                 }
 
-                return BackupScheduleVersion(
-                    id: id,
-                    habitId: habitId,
-                    weekdayMask: Int(object.value(forKey: "weekdayMask") as? Int16 ?? 0),
-                    effectiveFrom: effectiveFrom,
-                    createdAt: createdAt,
-                    version: Int(object.value(forKey: "version") as? Int32 ?? 1)
+                scheduleVersions.append(
+                    BackupScheduleVersion(
+                        id: id,
+                        habitId: habitId,
+                        weekdayMask: weekdayMask,
+                        effectiveFrom: effectiveFrom,
+                        createdAt: createdAt,
+                        version: Int(object.value(forKey: "version") as? Int32 ?? 1)
+                    )
                 )
             }
 
-            let completionRecords = try fetchObjects(entityName: "HabitCompletion", in: context).compactMap { object -> BackupCompletion? in
+            var completionRecords: [BackupCompletion] = []
+            for object in try fetchObjects(entityName: "HabitCompletion", in: context) {
                 guard
                     let id = object.value(forKey: "id") as? UUID,
                     let habitId = object.value(forKey: "habitID") as? UUID,
@@ -250,15 +351,32 @@ final class BackupService {
                     let source = object.value(forKey: "sourceRaw") as? String,
                     let createdAt = object.value(forKey: "createdAt") as? Date
                 else {
-                    return nil
+                    report.append(
+                        area: "backup",
+                        entityName: object.entityName,
+                        object: object,
+                        message: "Habit completion row is missing required fields."
+                    )
+                    continue
+                }
+                guard CompletionSource(rawValue: source) != nil else {
+                    report.append(
+                        area: "backup",
+                        entityName: object.entityName,
+                        object: object,
+                        message: "Habit completion row contains invalid sourceRaw."
+                    )
+                    continue
                 }
 
-                return BackupCompletion(
-                    id: id,
-                    habitId: habitId,
-                    localDate: localDate,
-                    source: source,
-                    createdAt: createdAt
+                completionRecords.append(
+                    BackupCompletion(
+                        id: id,
+                        habitId: habitId,
+                        localDate: localDate,
+                        source: source,
+                        createdAt: createdAt
+                    )
                 )
             }
 
@@ -266,7 +384,8 @@ final class BackupService {
                 BackupOrdering(habitId: $0.id, type: $0.type, sortOrder: $0.sortOrder)
             }
 
-            let backupPills = try fetchObjects(entityName: "Pill", in: context).compactMap { pill -> BackupPill? in
+            var backupPills: [BackupPill] = []
+            for pill in try fetchObjects(entityName: "Pill", in: context) {
                 guard
                     let id = pill.value(forKey: "id") as? UUID,
                     let name = pill.value(forKey: "name") as? String,
@@ -275,49 +394,90 @@ final class BackupService {
                     let createdAt = pill.value(forKey: "createdAt") as? Date,
                     let updatedAt = pill.value(forKey: "updatedAt") as? Date
                 else {
-                    return nil
+                    report.append(
+                        area: "backup",
+                        entityName: pill.entityName,
+                        object: pill,
+                        message: "Pill row is missing required fields."
+                    )
+                    continue
                 }
 
                 let reminderEnabled = pill.value(forKey: "reminderEnabled") as? Bool ?? false
-                let reminderHour = Int(pill.value(forKey: "reminderHour") as? Int16 ?? 0)
-                let reminderMinute = Int(pill.value(forKey: "reminderMinute") as? Int16 ?? 0)
-
-                return BackupPill(
-                    id: id,
-                    name: name,
-                    dosage: dosage,
-                    details: pill.value(forKey: "detailsText") as? String,
-                    sortOrder: Int(pill.value(forKey: "sortOrder") as? Int32 ?? 0),
-                    startDate: startDate,
+                let reminderTime = ReminderValidation.validatedReminderTime(
+                    from: pill,
                     reminderEnabled: reminderEnabled,
-                    reminderTime: reminderEnabled ? BackupReminderTime(hour: reminderHour, minute: reminderMinute) : nil,
-                    createdAt: createdAt,
-                    updatedAt: updatedAt,
-                    version: Int(pill.value(forKey: "version") as? Int32 ?? 1)
+                    area: "backup",
+                    report: &report
+                )
+                guard !reminderEnabled || reminderTime != nil else {
+                    report.append(
+                        area: "backup",
+                        entityName: pill.entityName,
+                        object: pill,
+                        message: "Pill backup row failed because reminder fields are corrupted."
+                    )
+                    continue
+                }
+
+                backupPills.append(
+                    BackupPill(
+                        id: id,
+                        name: name,
+                        dosage: dosage,
+                        details: pill.value(forKey: "detailsText") as? String,
+                        sortOrder: Int(pill.value(forKey: "sortOrder") as? Int32 ?? 0),
+                        startDate: startDate,
+                        reminderEnabled: reminderEnabled,
+                        reminderTime: reminderTime.map { BackupReminderTime(hour: $0.hour, minute: $0.minute) },
+                        createdAt: createdAt,
+                        updatedAt: updatedAt,
+                        version: Int(pill.value(forKey: "version") as? Int32 ?? 1)
+                    )
                 )
             }
 
-            let pillScheduleVersions = try fetchObjects(entityName: "PillScheduleVersion", in: context).compactMap { object -> BackupPillScheduleVersion? in
+            var pillScheduleVersions: [BackupPillScheduleVersion] = []
+            for object in try fetchObjects(entityName: "PillScheduleVersion", in: context) {
                 guard
                     let id = object.value(forKey: "id") as? UUID,
                     let pillId = object.value(forKey: "pillID") as? UUID,
                     let effectiveFrom = object.value(forKey: "effectiveFrom") as? Date,
                     let createdAt = object.value(forKey: "createdAt") as? Date
                 else {
-                    return nil
+                    report.append(
+                        area: "backup",
+                        entityName: object.entityName,
+                        object: object,
+                        message: "Pill schedule row is missing required fields."
+                    )
+                    continue
+                }
+                let weekdayMask = Int(object.value(forKey: "weekdayMask") as? Int16 ?? 0)
+                guard WeekdayValidation.isValidMask(weekdayMask) else {
+                    report.append(
+                        area: "backup",
+                        entityName: object.entityName,
+                        object: object,
+                        message: "Pill schedule row contains invalid weekdayMask."
+                    )
+                    continue
                 }
 
-                return BackupPillScheduleVersion(
-                    id: id,
-                    pillId: pillId,
-                    weekdayMask: Int(object.value(forKey: "weekdayMask") as? Int16 ?? 0),
-                    effectiveFrom: effectiveFrom,
-                    createdAt: createdAt,
-                    version: Int(object.value(forKey: "version") as? Int32 ?? 1)
+                pillScheduleVersions.append(
+                    BackupPillScheduleVersion(
+                        id: id,
+                        pillId: pillId,
+                        weekdayMask: weekdayMask,
+                        effectiveFrom: effectiveFrom,
+                        createdAt: createdAt,
+                        version: Int(object.value(forKey: "version") as? Int32 ?? 1)
+                    )
                 )
             }
 
-            let pillIntakeRecords = try fetchObjects(entityName: "PillIntake", in: context).compactMap { object -> BackupPillIntake? in
+            var pillIntakeRecords: [BackupPillIntake] = []
+            for object in try fetchObjects(entityName: "PillIntake", in: context) {
                 guard
                     let id = object.value(forKey: "id") as? UUID,
                     let pillId = object.value(forKey: "pillID") as? UUID,
@@ -325,16 +485,37 @@ final class BackupService {
                     let source = object.value(forKey: "sourceRaw") as? String,
                     let createdAt = object.value(forKey: "createdAt") as? Date
                 else {
-                    return nil
+                    report.append(
+                        area: "backup",
+                        entityName: object.entityName,
+                        object: object,
+                        message: "Pill intake row is missing required fields."
+                    )
+                    continue
+                }
+                guard PillCompletionSource(rawValue: source) != nil else {
+                    report.append(
+                        area: "backup",
+                        entityName: object.entityName,
+                        object: object,
+                        message: "Pill intake row contains invalid sourceRaw."
+                    )
+                    continue
                 }
 
-                return BackupPillIntake(
-                    id: id,
-                    pillId: pillId,
-                    localDate: localDate,
-                    source: source,
-                    createdAt: createdAt
+                pillIntakeRecords.append(
+                    BackupPillIntake(
+                        id: id,
+                        pillId: pillId,
+                        localDate: localDate,
+                        source: source,
+                        createdAt: createdAt
+                    )
                 )
+            }
+
+            if report.hasIssues {
+                throw report.makeError(operation: "createBackup")
             }
 
             return BackupArchive(
@@ -455,6 +636,266 @@ final class BackupService {
 
         readContext.performAndWait {
             readContext.reset()
+        }
+    }
+
+    private func validateArchive(_ archive: BackupArchive) throws {
+        var report = IntegrityReportBuilder()
+        appendDuplicateIdentifierIssues(
+            archive.habits.map(\.id),
+            entityName: "BackupHabit",
+            area: "backup.restore",
+            report: &report
+        )
+        appendDuplicateIdentifierIssues(
+            archive.pills.map(\.id),
+            entityName: "BackupPill",
+            area: "backup.restore",
+            report: &report
+        )
+        appendDuplicateIdentifierIssues(
+            archive.scheduleVersions.map(\.id),
+            entityName: "BackupScheduleVersion",
+            area: "backup.restore",
+            report: &report
+        )
+        appendDuplicateIdentifierIssues(
+            archive.completionRecords.map(\.id),
+            entityName: "BackupCompletion",
+            area: "backup.restore",
+            report: &report
+        )
+        appendDuplicateIdentifierIssues(
+            archive.pillScheduleVersions.map(\.id),
+            entityName: "BackupPillScheduleVersion",
+            area: "backup.restore",
+            report: &report
+        )
+        appendDuplicateIdentifierIssues(
+            archive.pillIntakeRecords.map(\.id),
+            entityName: "BackupPillIntake",
+            area: "backup.restore",
+            report: &report
+        )
+        let habitIDs = Set(archive.habits.map(\.id))
+        let pillIDs = Set(archive.pills.map(\.id))
+
+        for habit in archive.habits {
+            let objectIdentifier = "habit:\(habit.id.uuidString)"
+            guard HabitType(rawValue: habit.type) != nil else {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupHabit",
+                    objectIdentifier: objectIdentifier,
+                    message: "Habit backup payload contains invalid type."
+                )
+                continue
+            }
+
+            if habit.reminderEnabled {
+                guard let reminderTime = habit.reminderTime else {
+                    report.append(
+                        area: "backup.restore",
+                        entityName: "BackupHabit",
+                        objectIdentifier: objectIdentifier,
+                        message: "Habit backup payload is missing reminderTime while reminderEnabled is true."
+                    )
+                    continue
+                }
+                appendInvalidReminderTimeIssues(
+                    reminderTime,
+                    entityName: "BackupHabit",
+                    objectIdentifier: objectIdentifier,
+                    report: &report
+                )
+            }
+        }
+
+        for schedule in archive.scheduleVersions {
+            let objectIdentifier = "habitSchedule:\(schedule.id.uuidString)"
+            guard habitIDs.contains(schedule.habitId) else {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupScheduleVersion",
+                    objectIdentifier: objectIdentifier,
+                    message: "Habit schedule payload references missing habit."
+                )
+                continue
+            }
+            guard WeekdayValidation.isValidMask(schedule.weekdayMask) else {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupScheduleVersion",
+                    objectIdentifier: objectIdentifier,
+                    message: "Habit schedule payload contains invalid weekdayMask."
+                )
+                continue
+            }
+        }
+
+        for completion in archive.completionRecords {
+            let objectIdentifier = "habitCompletion:\(completion.id.uuidString)"
+            guard habitIDs.contains(completion.habitId) else {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupCompletion",
+                    objectIdentifier: objectIdentifier,
+                    message: "Habit completion payload references missing habit."
+                )
+                continue
+            }
+            guard CompletionSource(rawValue: completion.source) != nil else {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupCompletion",
+                    objectIdentifier: objectIdentifier,
+                    message: "Habit completion payload contains invalid source."
+                )
+                continue
+            }
+        }
+
+        for ordering in archive.ordering {
+            let objectIdentifier = "habitOrdering:\(ordering.habitId.uuidString)"
+            guard habitIDs.contains(ordering.habitId) else {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupOrdering",
+                    objectIdentifier: objectIdentifier,
+                    message: "Habit ordering payload references missing habit."
+                )
+                continue
+            }
+            guard HabitType(rawValue: ordering.type) != nil else {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupOrdering",
+                    objectIdentifier: objectIdentifier,
+                    message: "Habit ordering payload contains invalid type."
+                )
+                continue
+            }
+        }
+
+        for pill in archive.pills {
+            let objectIdentifier = "pill:\(pill.id.uuidString)"
+            if pill.reminderEnabled {
+                guard let reminderTime = pill.reminderTime else {
+                    report.append(
+                        area: "backup.restore",
+                        entityName: "BackupPill",
+                        objectIdentifier: objectIdentifier,
+                        message: "Pill backup payload is missing reminderTime while reminderEnabled is true."
+                    )
+                    continue
+                }
+                appendInvalidReminderTimeIssues(
+                    reminderTime,
+                    entityName: "BackupPill",
+                    objectIdentifier: objectIdentifier,
+                    report: &report
+                )
+            }
+        }
+
+        for schedule in archive.pillScheduleVersions {
+            let objectIdentifier = "pillSchedule:\(schedule.id.uuidString)"
+            guard pillIDs.contains(schedule.pillId) else {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupPillScheduleVersion",
+                    objectIdentifier: objectIdentifier,
+                    message: "Pill schedule payload references missing pill."
+                )
+                continue
+            }
+            guard WeekdayValidation.isValidMask(schedule.weekdayMask) else {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupPillScheduleVersion",
+                    objectIdentifier: objectIdentifier,
+                    message: "Pill schedule payload contains invalid weekdayMask."
+                )
+                continue
+            }
+        }
+
+        for intake in archive.pillIntakeRecords {
+            let objectIdentifier = "pillIntake:\(intake.id.uuidString)"
+            guard pillIDs.contains(intake.pillId) else {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupPillIntake",
+                    objectIdentifier: objectIdentifier,
+                    message: "Pill intake payload references missing pill."
+                )
+                continue
+            }
+            guard PillCompletionSource(rawValue: intake.source) != nil else {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupPillIntake",
+                    objectIdentifier: objectIdentifier,
+                    message: "Pill intake payload contains invalid source."
+                )
+                continue
+            }
+        }
+
+        if report.hasIssues {
+            throw report.makeError(operation: "restoreArchive")
+        }
+    }
+
+    private func appendDuplicateIdentifierIssues(
+        _ identifiers: [UUID],
+        entityName: String,
+        area: String,
+        report: inout IntegrityReportBuilder
+    ) {
+        var seen: Set<UUID> = []
+        var duplicates: Set<UUID> = []
+
+        for identifier in identifiers {
+            if !seen.insert(identifier).inserted {
+                duplicates.insert(identifier)
+            }
+        }
+
+        for duplicate in duplicates {
+            report.append(
+                area: area,
+                entityName: entityName,
+                objectIdentifier: duplicate.uuidString,
+                message: "\(entityName) payload contains duplicate id."
+            )
+        }
+    }
+
+    private func appendInvalidReminderTimeIssues(
+        _ reminderTime: BackupReminderTime,
+        entityName: String,
+        objectIdentifier: String,
+        report: inout IntegrityReportBuilder
+    ) {
+        guard (0...23).contains(reminderTime.hour) else {
+            report.append(
+                area: "backup.restore",
+                entityName: entityName,
+                objectIdentifier: objectIdentifier,
+                message: "Reminder hour must be in 0...23."
+            )
+            return
+        }
+
+        guard (0...59).contains(reminderTime.minute) else {
+            report.append(
+                area: "backup.restore",
+                entityName: entityName,
+                objectIdentifier: objectIdentifier,
+                message: "Reminder minute must be in 0...59."
+            )
+            return
         }
     }
 

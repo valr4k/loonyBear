@@ -13,7 +13,7 @@ struct NotificationStoreContext {
     let readContext: NSManagedObjectContext
     let makeWriteContext: () -> NSManagedObjectContext
 
-    func performRead<T>(_ work: (NSManagedObjectContext) throws -> T) -> T? {
+    func performRead<T>(_ work: (NSManagedObjectContext) throws -> T) throws -> T {
         var result: Result<T, Error>?
         readContext.performAndWait {
             do {
@@ -27,8 +27,13 @@ struct NotificationStoreContext {
         switch result {
         case .success(let value):
             return value
-        case .failure, .none:
-            return nil
+        case .failure(let error):
+            throw error
+        case .none:
+            throw DataIntegrityError(
+                operation: "notification.performRead",
+                report: DataIntegrityReport(issues: [])
+            )
         }
     }
 

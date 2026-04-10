@@ -21,7 +21,7 @@ struct CoreDataHabitRepositoryTests {
         createDraft.reminderEnabled = false
 
         let habitID = try repository.createHabit(from: createDraft)
-        let details = try #require(repository.fetchHabitDetails(id: habitID))
+        let details = try #require(try repository.fetchHabitDetails(id: habitID))
 
         let editDraft = EditHabitDraft(
             id: habitID,
@@ -98,7 +98,7 @@ struct CoreDataHabitRepositoryTests {
         noReminder.reminderEnabled = false
         _ = try repository.createHabit(from: noReminder)
 
-        let habits = repository.fetchDashboardHabits()
+        let habits = try repository.fetchDashboardHabits()
             .filter { $0.type == .build }
             .map(\.name)
 
@@ -131,9 +131,9 @@ struct CoreDataHabitRepositoryTests {
         try repository.skipHabitToday(id: habitID)
 
         let skippedDashboardHabit = try #require(
-            repository.fetchDashboardHabits().first { $0.id == habitID }
+            try repository.fetchDashboardHabits().first { $0.id == habitID }
         )
-        let skippedDetails = try #require(repository.fetchHabitDetails(id: habitID))
+        let skippedDetails = try #require(try repository.fetchHabitDetails(id: habitID))
 
         #expect(skippedDashboardHabit.isSkippedToday)
         #expect(!skippedDashboardHabit.isCompletedToday)
@@ -144,9 +144,9 @@ struct CoreDataHabitRepositoryTests {
         try repository.completeHabitToday(id: habitID)
 
         let completedDashboardHabit = try #require(
-            repository.fetchDashboardHabits().first { $0.id == habitID }
+            try repository.fetchDashboardHabits().first { $0.id == habitID }
         )
-        let completedDetails = try #require(repository.fetchHabitDetails(id: habitID))
+        let completedDetails = try #require(try repository.fetchHabitDetails(id: habitID))
 
         #expect(!completedDashboardHabit.isSkippedToday)
         #expect(completedDashboardHabit.isCompletedToday)
@@ -182,9 +182,9 @@ struct CoreDataHabitRepositoryTests {
         try repository.clearHabitDayStateToday(id: habitID)
 
         let dashboardHabit = try #require(
-            repository.fetchDashboardHabits().first { $0.id == habitID }
+            try repository.fetchDashboardHabits().first { $0.id == habitID }
         )
-        let details = try #require(repository.fetchHabitDetails(id: habitID))
+        let details = try #require(try repository.fetchHabitDetails(id: habitID))
 
         #expect(!dashboardHabit.isSkippedToday)
         #expect(!dashboardHabit.isCompletedToday)
@@ -209,7 +209,7 @@ struct CoreDataHabitRepositoryTests {
         let habitID = try repository.createHabit(from: draft)
         try repository.skipHabitToday(id: habitID)
 
-        let details = try #require(repository.fetchHabitDetails(id: habitID))
+        let details = try #require(try repository.fetchHabitDetails(id: habitID))
         let editDraft = EditHabitDraft(
             id: habitID,
             type: details.type,
@@ -224,8 +224,240 @@ struct CoreDataHabitRepositoryTests {
 
         try repository.updateHabit(from: editDraft)
 
-        let updatedDetails = try #require(repository.fetchHabitDetails(id: habitID))
+        let updatedDetails = try #require(try repository.fetchHabitDetails(id: habitID))
         #expect(updatedDetails.completedDays.isEmpty)
         #expect(updatedDetails.skippedDays.isEmpty)
+    }
+
+    @Test
+    func fetchDashboardHabitsFailsOnCorruptedRow() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataHabitRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        let object = NSEntityDescription.insertNewObject(forEntityName: "Habit", into: context)
+        object.setValue(UUID(), forKey: "id")
+        object.setValue("broken_type", forKey: "typeRaw")
+        object.setValue("Corrupted", forKey: "name")
+        object.setValue(Date(), forKey: "startDate")
+        object.setValue(false, forKey: "reminderEnabled")
+        object.setValue(Date(), forKey: "createdAt")
+        object.setValue(Date(), forKey: "updatedAt")
+        try context.save()
+
+        do {
+            _ = try repository.fetchDashboardHabits()
+            Issue.record("Expected data integrity error.")
+        } catch let error as DataIntegrityError {
+            #expect(error.operation == "fetchDashboardHabits")
+            #expect(error.report.issues.count == 1)
+        }
+    }
+
+    @Test
+    func fetchHabitDetailsFailsWhenReminderHourIsMissing() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataHabitRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Corrupted Details"
+        draft.startDate = Calendar.current.startOfDay(for: Date())
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = ReminderTime(hour: 9, minute: 15)
+        let habitID = try repository.createHabit(from: draft)
+
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
+        request.predicate = NSPredicate(format: "id == %@", habitID as CVarArg)
+        request.fetchLimit = 1
+        let object = try #require(context.fetch(request).first)
+        object.setValue(nil, forKey: "reminderHour")
+        try context.save()
+
+        do {
+            _ = try repository.fetchHabitDetails(id: habitID)
+            Issue.record("Expected data integrity error.")
+        } catch let error as DataIntegrityError {
+            #expect(error.operation == "fetchHabitDetails")
+            #expect(!error.report.isEmpty)
+        }
+    }
+
+    @Test
+    func createEditDeleteHabitSmoke() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Read"
+        draft.startDate = TestSupport.makeDate(2026, 4, 1)
+        draft.scheduleDays = .daily
+        let habitID = try repository.createHabit(from: draft)
+
+        let created = try #require(try repository.fetchHabitDetails(id: habitID))
+        #expect(created.name == "Read")
+
+        let editDraft = EditHabitDraft(
+            id: habitID,
+            type: created.type,
+            startDate: created.startDate,
+            name: "Read More",
+            scheduleDays: .weekdays,
+            reminderEnabled: true,
+            reminderTime: ReminderTime(hour: 9, minute: 30),
+            completedDays: [],
+            skippedDays: []
+        )
+        try repository.updateHabit(from: editDraft)
+
+        let updated = try #require(try repository.fetchHabitDetails(id: habitID))
+        #expect(updated.name == "Read More")
+        #expect(updated.scheduleDays == .weekdays)
+        #expect(updated.reminderEnabled)
+
+        try repository.deleteHabit(id: habitID)
+        #expect(try repository.fetchDashboardHabits().isEmpty)
+    }
+
+    @Test
+    func fetchDashboardHabitsFailsWhenReminderHourIsMissing() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Read"
+        draft.startDate = Calendar.current.startOfDay(for: Date())
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = ReminderTime(hour: 9, minute: 0)
+        let habitID = try repository.createHabit(from: draft)
+
+        let context = persistence.container.viewContext
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
+        request.predicate = NSPredicate(format: "id == %@", habitID as CVarArg)
+        request.fetchLimit = 1
+        let object = try #require(context.fetch(request).first)
+        object.setValue(nil, forKey: "reminderHour")
+        try context.save()
+
+        do {
+            _ = try repository.fetchDashboardHabits()
+            Issue.record("Expected data integrity error.")
+        } catch let error as DataIntegrityError {
+            #expect(error.operation == "fetchDashboardHabits")
+            #expect(!error.report.isEmpty)
+        }
+    }
+
+    @Test
+    func fetchDashboardHabitsFailsWhenReminderMinuteIsMissing() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Read"
+        draft.startDate = Calendar.current.startOfDay(for: Date())
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = ReminderTime(hour: 9, minute: 0)
+        let habitID = try repository.createHabit(from: draft)
+
+        let context = persistence.container.viewContext
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
+        request.predicate = NSPredicate(format: "id == %@", habitID as CVarArg)
+        request.fetchLimit = 1
+        let object = try #require(context.fetch(request).first)
+        object.setValue(nil, forKey: "reminderMinute")
+        try context.save()
+
+        do {
+            _ = try repository.fetchDashboardHabits()
+            Issue.record("Expected data integrity error.")
+        } catch let error as DataIntegrityError {
+            #expect(error.operation == "fetchDashboardHabits")
+            #expect(!error.report.isEmpty)
+        }
+    }
+
+    @Test
+    func fetchDashboardHabitsFailsWhenReminderHourIsOutOfRange() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Read"
+        draft.startDate = Calendar.current.startOfDay(for: Date())
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = ReminderTime(hour: 9, minute: 0)
+        let habitID = try repository.createHabit(from: draft)
+
+        let context = persistence.container.viewContext
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
+        request.predicate = NSPredicate(format: "id == %@", habitID as CVarArg)
+        request.fetchLimit = 1
+        let object = try #require(context.fetch(request).first)
+        object.setValue(Int16(24), forKey: "reminderHour")
+        try context.save()
+
+        do {
+            _ = try repository.fetchDashboardHabits()
+            Issue.record("Expected data integrity error.")
+        } catch let error as DataIntegrityError {
+            #expect(error.operation == "fetchDashboardHabits")
+            #expect(!error.report.isEmpty)
+        }
+    }
+
+    @Test
+    func fetchDashboardHabitsFailsWhenReminderMinuteIsOutOfRange() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Read"
+        draft.startDate = Calendar.current.startOfDay(for: Date())
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = ReminderTime(hour: 9, minute: 0)
+        let habitID = try repository.createHabit(from: draft)
+
+        let context = persistence.container.viewContext
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
+        request.predicate = NSPredicate(format: "id == %@", habitID as CVarArg)
+        request.fetchLimit = 1
+        let object = try #require(context.fetch(request).first)
+        object.setValue(Int16(60), forKey: "reminderMinute")
+        try context.save()
+
+        do {
+            _ = try repository.fetchDashboardHabits()
+            Issue.record("Expected data integrity error.")
+        } catch let error as DataIntegrityError {
+            #expect(error.operation == "fetchDashboardHabits")
+            #expect(!error.report.isEmpty)
+        }
     }
 }

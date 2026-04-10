@@ -142,7 +142,13 @@ final class AppBadgeService {
     }
 
     func refreshBadge(now: Date = Date()) {
-        let badgeCount = overdueCount(now: now)
+        let badgeCount: Int
+        do {
+            badgeCount = try overdueCount(now: now)
+        } catch {
+            ReliabilityLog.error("badge.refresh failed: \(error.localizedDescription)")
+            return
+        }
 
         if #available(iOS 17.0, *) {
             UNUserNotificationCenter.current().setBadgeCount(badgeCount, withCompletionHandler: nil)
@@ -151,12 +157,12 @@ final class AppBadgeService {
         }
     }
 
-    func overdueCount(now: Date = Date()) -> Int {
-        let habits = loadDashboardUseCase.execute()
+    func overdueCount(now: Date = Date()) throws -> Int {
+        let habits = try loadDashboardUseCase.execute()
             .sections
             .flatMap(\.habits)
 
-        let pills = pillRepository.fetchDashboardPills()
+        let pills = try pillRepository.fetchDashboardPills()
 
         return ProjectedBadgeCountCalculator.overdueCount(
             now: now,
