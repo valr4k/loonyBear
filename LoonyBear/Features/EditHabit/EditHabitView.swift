@@ -263,37 +263,18 @@ struct EditHabitView: View {
 }
 
 private struct CompletedDaysCalendarView: View {
+    private let calendarSpacing: CGFloat = 6
+    private let weekdayRowHeight: CGFloat = 20
     let month: Date
     let editableDays: Set<Date>
     @Binding var selectedDays: Set<Date>
     let availableMonths: [Date]
     let onMonthChange: (Date) -> Void
     @State private var availableWidth: CGFloat = 0
-    @State private var transitionDirection: HabitCalendarTransitionDirection = .forward
-    @State private var renderedMonth: Date
-    @State private var outgoingMonth: Date?
-    @State private var incomingOffset: CGFloat = 0
-    @State private var outgoingOffset: CGFloat = 0
-    
     private var calendar: Calendar {
         var calendar = Calendar.autoupdatingCurrent
         calendar.firstWeekday = 2
         return calendar
-    }
-
-    init(
-        month: Date,
-        editableDays: Set<Date>,
-        selectedDays: Binding<Set<Date>>,
-        availableMonths: [Date],
-        onMonthChange: @escaping (Date) -> Void
-    ) {
-        self.month = month
-        self.editableDays = editableDays
-        self._selectedDays = selectedDays
-        self.availableMonths = availableMonths
-        self.onMonthChange = onMonthChange
-        _renderedMonth = State(initialValue: month)
     }
 
     var body: some View {
@@ -327,19 +308,44 @@ private struct CompletedDaysCalendarView: View {
                 }
             }
 
-            ZStack {
-                if let outgoingMonth {
-                    monthGridContent(for: outgoingMonth)
-                        .frame(width: availableWidth == 0 ? nil : availableWidth, alignment: .top)
-                        .offset(x: outgoingOffset)
+            VStack(spacing: calendarSpacing) {
+                HStack(spacing: calendarSpacing) {
+                    ForEach(weekdaySymbols, id: \.self) { symbol in
+                        Text(symbol)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: cellSize, height: weekdayRowHeight)
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .center)
 
-                monthGridContent(for: renderedMonth)
-                    .frame(width: availableWidth == 0 ? nil : availableWidth, alignment: .top)
-                    .offset(x: incomingOffset)
+                ForEach(dayRows.indices, id: \.self) { rowIndex in
+                    HStack(spacing: calendarSpacing) {
+                        ForEach(dayRows[rowIndex]) { day in
+                            Group {
+                                if let date = day.date {
+                                    HabitCalendarDayView(
+                                        dayNumber: calendar.component(.day, from: date),
+                                        style: dayStyle(for: date),
+                                        cellSize: cellSize
+                                    )
+                                    .contentShape(Circle())
+                                    .allowsHitTesting(editableDays.contains(date))
+                                    .onTapGesture {
+                                        toggle(date)
+                                    }
+                                    .disabled(!editableDays.contains(date))
+                                } else {
+                                    Color.clear
+                                        .frame(width: cellSize, height: cellSize)
+                                }
+
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .clipped()
         }
         .contentShape(Rectangle())
         .background(
@@ -350,9 +356,6 @@ private struct CompletedDaysCalendarView: View {
         )
         .onPreferenceChange(HabitEditCalendarWidthPreferenceKey.self) { width in
             availableWidth = width
-        }
-        .onChange(of: month) {
-            animateMonthChange(to: month)
         }
         .gesture(
             DragGesture(minimumDistance: 24)
@@ -366,44 +369,6 @@ private struct CompletedDaysCalendarView: View {
         )
     }
 
-    private func monthGridContent(for displayMonth: Date) -> some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                ForEach(weekdaySymbols, id: \.self) { symbol in
-                    Text(symbol)
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-
-            ForEach(dayRows(for: displayMonth).indices, id: \.self) { rowIndex in
-                HStack(spacing: 8) {
-                    ForEach(dayRows(for: displayMonth)[rowIndex]) { day in
-                        Group {
-                            if let date = day.date {
-                                HabitCalendarDayView(
-                                    dayNumber: calendar.component(.day, from: date),
-                                    style: dayStyle(for: date),
-                                    cellSize: cellSize
-                                )
-                                .contentShape(Circle())
-                                .allowsHitTesting(editableDays.contains(date))
-                                .onTapGesture {
-                                    toggle(date)
-                                }
-                                .disabled(!editableDays.contains(date))
-                            } else {
-                                Color.clear
-                                    .frame(maxWidth: .infinity, minHeight: cellSize)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     private var weekdaySymbols: [String] {
         let formatter = DateFormatter()
         formatter.locale = Calendar.autoupdatingCurrent.locale ?? Locale.autoupdatingCurrent
@@ -412,9 +377,9 @@ private struct CompletedDaysCalendarView: View {
         return (Array(symbols[1...]) + [symbols[0]]).map { $0.uppercased() }
     }
 
-    private func days(for displayMonth: Date) -> [CalendarDayCell] {
+    private var days: [CalendarDayCell] {
         guard
-            let monthInterval = calendar.dateInterval(of: .month, for: displayMonth),
+            let monthInterval = calendar.dateInterval(of: .month, for: month),
             let firstWeekInterval = calendar.dateInterval(of: .weekOfMonth, for: monthInterval.start),
             let lastDay = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: monthInterval.start),
             let lastWeekInterval = calendar.dateInterval(of: .weekOfMonth, for: lastDay)
@@ -427,7 +392,7 @@ private struct CompletedDaysCalendarView: View {
         let end = calendar.startOfDay(for: lastWeekInterval.end)
 
         while cursor < end {
-            let isInDisplayedMonth = calendar.isDate(cursor, equalTo: displayMonth, toGranularity: .month)
+            let isInDisplayedMonth = calendar.isDate(cursor, equalTo: month, toGranularity: .month)
             result.append(CalendarDayCell(id: cursor, date: isInDisplayedMonth ? cursor : nil))
 
             guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else {
@@ -439,12 +404,13 @@ private struct CompletedDaysCalendarView: View {
         return result
     }
 
-    private func dayRows(for displayMonth: Date) -> [[CalendarDayCell]] {
-        days(for: displayMonth).chunked(into: 7)
+    private var dayRows: [[CalendarDayCell]] {
+        days.chunked(into: 7)
     }
 
     private var cellSize: CGFloat {
-        let raw = floor((availableWidth - 8 * 6) / 7)
+        guard availableWidth > 0 else { return 40 }
+        let raw = floor((availableWidth - calendarSpacing * 6) / 7)
         return min(max(raw, 35), 40)
     }
 
@@ -473,40 +439,7 @@ private struct CompletedDaysCalendarView: View {
         guard let currentIndex = availableMonths.firstIndex(of: month) else { return }
         let nextIndex = currentIndex + step
         guard availableMonths.indices.contains(nextIndex) else { return }
-        transitionDirection = step > 0 ? .forward : .backward
         onMonthChange(availableMonths[nextIndex])
-    }
-
-    private func animateMonthChange(to newMonth: Date) {
-        guard newMonth != renderedMonth else { return }
-        guard availableWidth > 0 else {
-            renderedMonth = newMonth
-            outgoingMonth = nil
-            return
-        }
-
-        let width = availableWidth
-        let incomingStart = transitionDirection == .forward ? width : -width
-        let outgoingEnd = -incomingStart
-
-        outgoingMonth = renderedMonth
-        renderedMonth = newMonth
-        incomingOffset = incomingStart
-        outgoingOffset = 0
-
-        DispatchQueue.main.async {
-            withAnimation(.easeInOut(duration: 0.24)) {
-                incomingOffset = 0
-                outgoingOffset = outgoingEnd
-            }
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) {
-            guard renderedMonth == newMonth else { return }
-            outgoingMonth = nil
-            incomingOffset = 0
-            outgoingOffset = 0
-        }
     }
 
     private func dayStyle(for date: Date) -> HabitCalendarDayStyle {
@@ -518,11 +451,6 @@ private struct CompletedDaysCalendarView: View {
             return .disabled
         }
     }
-}
-
-private enum HabitCalendarTransitionDirection {
-    case forward
-    case backward
 }
 
 private struct CalendarDayCell: Identifiable {
@@ -541,24 +469,20 @@ struct HabitCalendarDayView: View {
     let style: HabitCalendarDayStyle
     let cellSize: CGFloat
 
-    private var selectionSize: CGFloat {
-        min(cellSize, 42)
-    }
-
     var body: some View {
         ZStack {
             if style == .selected {
                 Circle()
                     .fill(Color(uiColor: .systemBlue).opacity(0.2))
-                    .frame(width: selectionSize, height: selectionSize)
+                    .frame(width: markerSize, height: markerSize)
             }
 
             Text("\(dayNumber)")
                 .font(.system(size: 19, weight: .regular, design: .rounded))
                 .foregroundStyle(foreground)
+                .frame(width: markerSize, height: markerSize)
         }
         .frame(width: cellSize, height: cellSize)
-        .frame(maxWidth: .infinity, minHeight: selectionSize)
     }
 
     private var foreground: Color {
@@ -570,6 +494,10 @@ struct HabitCalendarDayView: View {
         case .disabled:
             return Color(uiColor: .tertiaryLabel)
         }
+    }
+
+    private var markerSize: CGFloat {
+        min(cellSize, 40)
     }
 }
 

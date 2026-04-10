@@ -199,35 +199,3 @@ struct BackupAlert: Identifiable {
     let title: String
     let message: String
 }
-
-enum BackupConfirmationDialog: Identifiable {
-    case createBackup
-    case restoreBackup
-
-    var id: String {
-        switch self {
-        case .createBackup:
-            return "create_backup"
-        case .restoreBackup:
-            return "restore_backup"
-        }
-    }
-
-    var title: String {
-        switch self {
-        case .createBackup:
-            return "Create backup?"
-        case .restoreBackup:
-            return "Restore backup?"
-        }
-    }
-
-    var message: String {
-        switch self {
-        case .createBackup:
-            return "A new backup file will be created in the selected folder."
-        case .restoreBackup:
-            return "This will replace current app data with the selected backup."
-        }
-    }
-}
