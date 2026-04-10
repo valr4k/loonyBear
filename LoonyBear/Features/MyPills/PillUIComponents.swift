@@ -115,11 +115,31 @@ struct PillHistoryCalendarView: View {
     let availableMonths: [Date]
     let onMonthChange: (Date) -> Void
     @State private var availableWidth: CGFloat = 0
+    @State private var transitionDirection: PillCalendarTransitionDirection = .forward
+    @State private var renderedMonth: Date
+    @State private var outgoingMonth: Date?
+    @State private var incomingOffset: CGFloat = 0
+    @State private var outgoingOffset: CGFloat = 0
 
     private var calendar: Calendar {
         var calendar = Calendar.autoupdatingCurrent
         calendar.firstWeekday = 2
         return calendar
+    }
+
+    init(
+        month: Date,
+        editableDays: Set<Date>,
+        selectedDays: Binding<Set<Date>>,
+        availableMonths: [Date],
+        onMonthChange: @escaping (Date) -> Void
+    ) {
+        self.month = month
+        self.editableDays = editableDays
+        self._selectedDays = selectedDays
+        self.availableMonths = availableMonths
+        self.onMonthChange = onMonthChange
+        _renderedMonth = State(initialValue: month)
     }
 
     var body: some View {
@@ -153,41 +173,19 @@ struct PillHistoryCalendarView: View {
                 }
             }
 
-            VStack(spacing: 8) {
-                HStack(spacing: 8) {
-                    ForEach(weekdaySymbols, id: \.self) { symbol in
-                        Text(symbol)
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity)
-                    }
+            ZStack {
+                if let outgoingMonth {
+                    monthGridContent(for: outgoingMonth)
+                        .frame(width: availableWidth == 0 ? nil : availableWidth, alignment: .top)
+                        .offset(x: outgoingOffset)
                 }
 
-                ForEach(dayRows.indices, id: \.self) { rowIndex in
-                    HStack(spacing: 8) {
-                        ForEach(dayRows[rowIndex]) { day in
-                            Group {
-                                if let date = day.date {
-                                    PillCalendarDayView(
-                                        dayNumber: calendar.component(.day, from: date),
-                                        style: dayStyle(for: date),
-                                        cellSize: cellSize
-                                    )
-                                    .contentShape(Circle())
-                                    .allowsHitTesting(editableDays.contains(date))
-                                    .onTapGesture {
-                                        toggle(date)
-                                    }
-                                } else {
-                                    Color.clear
-                                        .frame(maxWidth: .infinity, minHeight: cellSize)
-                                }
-                            }
-                        }
-                    }
-                }
+                monthGridContent(for: renderedMonth)
+                    .frame(width: availableWidth == 0 ? nil : availableWidth, alignment: .top)
+                    .offset(x: incomingOffset)
             }
-
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .clipped()
         }
         .contentShape(Rectangle())
         .background(
@@ -198,6 +196,9 @@ struct PillHistoryCalendarView: View {
         )
         .onPreferenceChange(PillCalendarWidthPreferenceKey.self) { width in
             availableWidth = width
+        }
+        .onChange(of: month) {
+            animateMonthChange(to: month)
         }
         .gesture(
             DragGesture(minimumDistance: 24)
@@ -211,6 +212,43 @@ struct PillHistoryCalendarView: View {
         )
     }
 
+    private func monthGridContent(for displayMonth: Date) -> some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                ForEach(weekdaySymbols, id: \.self) { symbol in
+                    Text(symbol)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+
+            ForEach(dayRows(for: displayMonth).indices, id: \.self) { rowIndex in
+                HStack(spacing: 8) {
+                    ForEach(dayRows(for: displayMonth)[rowIndex]) { day in
+                        Group {
+                            if let date = day.date {
+                                PillCalendarDayView(
+                                    dayNumber: calendar.component(.day, from: date),
+                                    style: dayStyle(for: date),
+                                    cellSize: cellSize
+                                )
+                                .contentShape(Circle())
+                                .allowsHitTesting(editableDays.contains(date))
+                                .onTapGesture {
+                                    toggle(date)
+                                }
+                            } else {
+                                Color.clear
+                                    .frame(maxWidth: .infinity, minHeight: cellSize)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private var weekdaySymbols: [String] {
         let formatter = DateFormatter()
         formatter.locale = Calendar.autoupdatingCurrent.locale ?? Locale.autoupdatingCurrent
@@ -219,9 +257,9 @@ struct PillHistoryCalendarView: View {
         return (Array(symbols[1...]) + [symbols[0]]).map { $0.uppercased() }
     }
 
-    private var days: [PillCalendarDayCell] {
+    private func days(for displayMonth: Date) -> [PillCalendarDayCell] {
         guard
-            let monthInterval = calendar.dateInterval(of: .month, for: month),
+            let monthInterval = calendar.dateInterval(of: .month, for: displayMonth),
             let firstWeekInterval = calendar.dateInterval(of: .weekOfMonth, for: monthInterval.start),
             let lastDay = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: monthInterval.start),
             let lastWeekInterval = calendar.dateInterval(of: .weekOfMonth, for: lastDay)
@@ -234,7 +272,7 @@ struct PillHistoryCalendarView: View {
         let end = calendar.startOfDay(for: lastWeekInterval.end)
 
         while cursor < end {
-            let isInDisplayedMonth = calendar.isDate(cursor, equalTo: month, toGranularity: .month)
+            let isInDisplayedMonth = calendar.isDate(cursor, equalTo: displayMonth, toGranularity: .month)
             result.append(PillCalendarDayCell(id: cursor, date: isInDisplayedMonth ? cursor : nil))
 
             guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else {
@@ -251,8 +289,8 @@ struct PillHistoryCalendarView: View {
         return min(max(raw, 35), 40)
     }
 
-    private var dayRows: [[PillCalendarDayCell]] {
-        days.chunked(into: 7)
+    private func dayRows(for displayMonth: Date) -> [[PillCalendarDayCell]] {
+        days(for: displayMonth).chunked(into: 7)
     }
 
     private var canGoBackward: Bool {
@@ -280,7 +318,40 @@ struct PillHistoryCalendarView: View {
         guard let currentIndex = availableMonths.firstIndex(of: month) else { return }
         let nextIndex = currentIndex + step
         guard availableMonths.indices.contains(nextIndex) else { return }
+        transitionDirection = step > 0 ? .forward : .backward
         onMonthChange(availableMonths[nextIndex])
+    }
+
+    private func animateMonthChange(to newMonth: Date) {
+        guard newMonth != renderedMonth else { return }
+        guard availableWidth > 0 else {
+            renderedMonth = newMonth
+            outgoingMonth = nil
+            return
+        }
+
+        let width = availableWidth
+        let incomingStart = transitionDirection == .forward ? width : -width
+        let outgoingEnd = -incomingStart
+
+        outgoingMonth = renderedMonth
+        renderedMonth = newMonth
+        incomingOffset = incomingStart
+        outgoingOffset = 0
+
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut(duration: 0.24)) {
+                incomingOffset = 0
+                outgoingOffset = outgoingEnd
+            }
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) {
+            guard renderedMonth == newMonth else { return }
+            outgoingMonth = nil
+            incomingOffset = 0
+            outgoingOffset = 0
+        }
     }
 
     private func dayStyle(for date: Date) -> PillCalendarDayStyle {
@@ -300,11 +371,29 @@ struct PillReadOnlyMonthCalendarView: View {
     let availableMonths: [Date]
     let onMonthChange: (Date) -> Void
     @State private var availableWidth: CGFloat = 0
+    @State private var transitionDirection: PillCalendarTransitionDirection = .forward
+    @State private var renderedMonth: Date
+    @State private var outgoingMonth: Date?
+    @State private var incomingOffset: CGFloat = 0
+    @State private var outgoingOffset: CGFloat = 0
 
     private var calendar: Calendar {
         var calendar = Calendar.autoupdatingCurrent
         calendar.firstWeekday = 2
         return calendar
+    }
+
+    init(
+        month: Date,
+        takenDays: Set<Date>,
+        availableMonths: [Date],
+        onMonthChange: @escaping (Date) -> Void
+    ) {
+        self.month = month
+        self.takenDays = takenDays
+        self.availableMonths = availableMonths
+        self.onMonthChange = onMonthChange
+        _renderedMonth = State(initialValue: month)
     }
 
     var body: some View {
@@ -338,6 +427,48 @@ struct PillReadOnlyMonthCalendarView: View {
                 }
             }
 
+            ZStack {
+                if let outgoingMonth {
+                    monthGridContent(for: outgoingMonth)
+                        .frame(width: availableWidth == 0 ? nil : availableWidth, alignment: .top)
+                        .offset(x: outgoingOffset)
+                }
+
+                monthGridContent(for: renderedMonth)
+                    .frame(width: availableWidth == 0 ? nil : availableWidth, alignment: .top)
+                    .offset(x: incomingOffset)
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .clipped()
+        }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        .background(
+            GeometryReader { proxy in
+                Color.clear
+                    .preference(key: PillCalendarWidthPreferenceKey.self, value: proxy.size.width)
+            }
+        )
+        .onPreferenceChange(PillCalendarWidthPreferenceKey.self) { width in
+            availableWidth = width
+        }
+        .onChange(of: month) {
+            animateMonthChange(to: month)
+        }
+        .gesture(
+            DragGesture(minimumDistance: 24)
+                .onEnded { value in
+                    if value.translation.width < -50 {
+                        changeMonth(step: 1)
+                    } else if value.translation.width > 50 {
+                        changeMonth(step: -1)
+                    }
+                }
+        )
+    }
+
+    private func monthGridContent(for displayMonth: Date) -> some View {
+        VStack(spacing: 8) {
             HStack(spacing: 8) {
                 ForEach(weekdaySymbols, id: \.self) { symbol in
                     Text(symbol)
@@ -347,9 +478,9 @@ struct PillReadOnlyMonthCalendarView: View {
                 }
             }
 
-            ForEach(dayRows.indices, id: \.self) { rowIndex in
+            ForEach(dayRows(for: displayMonth).indices, id: \.self) { rowIndex in
                 HStack(spacing: 8) {
-                    ForEach(dayRows[rowIndex]) { day in
+                    ForEach(dayRows(for: displayMonth)[rowIndex]) { day in
                         if let date = day.date {
                             PillReadOnlyCalendarDayView(
                                 dayNumber: calendar.component(.day, from: date),
@@ -364,27 +495,6 @@ struct PillReadOnlyMonthCalendarView: View {
                 }
             }
         }
-        .padding(.vertical, 4)
-        .contentShape(Rectangle())
-        .background(
-            GeometryReader { proxy in
-                Color.clear
-                    .preference(key: PillCalendarWidthPreferenceKey.self, value: proxy.size.width)
-            }
-        )
-        .onPreferenceChange(PillCalendarWidthPreferenceKey.self) { width in
-            availableWidth = width
-        }
-        .gesture(
-            DragGesture(minimumDistance: 24)
-                .onEnded { value in
-                    if value.translation.width < -50 {
-                        changeMonth(step: 1)
-                    } else if value.translation.width > 50 {
-                        changeMonth(step: -1)
-                    }
-                }
-        )
     }
 
     private var cellSize: CGFloat {
@@ -400,9 +510,9 @@ struct PillReadOnlyMonthCalendarView: View {
         return (Array(symbols[1...]) + [symbols[0]]).map { $0.uppercased() }
     }
 
-    private var days: [PillCalendarDayCell] {
+    private func days(for displayMonth: Date) -> [PillCalendarDayCell] {
         guard
-            let monthInterval = calendar.dateInterval(of: .month, for: month),
+            let monthInterval = calendar.dateInterval(of: .month, for: displayMonth),
             let firstWeekInterval = calendar.dateInterval(of: .weekOfMonth, for: monthInterval.start),
             let lastDay = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: monthInterval.start),
             let lastWeekInterval = calendar.dateInterval(of: .weekOfMonth, for: lastDay)
@@ -415,7 +525,7 @@ struct PillReadOnlyMonthCalendarView: View {
         let end = calendar.startOfDay(for: lastWeekInterval.end)
 
         while cursor < end {
-            let isInDisplayedMonth = calendar.isDate(cursor, equalTo: month, toGranularity: .month)
+            let isInDisplayedMonth = calendar.isDate(cursor, equalTo: displayMonth, toGranularity: .month)
             result.append(PillCalendarDayCell(id: cursor, date: isInDisplayedMonth ? cursor : nil))
 
             guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else {
@@ -427,8 +537,8 @@ struct PillReadOnlyMonthCalendarView: View {
         return result
     }
 
-    private var dayRows: [[PillCalendarDayCell]] {
-        days.chunked(into: 7)
+    private func dayRows(for displayMonth: Date) -> [[PillCalendarDayCell]] {
+        days(for: displayMonth).chunked(into: 7)
     }
 
     private var canGoBackward: Bool {
@@ -445,8 +555,46 @@ struct PillReadOnlyMonthCalendarView: View {
         guard let currentIndex = availableMonths.firstIndex(of: month) else { return }
         let nextIndex = currentIndex + step
         guard availableMonths.indices.contains(nextIndex) else { return }
+        transitionDirection = step > 0 ? .forward : .backward
         onMonthChange(availableMonths[nextIndex])
     }
+
+    private func animateMonthChange(to newMonth: Date) {
+        guard newMonth != renderedMonth else { return }
+        guard availableWidth > 0 else {
+            renderedMonth = newMonth
+            outgoingMonth = nil
+            return
+        }
+
+        let width = availableWidth
+        let incomingStart = transitionDirection == .forward ? width : -width
+        let outgoingEnd = -incomingStart
+
+        outgoingMonth = renderedMonth
+        renderedMonth = newMonth
+        incomingOffset = incomingStart
+        outgoingOffset = 0
+
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut(duration: 0.24)) {
+                incomingOffset = 0
+                outgoingOffset = outgoingEnd
+            }
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) {
+            guard renderedMonth == newMonth else { return }
+            outgoingMonth = nil
+            incomingOffset = 0
+            outgoingOffset = 0
+        }
+    }
+}
+
+private enum PillCalendarTransitionDirection {
+    case forward
+    case backward
 }
 
 private struct PillCalendarDayCell: Identifiable {
@@ -473,12 +621,16 @@ private struct PillCalendarDayView: View {
     let style: PillCalendarDayStyle
     let cellSize: CGFloat
 
+    private var selectionSize: CGFloat {
+        min(cellSize, 42)
+    }
+
     var body: some View {
         ZStack {
             if style == .selected {
                 Circle()
                     .fill(Color(uiColor: .systemBlue).opacity(0.2))
-                    .frame(width: 42, height: 42)
+                    .frame(width: selectionSize, height: selectionSize)
             }
 
             Text("\(dayNumber)")
@@ -506,12 +658,16 @@ private struct PillReadOnlyCalendarDayView: View {
     let isSelected: Bool
     let cellSize: CGFloat
 
+    private var selectionSize: CGFloat {
+        min(cellSize, 42)
+    }
+
     var body: some View {
         ZStack {
             if isSelected {
                 Circle()
                     .fill(Color(uiColor: .systemBlue).opacity(0.2))
-                    .frame(width: 42, height: 42)
+                    .frame(width: selectionSize, height: selectionSize)
             }
 
             Text("\(dayNumber)")
@@ -519,6 +675,6 @@ private struct PillReadOnlyCalendarDayView: View {
                 .foregroundStyle(isSelected ? Color.blue : Color(uiColor: .tertiaryLabel))
         }
         .frame(width: cellSize, height: cellSize)
-        .frame(maxWidth: .infinity, minHeight: cellSize)
+        .frame(maxWidth: .infinity, minHeight: selectionSize)
     }
 }
