@@ -20,7 +20,8 @@ struct EditHabitView: View {
             scheduleDays: details.scheduleDays,
             reminderEnabled: details.reminderEnabled,
             reminderTime: details.reminderTime ?? ReminderTime.default(),
-            completedDays: details.completedDays
+            completedDays: details.completedDays,
+            skippedDays: details.skippedDays
         ))
         _displayedMonth = State(initialValue: Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: Date())) ?? Date())
     }
@@ -88,10 +89,11 @@ struct EditHabitView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 AppCard {
-                    CompletedDaysCalendarView(
+                    HabitHistoryCalendarView(
                         month: displayedMonth,
-                        editableDays: Set(editableCompletionDays),
-                        selectedDays: $draft.completedDays,
+                        editableDays: Set(editableHistoryDays),
+                        completedDays: $draft.completedDays,
+                        skippedDays: $draft.skippedDays,
                         availableMonths: availableMonths,
                         onMonthChange: { displayedMonth = $0 }
                     )
@@ -99,31 +101,9 @@ struct EditHabitView: View {
                     .padding(.vertical, 18)
                 }
 
-                Text("You can edit the last 30 days, including today, but not before the start date.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 4)
-            }
+                HabitHistoryLegend()
 
-            if !historicalCompletedDays.isEmpty {
-                AppCard {
-                    ForEach(historicalCompletedDays, id: \.self) { day in
-                        HStack {
-                            Text(day.formatted(date: .abbreviated, time: .omitted))
-                            Spacer()
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                        }
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 18)
-
-                        if day != historicalCompletedDays.last {
-                            AppSectionDivider()
-                        }
-                    }
-                }
-
-                Text("Older completed days remain visible here, but cannot be edited.")
+                Text("Tap a day to switch between none, completed, and skipped.\nYou can edit only the last 30 days, but not before the start date.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 4)
@@ -169,7 +149,7 @@ struct EditHabitView: View {
         }
     }
 
-    private var editableCompletionDays: [Date] {
+    private var editableHistoryDays: [Date] {
         let today = Calendar.current.startOfDay(for: Date())
         let earliest = max(
             Calendar.current.startOfDay(for: draft.startDate),
@@ -182,16 +162,9 @@ struct EditHabitView: View {
             .filter { $0 >= earliest && $0 <= today }
     }
 
-    private var historicalCompletedDays: [Date] {
-        let editableSet = Set(editableCompletionDays)
-        return draft.completedDays
-            .filter { !editableSet.contains($0) }
-            .sorted(by: >)
-    }
-
     private var availableMonths: [Date] {
         let months = Set(
-            editableCompletionDays.compactMap {
+            editableHistoryDays.compactMap {
                 Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: $0))
             }
         )
@@ -237,7 +210,7 @@ struct EditHabitView: View {
 
         isSaving = true
         validationMessage = nil
-        let savedDraft = draft
+        let savedDraft = normalizedDraft()
 
         Task {
             do {
@@ -254,6 +227,12 @@ struct EditHabitView: View {
         }
     }
 
+    private func normalizedDraft() -> EditHabitDraft {
+        var normalized = draft
+        normalized.skippedDays.subtract(normalized.completedDays)
+        return normalized
+    }
+
     @ViewBuilder
     private func validationText(_ text: String) -> some View {
         Text(text)
@@ -262,12 +241,13 @@ struct EditHabitView: View {
     }
 }
 
-private struct CompletedDaysCalendarView: View {
+private struct HabitHistoryCalendarView: View {
     private let calendarSpacing: CGFloat = 6
     private let weekdayRowHeight: CGFloat = 20
     let month: Date
     let editableDays: Set<Date>
-    @Binding var selectedDays: Set<Date>
+    @Binding var completedDays: Set<Date>
+    @Binding var skippedDays: Set<Date>
     let availableMonths: [Date]
     let onMonthChange: (Date) -> Void
     @State private var availableWidth: CGFloat = 0
@@ -321,7 +301,7 @@ private struct CompletedDaysCalendarView: View {
 
                 ForEach(dayRows.indices, id: \.self) { rowIndex in
                     HStack(spacing: calendarSpacing) {
-                        ForEach(dayRows[rowIndex]) { day in
+                        ForEach(dayRows[rowIndex], id: \.id) { day in
                             Group {
                                 if let date = day.date {
                                     HabitCalendarDayView(
@@ -428,10 +408,17 @@ private struct CompletedDaysCalendarView: View {
         let normalizedDate = calendar.startOfDay(for: date)
         guard editableDays.contains(normalizedDate) else { return }
 
-        if selectedDays.contains(normalizedDate) {
-            selectedDays.remove(normalizedDate)
-        } else {
-            selectedDays.insert(normalizedDate)
+        switch dayStyle(for: normalizedDate) {
+        case .available:
+            completedDays.insert(normalizedDate)
+            skippedDays.remove(normalizedDate)
+        case .completed:
+            completedDays.remove(normalizedDate)
+            skippedDays.insert(normalizedDate)
+        case .skipped:
+            skippedDays.remove(normalizedDate)
+        case .disabled:
+            break
         }
     }
 
@@ -443,8 +430,10 @@ private struct CompletedDaysCalendarView: View {
     }
 
     private func dayStyle(for date: Date) -> HabitCalendarDayStyle {
-        if selectedDays.contains(date) {
-            return .selected
+        if completedDays.contains(date) {
+            return .completed
+        } else if skippedDays.contains(date) {
+            return .skipped
         } else if editableDays.contains(date) {
             return .available
         } else {
@@ -460,7 +449,8 @@ private struct CalendarDayCell: Identifiable {
 
 enum HabitCalendarDayStyle {
     case available
-    case selected
+    case completed
+    case skipped
     case disabled
 }
 
@@ -471,9 +461,9 @@ struct HabitCalendarDayView: View {
 
     var body: some View {
         ZStack {
-            if style == .selected {
+            if style == .completed || style == .skipped {
                 Circle()
-                    .fill(Color(uiColor: .systemBlue).opacity(0.2))
+                    .fill(backgroundColor)
                     .frame(width: markerSize, height: markerSize)
             }
 
@@ -487,12 +477,25 @@ struct HabitCalendarDayView: View {
 
     private var foreground: Color {
         switch style {
-        case .selected:
+        case .completed:
             return .blue
+        case .skipped:
+            return .red
         case .available:
             return .primary
         case .disabled:
             return Color(uiColor: .tertiaryLabel)
+        }
+    }
+
+    private var backgroundColor: Color {
+        switch style {
+        case .completed:
+            return Color(uiColor: .systemBlue).opacity(0.2)
+        case .skipped:
+            return Color(uiColor: .systemRed).opacity(0.18)
+        case .available, .disabled:
+            return .clear
         }
     }
 
@@ -506,6 +509,37 @@ private struct HabitEditCalendarWidthPreferenceKey: PreferenceKey {
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
+    }
+}
+
+private struct HabitHistoryLegend: View {
+    var body: some View {
+        HStack(spacing: 16) {
+            HabitHistoryLegendItem(label: "Completed", color: .blue)
+            HabitHistoryLegendItem(label: "Skipped", color: .red)
+        }
+        .padding(.horizontal, 4)
+    }
+}
+
+private struct HabitHistoryLegendItem: View {
+    let label: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(color.opacity(0.2))
+                .overlay {
+                    Circle()
+                        .stroke(color.opacity(0.35), lineWidth: 1)
+                }
+                .frame(width: 18, height: 18)
+
+            Text(label)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
     }
 }
 

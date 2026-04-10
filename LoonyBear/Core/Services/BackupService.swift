@@ -5,6 +5,7 @@ enum BackupServiceError: LocalizedError, Equatable {
     case folderNotSelected
     case invalidFolderAccess
     case missingBackup
+    case corruptedBackup
     case unsupportedSchemaVersion(Int)
     case internalFailure
 
@@ -16,6 +17,8 @@ enum BackupServiceError: LocalizedError, Equatable {
             return "The selected backup folder is no longer accessible."
         case .missingBackup:
             return "No backup file was found in the selected folder."
+        case .corruptedBackup:
+            return "The backup file could not be read."
         case .unsupportedSchemaVersion(let version):
             return "This backup uses unsupported schema version \(version)."
         case .internalFailure:
@@ -134,18 +137,11 @@ final class BackupService {
             folderURL.stopAccessingSecurityScopedResource()
         }
 
-        let primaryURL = folderURL.appendingPathComponent("\(appName).json.gz")
-        guard FileManager.default.fileExists(atPath: primaryURL.path) else {
-            throw BackupServiceError.missingBackup
-        }
-
         let snapshotURL = folderURL.appendingPathComponent("\(appName).restore-snapshot.json.gz")
         let snapshot = try compressionService.gzipCompress(JSONEncoder.backupEncoder.encode(makeArchive()))
         try snapshot.write(to: snapshotURL, options: .atomic)
 
-        let data = try Data(contentsOf: primaryURL)
-        let decoded = try compressionService.gzipDecompress(data)
-        let archive = try JSONDecoder.backupDecoder.decode(BackupArchive.self, from: decoded)
+        let archive = try loadPreferredArchive(in: folderURL)
         try restoreArchive(archive)
     }
 
@@ -463,20 +459,64 @@ final class BackupService {
     }
 
     private func readMetadata(in folderURL: URL) throws -> (timestampText: String, fileSizeText: String) {
-        let primaryURL = folderURL.appendingPathComponent("\(appName).json.gz")
-        let previousURL = folderURL.appendingPathComponent("\(appName).previous.json.gz")
-
-        let targetURL = FileManager.default.fileExists(atPath: primaryURL.path) ? primaryURL : previousURL
-        guard FileManager.default.fileExists(atPath: targetURL.path) else {
+        guard let loadedArchive = try loadPreferredArchiveFile(in: folderURL) else {
             return ("No backups yet", "—")
         }
 
-        let data = try Data(contentsOf: targetURL)
-        let decoded = try compressionService.gzipDecompress(data)
-        let archive = try JSONDecoder.backupDecoder.decode(BackupArchive.self, from: decoded)
-        let fileSize = ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)
-        let timestamp = archive.exportedAt.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+        let fileSize = ByteCountFormatter.string(fromByteCount: Int64(loadedArchive.data.count), countStyle: .file)
+        let timestamp = loadedArchive.archive.exportedAt.formatted(.dateTime.month(.abbreviated).day().hour().minute())
         return (timestamp, fileSize)
+    }
+
+    private func loadPreferredArchive(in folderURL: URL) throws -> BackupArchive {
+        guard let loadedArchive = try loadPreferredArchiveFile(in: folderURL) else {
+            throw BackupServiceError.missingBackup
+        }
+
+        return loadedArchive.archive
+    }
+
+    private func loadPreferredArchiveFile(in folderURL: URL) throws -> (archive: BackupArchive, data: Data)? {
+        let candidateURLs = [
+            folderURL.appendingPathComponent("\(appName).json.gz"),
+            folderURL.appendingPathComponent("\(appName).previous.json.gz"),
+        ]
+
+        var foundExistingArchive = false
+        for candidateURL in candidateURLs where FileManager.default.fileExists(atPath: candidateURL.path) {
+            foundExistingArchive = true
+
+            do {
+                let data = try Data(contentsOf: candidateURL)
+                let decoded = try compressionService.gzipDecompress(data)
+                let archive = try JSONDecoder.backupDecoder.decode(BackupArchive.self, from: decoded)
+                return (archive, data)
+            } catch {
+                guard isRecoverableArchiveReadError(error) else {
+                    throw error
+                }
+                continue
+            }
+        }
+
+        if foundExistingArchive {
+            throw BackupServiceError.corruptedBackup
+        }
+
+        return nil
+    }
+
+    private func isRecoverableArchiveReadError(_ error: Error) -> Bool {
+        switch error {
+        case is CocoaError:
+            return true
+        case is CompressionServiceError:
+            return true
+        case is DecodingError:
+            return true
+        default:
+            return false
+        }
     }
 
     private func fetchObjects(entityName: String, in context: NSManagedObjectContext) throws -> [NSManagedObject] {

@@ -5,6 +5,12 @@ struct SettingsView: View {
     @EnvironmentObject private var appState: HabitAppState
     @EnvironmentObject private var pillAppState: PillAppState
 
+    private var buildVersionText: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "-"
+        return "Build Version: \(version) (\(build))"
+    }
+
     var body: some View {
         AppScreen(backgroundStyle: .settings) {
             AppCard {
@@ -53,6 +59,14 @@ struct SettingsView: View {
                 AppSectionDivider()
                 settingsInfoRow(icon: "square.grid.2x2", title: "iPhone widgets")
             }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(buildVersionText)
+                Text("\u{00A9} valr4k vibecode app 2026")
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 4)
         }
         .navigationTitle("Settings")
     }

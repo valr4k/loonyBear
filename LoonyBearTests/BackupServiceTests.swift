@@ -72,4 +72,139 @@ struct BackupServiceTests {
         #expect(archive.pillScheduleVersions.isEmpty)
         #expect(archive.pillIntakeRecords.isEmpty)
     }
+
+    @Test
+    func restoreBackupFallsBackToPreviousArchiveWhenPrimaryIsMissing() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataHabitRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        let defaults = try #require(UserDefaults(suiteName: "BackupServiceTests.\(UUID().uuidString)"))
+        let compressionService = CompressionService()
+        let service = BackupService(
+            context: context,
+            makeWorkContext: persistence.makeBackgroundContext,
+            defaults: defaults,
+            compressionService: compressionService
+        )
+
+        let folderURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+        try service.saveFolderBookmark(for: folderURL)
+
+        let archive = BackupArchive(
+            schemaVersion: 1,
+            exportedAt: Date(),
+            habits: [
+                BackupHabit(
+                    id: UUID(),
+                    type: HabitType.build.rawValue,
+                    name: "Recovered",
+                    sortOrder: 0,
+                    startDate: Date(),
+                    reminderEnabled: false,
+                    reminderTime: nil,
+                    createdAt: Date(),
+                    updatedAt: Date(),
+                    version: 1
+                ),
+            ],
+            scheduleVersions: [],
+            completionRecords: [],
+            ordering: [],
+            pills: [],
+            pillScheduleVersions: [],
+            pillIntakeRecords: []
+        )
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try compressionService.gzipCompress(encoder.encode(archive))
+        let previousURL = folderURL.appendingPathComponent("LoonyBear.previous.json.gz")
+        try data.write(to: previousURL, options: .atomic)
+
+        try service.restoreBackup()
+
+        #expect(repository.fetchDashboardHabits().count == 1)
+    }
+
+    @Test
+    func restoreBackupDoesNotFallbackWhenPrimaryUsesUnsupportedSchema() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataHabitRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        let defaults = try #require(UserDefaults(suiteName: "BackupServiceTests.\(UUID().uuidString)"))
+        let compressionService = CompressionService()
+        let service = BackupService(
+            context: context,
+            makeWorkContext: persistence.makeBackgroundContext,
+            defaults: defaults,
+            compressionService: compressionService
+        )
+
+        let folderURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+        try service.saveFolderBookmark(for: folderURL)
+
+        let primaryArchive = BackupArchive(
+            schemaVersion: 999,
+            exportedAt: Date(),
+            habits: [],
+            scheduleVersions: [],
+            completionRecords: [],
+            ordering: [],
+            pills: [],
+            pillScheduleVersions: [],
+            pillIntakeRecords: []
+        )
+        let previousArchive = BackupArchive(
+            schemaVersion: 1,
+            exportedAt: Date(),
+            habits: [
+                BackupHabit(
+                    id: UUID(),
+                    type: HabitType.build.rawValue,
+                    name: "Previous",
+                    sortOrder: 0,
+                    startDate: Date(),
+                    reminderEnabled: false,
+                    reminderTime: nil,
+                    createdAt: Date(),
+                    updatedAt: Date(),
+                    version: 1
+                ),
+            ],
+            scheduleVersions: [],
+            completionRecords: [],
+            ordering: [],
+            pills: [],
+            pillScheduleVersions: [],
+            pillIntakeRecords: []
+        )
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+
+        let primaryData = try compressionService.gzipCompress(encoder.encode(primaryArchive))
+        try primaryData.write(to: folderURL.appendingPathComponent("LoonyBear.json.gz"), options: .atomic)
+
+        let previousData = try compressionService.gzipCompress(encoder.encode(previousArchive))
+        try previousData.write(to: folderURL.appendingPathComponent("LoonyBear.previous.json.gz"), options: .atomic)
+
+        do {
+            try service.restoreBackup()
+            Issue.record("Expected unsupported schema version error.")
+        } catch let error as BackupServiceError {
+            #expect(error == .unsupportedSchemaVersion(999))
+        }
+
+        #expect(repository.fetchDashboardHabits().isEmpty)
+    }
 }

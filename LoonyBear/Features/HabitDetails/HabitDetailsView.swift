@@ -43,6 +43,7 @@ struct HabitDetailsView: View {
                     HabitHeatmapView(
                         startDate: details.startDate,
                         completedDays: details.completedDays,
+                        skippedDays: details.skippedDays,
                         displayedMonth: $displayedMonth
                     )
                     .padding(.horizontal, 18)
@@ -114,6 +115,7 @@ private struct DetailsCard<Content: View>: View {
 private struct HabitHeatmapView: View {
     let startDate: Date
     let completedDays: Set<Date>
+    let skippedDays: Set<Date>
     @Binding var displayedMonth: Date
 
     private var calendar: Calendar {
@@ -127,6 +129,7 @@ private struct HabitHeatmapView: View {
             ReadOnlyMonthCalendarView(
                 month: displayedMonth,
                 completedDays: completedDays,
+                skippedDays: skippedDays,
                 availableMonths: displayMonths,
                 onMonthChange: { displayedMonth = $0 }
             )
@@ -160,6 +163,7 @@ private struct ReadOnlyMonthCalendarView: View {
     private let weekdayRowHeight: CGFloat = 20
     let month: Date
     let completedDays: Set<Date>
+    let skippedDays: Set<Date>
     let availableMonths: [Date]
     let onMonthChange: (Date) -> Void
     @State private var availableWidth: CGFloat = 0
@@ -213,11 +217,11 @@ private struct ReadOnlyMonthCalendarView: View {
 
                 ForEach(dayRows.indices, id: \.self) { rowIndex in
                     HStack(spacing: calendarSpacing) {
-                        ForEach(dayRows[rowIndex]) { day in
+                        ForEach(dayRows[rowIndex], id: \.id) { day in
                             if let date = day.date {
                                 HabitCalendarDayView(
                                     dayNumber: calendar.component(.day, from: date),
-                                    style: completedDays.contains(calendar.startOfDay(for: date)) ? HabitCalendarDayStyle.selected : HabitCalendarDayStyle.disabled,
+                                    style: dayStyle(for: date),
                                     cellSize: cellSize
                                 )
                             } else {
@@ -313,6 +317,17 @@ private struct ReadOnlyMonthCalendarView: View {
         let nextIndex = currentIndex + step
         guard availableMonths.indices.contains(nextIndex) else { return }
         onMonthChange(availableMonths[nextIndex])
+    }
+
+    private func dayStyle(for date: Date) -> HabitCalendarDayStyle {
+        let normalizedDate = calendar.startOfDay(for: date)
+        if completedDays.contains(normalizedDate) {
+            return .completed
+        }
+        if skippedDays.contains(normalizedDate) {
+            return .skipped
+        }
+        return .disabled
     }
 }
 

@@ -57,6 +57,7 @@ struct PillDetailsView: View {
                     PillReadOnlyMonthCalendarView(
                         month: displayedMonth,
                         takenDays: details.takenDays,
+                        skippedDays: details.skippedDays,
                         availableMonths: availableMonths(for: details.startDate),
                         onMonthChange: { displayedMonth = $0 }
                     )

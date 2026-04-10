@@ -329,10 +329,11 @@ struct CoreDataHabitRepository: HabitRepository {
             })
 
             for day in editableSet {
-                let shouldExist = draft.completedDays.contains(day)
+                let shouldBeCompleted = draft.completedDays.contains(day)
+                let shouldBeSkipped = draft.skippedDays.contains(day)
                 let existing = existingByDay[day]
 
-                if shouldExist, existing == nil {
+                if shouldBeCompleted, existing == nil {
                     let completion = NSEntityDescription.insertNewObject(forEntityName: "HabitCompletion", into: context)
                     completion.setValue(UUID(), forKey: "id")
                     completion.setValue(draft.id, forKey: "habitID")
@@ -340,7 +341,7 @@ struct CoreDataHabitRepository: HabitRepository {
                     completion.setValue(CompletionSource.manualEdit.rawValue, forKey: "sourceRaw")
                     completion.setValue(Date(), forKey: "createdAt")
                     completion.setValue(habit, forKey: "habit")
-                } else if shouldExist, let existing {
+                } else if shouldBeCompleted, let existing {
                     guard
                         let sourceRaw = existing.value(forKey: "sourceRaw") as? String,
                         let source = CompletionSource(rawValue: sourceRaw)
@@ -352,15 +353,27 @@ struct CoreDataHabitRepository: HabitRepository {
                         existing.setValue(CompletionSource.manualEdit.rawValue, forKey: "sourceRaw")
                         existing.setValue(Date(), forKey: "createdAt")
                     }
-                } else if !shouldExist, let existing {
+                } else if shouldBeSkipped, existing == nil {
+                    let completion = NSEntityDescription.insertNewObject(forEntityName: "HabitCompletion", into: context)
+                    completion.setValue(UUID(), forKey: "id")
+                    completion.setValue(draft.id, forKey: "habitID")
+                    completion.setValue(day, forKey: "localDate")
+                    completion.setValue(CompletionSource.skipped.rawValue, forKey: "sourceRaw")
+                    completion.setValue(Date(), forKey: "createdAt")
+                    completion.setValue(habit, forKey: "habit")
+                } else if shouldBeSkipped, let existing {
                     guard
                         let sourceRaw = existing.value(forKey: "sourceRaw") as? String,
-                        let source = CompletionSource(rawValue: sourceRaw),
-                        source.countsAsCompletion
+                        let source = CompletionSource(rawValue: sourceRaw)
                     else {
                         continue
                     }
 
+                    if source != .skipped {
+                        existing.setValue(CompletionSource.skipped.rawValue, forKey: "sourceRaw")
+                        existing.setValue(Date(), forKey: "createdAt")
+                    }
+                } else if let existing {
                     context.delete(existing)
                 }
             }

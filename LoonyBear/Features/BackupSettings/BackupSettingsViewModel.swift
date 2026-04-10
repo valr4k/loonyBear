@@ -101,9 +101,9 @@ final class BackupSettingsViewModel: ObservableObject {
             status = updatedStatus
             await finishLoading(startedAt: start, kind: .create)
             alert = BackupAlert(title: "Backup created", message: "The backup was created successfully.")
-        case .failure:
+        case .failure(let message):
             await finishLoading(startedAt: start, kind: .create)
-            alert = BackupAlert(title: "Backup failed", message: "The backup could not be created. Please try again.")
+            alert = BackupAlert(title: "Backup failed", message: message)
         }
     }
 
@@ -124,9 +124,9 @@ final class BackupSettingsViewModel: ObservableObject {
             await finishLoading(startedAt: start, kind: .restore)
             alert = BackupAlert(title: "Restore completed", message: "Backup data was restored successfully.")
             return true
-        case .failure:
+        case .failure(let message):
             await finishLoading(startedAt: start, kind: .restore)
-            alert = BackupAlert(title: "Restore failed", message: "The backup could not be restored. Existing local data was preserved.")
+            alert = BackupAlert(title: "Restore failed", message: message)
             return false
         }
     }
@@ -162,7 +162,7 @@ final class BackupSettingsViewModel: ObservableObject {
                     let status = try service.loadStatus()
                     continuation.resume(returning: BackupOperationResult.success(status))
                 } catch {
-                    continuation.resume(returning: BackupOperationResult.failure)
+                    continuation.resume(returning: BackupOperationResult.failure(Self.createFailureMessage(for: error)))
                 }
             }
         }
@@ -177,10 +177,19 @@ final class BackupSettingsViewModel: ObservableObject {
                     let status = try service.loadStatus()
                     continuation.resume(returning: BackupOperationResult.success(status))
                 } catch {
-                    continuation.resume(returning: BackupOperationResult.failure)
+                    continuation.resume(returning: BackupOperationResult.failure(Self.restoreFailureMessage(for: error)))
                 }
             }
         }
+    }
+
+    private nonisolated static func createFailureMessage(for error: Error) -> String {
+        error.localizedDescription
+    }
+
+    private nonisolated static func restoreFailureMessage(for error: Error) -> String {
+        let detail = error.localizedDescription
+        return "\(detail) Existing local data was preserved."
     }
 }
 
@@ -191,7 +200,7 @@ private enum BackupOperationKind {
 
 private enum BackupOperationResult {
     case success(BackupStatus)
-    case failure
+    case failure(String)
 }
 
 struct BackupAlert: Identifiable {

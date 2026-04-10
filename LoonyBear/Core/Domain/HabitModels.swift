@@ -175,6 +175,7 @@ struct EditHabitDraft: Equatable {
     var reminderEnabled: Bool
     var reminderTime: ReminderTime
     var completedDays: Set<Date>
+    var skippedDays: Set<Date>
 
     var trimmedName: String {
         name.trimmingCharacters(in: .whitespacesAndNewlines)

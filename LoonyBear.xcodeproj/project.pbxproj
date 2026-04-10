@@ -88,6 +88,7 @@
 				44432F702F81BA4000D8239C /* Sources */,
 				44432F712F81BA4000D8239C /* Frameworks */,
 				44432F722F81BA4000D8239C /* Resources */,
+				A1B2C3D42A7E4B3500AB1001 /* Auto Build Number */,
 			);
 			buildRules = (
 			);
@@ -181,6 +182,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+			A1B2C3D42A7E4B3500AB1001 /* Auto Build Number */ = {
+				isa = PBXShellScriptBuildPhase;
+				alwaysOutOfDate = 1;
+				buildActionMask = 2147483647;
+				files = (
+				);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Auto Build Number";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ -n \"${XCODE_RUNNING_FOR_PREVIEWS:-}\" ]; then\n  exit 0\nfi\n\nif [ -z \"${TARGET_BUILD_DIR:-}\" ] || [ -z \"${INFOPLIST_PATH:-}\" ]; then\n  exit 0\nfi\n\nINFO_PLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif [ ! -f \"$INFO_PLIST\" ]; then\n  exit 0\nfi\n\nBUILD_NUMBER=\"$(date -u +%Y%m%d%H%M%S)\"\n/usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $BUILD_NUMBER\" \"$INFO_PLIST\" 2>/dev/null || \\\n/usr/libexec/PlistBuddy -c \"Add :CFBundleVersion string $BUILD_NUMBER\" \"$INFO_PLIST\"\n\necho \"Auto build number: $BUILD_NUMBER\"";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		44432F702F81BA4000D8239C /* Sources */ = {
@@ -335,7 +358,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 42;
 				DEVELOPMENT_TEAM = NS2UA7UTVH;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -348,7 +371,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.valr4k.LoonyBear;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -367,7 +390,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 42;
 				DEVELOPMENT_TEAM = NS2UA7UTVH;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -380,7 +403,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.valr4k.LoonyBear;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;

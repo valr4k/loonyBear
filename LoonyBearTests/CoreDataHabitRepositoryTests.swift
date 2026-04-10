@@ -31,7 +31,8 @@ struct CoreDataHabitRepositoryTests {
             scheduleDays: .weekends,
             reminderEnabled: false,
             reminderTime: ReminderTime(hour: 9, minute: 0),
-            completedDays: []
+            completedDays: [],
+            skippedDays: []
         )
 
         try repository.updateHabit(from: editDraft)
@@ -190,5 +191,41 @@ struct CoreDataHabitRepositoryTests {
         #expect(details.completedDays.isEmpty)
         #expect(details.skippedDays.isEmpty)
         #expect(details.totalCompletedDays == 0)
+    }
+
+    @Test
+    func updateHabitCanClearEditableSkippedDay() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Walk"
+        draft.startDate = Calendar.current.startOfDay(for: Date())
+        draft.scheduleDays = .daily
+
+        let habitID = try repository.createHabit(from: draft)
+        try repository.skipHabitToday(id: habitID)
+
+        let details = try #require(repository.fetchHabitDetails(id: habitID))
+        let editDraft = EditHabitDraft(
+            id: habitID,
+            type: details.type,
+            startDate: details.startDate,
+            name: details.name,
+            scheduleDays: details.scheduleDays,
+            reminderEnabled: details.reminderEnabled,
+            reminderTime: details.reminderTime ?? ReminderTime(hour: 9, minute: 0),
+            completedDays: [],
+            skippedDays: []
+        )
+
+        try repository.updateHabit(from: editDraft)
+
+        let updatedDetails = try #require(repository.fetchHabitDetails(id: habitID))
+        #expect(updatedDetails.completedDays.isEmpty)
+        #expect(updatedDetails.skippedDays.isEmpty)
     }
 }

@@ -193,10 +193,11 @@ struct CoreDataPillRepository: PillRepository {
             })
 
             for day in editableSet {
-                let shouldExist = draft.takenDays.contains(day)
+                let shouldBeTaken = draft.takenDays.contains(day)
+                let shouldBeSkipped = draft.skippedDays.contains(day)
                 let existing = existingByDay[day]
 
-                if shouldExist, existing == nil {
+                if shouldBeTaken, existing == nil {
                     let intake = NSEntityDescription.insertNewObject(forEntityName: "PillIntake", into: context)
                     intake.setValue(UUID(), forKey: "id")
                     intake.setValue(draft.id, forKey: "pillID")
@@ -204,7 +205,7 @@ struct CoreDataPillRepository: PillRepository {
                     intake.setValue(PillCompletionSource.manualEdit.rawValue, forKey: "sourceRaw")
                     intake.setValue(Date(), forKey: "createdAt")
                     intake.setValue(pill, forKey: "pill")
-                } else if shouldExist, let existing {
+                } else if shouldBeTaken, let existing {
                     guard
                         let sourceRaw = existing.value(forKey: "sourceRaw") as? String,
                         let source = PillCompletionSource(rawValue: sourceRaw)
@@ -216,15 +217,27 @@ struct CoreDataPillRepository: PillRepository {
                         existing.setValue(PillCompletionSource.manualEdit.rawValue, forKey: "sourceRaw")
                         existing.setValue(Date(), forKey: "createdAt")
                     }
-                } else if !shouldExist, let existing {
+                } else if shouldBeSkipped, existing == nil {
+                    let intake = NSEntityDescription.insertNewObject(forEntityName: "PillIntake", into: context)
+                    intake.setValue(UUID(), forKey: "id")
+                    intake.setValue(draft.id, forKey: "pillID")
+                    intake.setValue(day, forKey: "localDate")
+                    intake.setValue(PillCompletionSource.skipped.rawValue, forKey: "sourceRaw")
+                    intake.setValue(Date(), forKey: "createdAt")
+                    intake.setValue(pill, forKey: "pill")
+                } else if shouldBeSkipped, let existing {
                     guard
                         let sourceRaw = existing.value(forKey: "sourceRaw") as? String,
-                        let source = PillCompletionSource(rawValue: sourceRaw),
-                        source.countsAsIntake
+                        let source = PillCompletionSource(rawValue: sourceRaw)
                     else {
                         continue
                     }
 
+                    if source != .skipped {
+                        existing.setValue(PillCompletionSource.skipped.rawValue, forKey: "sourceRaw")
+                        existing.setValue(Date(), forKey: "createdAt")
+                    }
+                } else if let existing {
                     context.delete(existing)
                 }
             }

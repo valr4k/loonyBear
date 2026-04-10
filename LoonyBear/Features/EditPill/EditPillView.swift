@@ -28,7 +28,8 @@ struct EditPillView: View {
             scheduleDays: details.scheduleDays,
             reminderEnabled: details.reminderEnabled,
             reminderTime: details.reminderTime ?? ReminderTime.default(),
-            takenDays: details.takenDays
+            takenDays: details.takenDays,
+            skippedDays: details.skippedDays
         ))
         _displayedMonth = State(initialValue: Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: Date())) ?? Date())
     }
@@ -118,8 +119,9 @@ struct EditPillView: View {
                     AppCard {
                         PillHistoryCalendarView(
                             month: displayedMonth,
-                            editableDays: Set(editableTakenDays),
-                            selectedDays: $draft.takenDays,
+                            editableDays: Set(editableHistoryDays),
+                            takenDays: $draft.takenDays,
+                            skippedDays: $draft.skippedDays,
                             availableMonths: availableMonths,
                             onMonthChange: { displayedMonth = $0 }
                         )
@@ -130,7 +132,9 @@ struct EditPillView: View {
                         .padding(.vertical, 18)
                     }
 
-                    Text("You can edit the last 30 days, including today, but not before the start date.")
+                    PillHistoryLegend()
+
+                    Text("Tap a day to switch between none, taken, and skipped.\nYou can edit only the last 30 days, but not before the start date.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 4)
@@ -204,7 +208,7 @@ struct EditPillView: View {
         }
     }
 
-    private var editableTakenDays: [Date] {
+    private var editableHistoryDays: [Date] {
         let today = Calendar.current.startOfDay(for: Date())
         let earliest = max(
             Calendar.current.startOfDay(for: draft.startDate),
@@ -219,7 +223,7 @@ struct EditPillView: View {
 
     private var availableMonths: [Date] {
         let months = Set(
-            editableTakenDays.compactMap {
+            editableHistoryDays.compactMap {
                 Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: $0))
             }
         )
@@ -263,7 +267,7 @@ struct EditPillView: View {
 
         isSaving = true
         validationMessage = nil
-        let savedDraft = draft
+        let savedDraft = normalizedDraft()
 
         Task {
             do {
@@ -278,6 +282,12 @@ struct EditPillView: View {
                 isSaving = false
             }
         }
+    }
+
+    private func normalizedDraft() -> EditPillDraft {
+        var normalized = draft
+        normalized.skippedDays.subtract(normalized.takenDays)
+        return normalized
     }
 
     private var invalidMessage: String {
@@ -309,6 +319,37 @@ struct EditPillView: View {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             isDismissingKeyboardForNonTextControl = false
+        }
+    }
+}
+
+private struct PillHistoryLegend: View {
+    var body: some View {
+        HStack(spacing: 16) {
+            PillHistoryLegendItem(label: "Taken", color: .blue)
+            PillHistoryLegendItem(label: "Skipped", color: .red)
+        }
+        .padding(.horizontal, 4)
+    }
+}
+
+private struct PillHistoryLegendItem: View {
+    let label: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(color.opacity(0.2))
+                .overlay {
+                    Circle()
+                        .stroke(color.opacity(0.35), lineWidth: 1)
+                }
+                .frame(width: 18, height: 18)
+
+            Text(label)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
 }

@@ -113,7 +113,8 @@ struct PillHistoryCalendarView: View {
     private let weekdayRowHeight: CGFloat = 20
     let month: Date
     let editableDays: Set<Date>
-    @Binding var selectedDays: Set<Date>
+    @Binding var takenDays: Set<Date>
+    @Binding var skippedDays: Set<Date>
     let availableMonths: [Date]
     let onMonthChange: (Date) -> Void
     @State private var availableWidth: CGFloat = 0
@@ -167,7 +168,7 @@ struct PillHistoryCalendarView: View {
 
                 ForEach(dayRows.indices, id: \.self) { rowIndex in
                     HStack(spacing: calendarSpacing) {
-                        ForEach(dayRows[rowIndex]) { day in
+                        ForEach(dayRows[rowIndex], id: \.id) { day in
                             Group {
                                 if let date = day.date {
                                     PillCalendarDayView(
@@ -272,10 +273,17 @@ struct PillHistoryCalendarView: View {
         let normalizedDate = calendar.startOfDay(for: date)
         guard editableDays.contains(normalizedDate) else { return }
 
-        if selectedDays.contains(normalizedDate) {
-            selectedDays.remove(normalizedDate)
-        } else {
-            selectedDays.insert(normalizedDate)
+        switch dayStyle(for: normalizedDate) {
+        case .available:
+            takenDays.insert(normalizedDate)
+            skippedDays.remove(normalizedDate)
+        case .taken:
+            takenDays.remove(normalizedDate)
+            skippedDays.insert(normalizedDate)
+        case .skipped:
+            skippedDays.remove(normalizedDate)
+        case .disabled:
+            break
         }
     }
 
@@ -287,8 +295,10 @@ struct PillHistoryCalendarView: View {
     }
 
     private func dayStyle(for date: Date) -> PillCalendarDayStyle {
-        if editableDays.contains(date), selectedDays.contains(date) {
-            return .selected
+        if takenDays.contains(date) {
+            return .taken
+        } else if skippedDays.contains(date) {
+            return .skipped
         } else if editableDays.contains(date) {
             return .available
         } else {
@@ -302,6 +312,7 @@ struct PillReadOnlyMonthCalendarView: View {
     private let weekdayRowHeight: CGFloat = 20
     let month: Date
     let takenDays: Set<Date>
+    let skippedDays: Set<Date>
     let availableMonths: [Date]
     let onMonthChange: (Date) -> Void
     @State private var availableWidth: CGFloat = 0
@@ -355,11 +366,11 @@ struct PillReadOnlyMonthCalendarView: View {
 
                 ForEach(dayRows.indices, id: \.self) { rowIndex in
                     HStack(spacing: calendarSpacing) {
-                        ForEach(dayRows[rowIndex]) { day in
+                        ForEach(dayRows[rowIndex], id: \.id) { day in
                             if let date = day.date {
                                 PillReadOnlyCalendarDayView(
                                     dayNumber: calendar.component(.day, from: date),
-                                    isSelected: takenDays.contains(calendar.startOfDay(for: date)),
+                                    style: dayStyle(for: date),
                                     cellSize: cellSize
                                 )
                             } else {
@@ -456,6 +467,17 @@ struct PillReadOnlyMonthCalendarView: View {
         guard availableMonths.indices.contains(nextIndex) else { return }
         onMonthChange(availableMonths[nextIndex])
     }
+
+    private func dayStyle(for date: Date) -> PillReadOnlyDayStyle {
+        let normalizedDate = calendar.startOfDay(for: date)
+        if takenDays.contains(normalizedDate) {
+            return .taken
+        }
+        if skippedDays.contains(normalizedDate) {
+            return .skipped
+        }
+        return .disabled
+    }
 }
 
 private struct PillCalendarDayCell: Identifiable {
@@ -473,7 +495,8 @@ private struct PillCalendarWidthPreferenceKey: PreferenceKey {
 
 private enum PillCalendarDayStyle {
     case available
-    case selected
+    case taken
+    case skipped
     case disabled
 }
 
@@ -484,9 +507,9 @@ private struct PillCalendarDayView: View {
 
     var body: some View {
         ZStack {
-            if style == .selected {
+            if style == .taken || style == .skipped {
                 Circle()
-                    .fill(Color(uiColor: .systemBlue).opacity(0.2))
+                    .fill(backgroundColor)
                     .frame(width: markerSize, height: markerSize)
             }
 
@@ -500,12 +523,25 @@ private struct PillCalendarDayView: View {
 
     private var foreground: Color {
         switch style {
-        case .selected:
+        case .taken:
             return .blue
+        case .skipped:
+            return .red
         case .available:
             return .primary
         case .disabled:
             return Color(uiColor: .tertiaryLabel)
+        }
+    }
+
+    private var backgroundColor: Color {
+        switch style {
+        case .taken:
+            return Color(uiColor: .systemBlue).opacity(0.2)
+        case .skipped:
+            return Color(uiColor: .systemRed).opacity(0.18)
+        case .available, .disabled:
+            return .clear
         }
     }
 
@@ -514,25 +550,53 @@ private struct PillCalendarDayView: View {
     }
 }
 
+private enum PillReadOnlyDayStyle {
+    case taken
+    case skipped
+    case disabled
+}
+
 private struct PillReadOnlyCalendarDayView: View {
     let dayNumber: Int
-    let isSelected: Bool
+    let style: PillReadOnlyDayStyle
     let cellSize: CGFloat
 
     var body: some View {
         ZStack {
-            if isSelected {
+            if style == .taken || style == .skipped {
                 Circle()
-                    .fill(Color(uiColor: .systemBlue).opacity(0.2))
+                    .fill(backgroundColor)
                     .frame(width: markerSize, height: markerSize)
             }
 
             Text("\(dayNumber)")
                 .font(.system(size: 19, weight: .regular, design: .rounded))
-                .foregroundStyle(isSelected ? Color.blue : Color(uiColor: .tertiaryLabel))
+                .foregroundStyle(foreground)
                 .frame(width: markerSize, height: markerSize)
         }
         .frame(width: cellSize, height: cellSize)
+    }
+
+    private var foreground: Color {
+        switch style {
+        case .taken:
+            return .blue
+        case .skipped:
+            return .red
+        case .disabled:
+            return Color(uiColor: .tertiaryLabel)
+        }
+    }
+
+    private var backgroundColor: Color {
+        switch style {
+        case .taken:
+            return Color(uiColor: .systemBlue).opacity(0.2)
+        case .skipped:
+            return Color(uiColor: .systemRed).opacity(0.18)
+        case .disabled:
+            return .clear
+        }
     }
 
     private var markerSize: CGFloat {
