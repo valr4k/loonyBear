@@ -1,64 +1,127 @@
 # LoonyBear Project Guide
 
-This project is an iOS SwiftUI app built around two tracking domains:
-
+LoonyBear is an iOS SwiftUI app built around two tracking domains:
 - habits
 - pills
 
-Core user capabilities:
+## Core User Capabilities
 
 - create and edit habits
-- mark habits as completed or skipped for today
-- create and edit pills with dosage and details
-- mark pills as taken or skipped for today
+- complete, skip, or clear today for habits
+- create and edit pills with dosage and optional description
+- take, skip, or clear today for pills
 - configure reminder notifications
+- use pill remind-later notifications
 - create and restore local backups
-- sync a lightweight snapshot for future widgets
+- read Rules & Logic and technical reference content
 
-## Structure
+## Project Structure
 
 - `LoonyBear/App`
-  - bootstrap and dependency wiring
+  - app bootstrap
+  - dependency wiring
   - root tab navigation
 - `LoonyBear/Core/Domain`
-  - pure models and rules
-  - streak and schedule logic
+  - pure models and rule engines
+  - streak logic
+  - backup and widget models
 - `LoonyBear/Core/Application`
-  - app state and use cases
+  - app state
+  - use cases
   - side-effect coordinators
 - `LoonyBear/Core/Data`
   - Core Data repositories
   - shared persistence helpers
+  - demo data seeding
 - `LoonyBear/Core/Services`
   - notifications
-  - app badge
+  - badge
   - backup and compression
+  - reliability support
   - widget snapshot sync
 - `LoonyBear/Features`
-  - SwiftUI feature screens
+  - feature screens
 - `LoonyBearTests`
-  - repository, service, and rules tests
+  - repository, service, and rule tests
 
-## App Startup
+## Runtime Flow
 
-1. `LoonyBearApp` calls `AppEnvironment.live()`.
-2. `AppEnvironment` creates persistence, repositories, services, and app state.
-3. `ContentView` loads the initial dashboards and notification setup.
-4. `RootTabView` exposes three tabs:
-   - `My Pills`
-   - `My Habits`
-   - `Settings`
+1. `LoonyBearApp` builds `AppEnvironment.live()`.
+2. `AppEnvironment` creates persistence, repositories, services, use cases, and app state.
+3. `ContentView` configures notifications, loads dashboards, and refreshes the badge.
+4. `RootTabView` exposes `My Pills`, `My Habits`, and `Settings`.
+5. Create, Details, and Edit screens are opened as sheets.
+6. App-active lifecycle runs history reconciliation and notification rescheduling.
 
-## Data Flow
+## Habit Flow Summary
 
-1. A SwiftUI view triggers an action on `HabitAppState` or `PillAppState`.
-2. The application layer calls a use case or repository.
-3. The repository reads or writes Core Data.
-4. Domain logic derives projections such as streaks and schedule summaries.
-5. Side-effect coordinators trigger notifications, widget sync, and badge refresh.
-6. SwiftUI re-renders from published state.
+- Habits are grouped by type in the dashboard.
+- Habit create supports:
+  - type
+  - name
+  - start date
+  - reminder settings
+  - weekday schedule
+  - `Use schedule for history?`
+- Habit details show:
+  - name
+  - start date
+  - plan
+  - history mode
+  - reminder
+  - current streak
+  - best streak
+  - completed total
+  - read-only calendar
+- Habit edit supports:
+  - name
+  - reminder
+  - weekday schedule
+  - history mode
+  - recent editable history
+  - delete
 
-## Key Files
+## Pill Flow Summary
+
+- Pills are shown in `Today` and `Pending` sections.
+- Pill create supports:
+  - name
+  - dosage
+  - optional description
+  - start date
+  - reminder settings
+  - weekday schedule
+  - `Use schedule for history?`
+- Pill details show:
+  - name
+  - dosage
+  - start date
+  - plan
+  - reminder
+  - total taken days
+  - read-only calendar
+  - optional description
+- Pill edit supports:
+  - name
+  - dosage
+  - description
+  - reminder
+  - weekday schedule
+  - history mode
+  - recent editable history
+  - delete
+
+## Important Current Rules
+
+- Habit create start date range is the last 30 days including today.
+- Pill create start date range is the last 5 years including today.
+- Editable history window is 30 days for both domains.
+- Habit current streak is reset only by missed scheduled days in the past.
+- Pills do not use streak logic.
+- Notifications are scheduled only for the next 2 days.
+- Pill `Remind me in 10 mins` survives global regular pill reschedules.
+
+## Recommended Entry Files
 
 - `LoonyBear/LoonyBearApp.swift`
 - `LoonyBear/App/AppEnvironment.swift`
@@ -71,14 +134,4 @@ Core user capabilities:
 - `LoonyBear/Core/Services/NotificationService.swift`
 - `LoonyBear/Core/Services/PillNotificationService.swift`
 - `LoonyBear/Core/Services/BackupService.swift`
-
-## Current Refactoring Direction
-
-Recent cleanup in this workspace focused on:
-
-- shared Core Data helper utilities
-- reducing repository duplication
-- moving side-effect orchestration out of screen state
-- expanding tests for edge cases
-
-When making new changes, prefer extending these patterns instead of reintroducing ad-hoc persistence or side-effect logic.
+- `TECHNICAL_DOCUMENTATION.md`

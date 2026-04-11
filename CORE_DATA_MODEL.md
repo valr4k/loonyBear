@@ -2,52 +2,31 @@
 
 ## Source of Truth
 
-Core Data stores raw facts, not UI projections.
+Core Data stores facts, not UI-specific projections.
 
 Stored facts include:
-
 - habits
 - pills
 - schedule versions
-- completion / intake records
-- app preferences
+- completion / intake rows
+- reminder values
+- history mode values
 
-Derived values such as dashboard sections, streaks, overdue counts, and schedule summaries are recalculated at read time.
+Derived values such as dashboard sections, streaks, overdue counts, totals, and schedule summaries are computed at read time.
 
 ## Entities
 
-### `AppPreference`
-
-Purpose:
-
-- generic key-value storage for app-level settings
-
-Important fields:
-
-- `key`
-- `boolValue`
-- `dataValue`
-- `dateValue`
-- `intValue`
-- `stringValue`
-
-Constraint:
-
-- unique by `key`
-
 ### `Habit`
-
 Purpose:
-
 - root record for a tracked habit
 
 Important fields:
-
 - `id`
 - `typeRaw`
 - `name`
 - `sortOrder`
 - `startDate`
+- `historyModeRaw`
 - `reminderEnabled`
 - `reminderHour`
 - `reminderMinute`
@@ -56,22 +35,14 @@ Important fields:
 - `version`
 
 Relationships:
-
-- `completions` -> `HabitCompletion`
-- `scheduleVersions` -> `HabitScheduleVersion`
-
-Deletion behavior:
-
-- deleting a habit cascades to its completions and schedule versions
+- `completions -> HabitCompletion`
+- `scheduleVersions -> HabitScheduleVersion`
 
 ### `HabitCompletion`
-
 Purpose:
-
-- one day-level habit state record
+- one day-level Habit history row
 
 Important fields:
-
 - `id`
 - `habitID`
 - `localDate`
@@ -79,23 +50,15 @@ Important fields:
 - `createdAt`
 
 Meaning:
-
-- one record per habit per local day
-- `sourceRaw` distinguishes completion vs skipped
-
-Constraints:
-
-- unique by `id`
-- unique by (`habitID`, `localDate`)
+- positive `sourceRaw` means completed
+- `skipped` means skipped
+- no row means unset day
 
 ### `HabitScheduleVersion`
-
 Purpose:
-
-- immutable history of schedule changes
+- immutable history of Habit schedule changes
 
 Important fields:
-
 - `id`
 - `habitID`
 - `weekdayMask`
@@ -103,24 +66,18 @@ Important fields:
 - `createdAt`
 - `version`
 
-Meaning:
-
-- changing a habit schedule appends a new version instead of rewriting history
-
 ### `Pill`
-
 Purpose:
-
-- root record for a tracked pill or medicine
+- root record for a tracked pill
 
 Important fields:
-
 - `id`
 - `name`
 - `dosage`
 - `detailsText`
 - `sortOrder`
 - `startDate`
+- `historyModeRaw`
 - `reminderEnabled`
 - `reminderHour`
 - `reminderMinute`
@@ -129,22 +86,14 @@ Important fields:
 - `version`
 
 Relationships:
-
-- `intakes` -> `PillIntake`
-- `scheduleVersions` -> `PillScheduleVersion`
-
-Deletion behavior:
-
-- deleting a pill cascades to its intakes and schedule versions
+- `intakes -> PillIntake`
+- `scheduleVersions -> PillScheduleVersion`
 
 ### `PillIntake`
-
 Purpose:
-
-- one day-level pill state record
+- one day-level Pill history row
 
 Important fields:
-
 - `id`
 - `pillID`
 - `localDate`
@@ -152,23 +101,15 @@ Important fields:
 - `createdAt`
 
 Meaning:
-
-- one record per pill per local day
-- `sourceRaw` distinguishes taken vs skipped
-
-Constraints:
-
-- unique by `id`
-- unique by (`pillID`, `localDate`)
+- positive `sourceRaw` means taken
+- `skipped` means skipped
+- no row means unset day
 
 ### `PillScheduleVersion`
-
 Purpose:
-
-- immutable history of pill schedule changes
+- immutable history of Pill schedule changes
 
 Important fields:
-
 - `id`
 - `pillID`
 - `weekdayMask`
@@ -176,21 +117,47 @@ Important fields:
 - `createdAt`
 - `version`
 
-## Modeling Rules
+## Stored Model Rules
 
-- `startDate` is normalized to the local start of day.
-- Daily state records are unique per item per day.
+- `startDate` is stored as a normalized start-of-day date.
+- Reminder times are stored as hour and minute integer components.
+- Habit and Pill history mode are stored in `historyModeRaw`.
+- Schedule changes are append-only through new version rows.
+- Daily state is stored explicitly through completion / intake rows.
 - Skipped days are stored explicitly, not inferred.
-- Reminder times are stored as hour/minute components.
-- Schedule history is append-only through new version rows.
-- Read models choose the latest schedule version by:
-  - newest `effectiveFrom`
-  - then highest `version`
-  - then newest `createdAt`
 
-## Why This Model Works
+## Read-Time Derivation Rules
 
-- history is preserved when schedules change
-- streaks can be recalculated correctly from facts
-- backup and restore can serialize stable domain facts
-- UI projections stay simple and disposable
+The app derives these values from stored facts:
+- dashboard cards
+- section grouping
+- schedule summaries
+- reminder eligibility
+- overdue state
+- streaks
+- taken totals
+- completed totals
+
+## Validation Rules Applied While Reading
+
+The code validates:
+- `typeRaw`
+- `historyModeRaw`
+- `sourceRaw`
+- `weekdayMask`
+- reminder hour/minute ranges
+- required fields on root and child rows
+
+If validation fails in protected read paths, the app can raise a `DataIntegrityError` instead of silently producing an invalid projection.
+
+## Backup Mapping
+
+Backup serializes and restores:
+- Habit
+- HabitScheduleVersion
+- HabitCompletion
+- Pill
+- PillScheduleVersion
+- PillIntake
+
+Both Habit and Pill backup payloads include stored `historyMode`.

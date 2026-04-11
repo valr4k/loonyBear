@@ -2,69 +2,179 @@
   "title": "Rules & Logic",
   "sections": [
     {
-      "title": "General",
+      "title": "App Start & Navigation",
       "items": [
         {
-          "title": "Two trackers",
-          "body": "This app has two separate trackers: Habits and Pills. They use similar screens and reminders, but the counting logic is different."
+          "title": "What opens first",
+          "body": "The app opens on the My Pills tab by default. The main navigation has exactly 3 tabs: My Pills, My Habits, and Settings."
         },
         {
-          "title": "Edits don’t rewrite everything",
-          "body": "Most edits update the current setup going forward. The app does not automatically rewrite all past history when you change a schedule later."
+          "title": "What happens on launch",
+          "body": "On the first app task, the app configures notification categories, loads Habit dashboard data, loads Pill dashboard data, and refreshes the app badge."
         },
         {
-          "title": "Lists stay separate",
-          "body": "Habits and Pills are stored and managed separately. Changes in one tab are not supposed to affect the other."
+          "title": "What happens when the app becomes active",
+          "body": "Every time the app becomes active, both trackers run history reconciliation, refresh their dashboards, and reschedule notifications. This is the main lifecycle refresh point."
+        },
+        {
+          "title": "How screens open",
+          "body": "Create, Details, and Edit screens for Habits and Pills open as sheets. They do not push deeper into the main tab navigation stack."
+        },
+        {
+          "title": "Appearance modes",
+          "body": "The app stores 3 appearance modes: System, Light, and Dark. The selected mode is applied at the app level."
+        },
+        {
+          "title": "Badge refresh cadence",
+          "body": "The app refreshes badge state on launch, on store changes, and with a 60-second timer while the main content is active."
         }
       ]
     },
     {
-      "title": "Habits",
+      "title": "My Habits",
       "items": [
         {
-          "title": "Habit types",
-          "body": "Habits can be created as either Build Habit or Quit Habit. This affects how the habit is categorized, but tracking still happens by marking days as completed."
+          "title": "Empty and loading states",
+          "body": "If Habits are loading, the screen shows a full-screen progress indicator. If loading is complete and there are no habits, the screen shows No habits yet with the message Create your first habit to start tracking your progress."
         },
         {
-          "title": "Marking progress",
-          "body": "A habit can be marked completed for today, or the mark can be removed. This can be done from the list or by editing recent history."
+          "title": "What a Habit card shows",
+          "body": "Each Habit card shows the name, the current schedule summary, the current streak text, the reminder text if a reminder exists, and a status icon for today. A green checkmark circle means completed today. A red xmark circle means skipped today."
         },
         {
-          "title": "Editing history",
-          "body": "Habit history can only be edited for the recent editable window. Older history stays visible, but it is not meant to be changed from edit."
+          "title": "Habit swipe actions",
+          "body": "Leading swipe actions are used for day-state changes. If today is already completed or skipped, the swipe action clears today's state. If today has no state, the swipe actions are Complete and Skip. Trailing swipe currently shows only Info. Edit and Delete are not in card swipe actions."
         },
         {
-          "title": "Schedule changes",
-          "body": "If you change a habit schedule later, the app keeps the historical record that already exists. It does not fully recalculate older completions from scratch."
+          "title": "Creating a Habit",
+          "body": "Create Habit includes type, name, start date, reminder toggle, reminder time, selected days, and the Use schedule for history? toggle. The save button is enabled only when the habit name is not empty and at least one day is selected."
         },
         {
-          "title": "Use schedule for history",
-          "body": "Each habit stores whether history follows the schedule or counts every day from the start date. That saved mode is used later by create, edit, reconciliation, details, and backup."
+          "title": "Habit start date range",
+          "body": "Habit start date can be selected only from today back to 29 days earlier. The create screen does not allow a habit start date older than that range."
+        },
+        {
+          "title": "Habit reminder permission behavior",
+          "body": "If reminder is turned on during create or edit, the app requests notification authorization. If authorization is not granted, reminder is turned back off and a validation message is shown."
+        },
+        {
+          "title": "Habit details screen",
+          "body": "Habit Details shows name, start date, plan, history mode, reminder, current streak, best streak, completed for, and a read-only calendar. The toolbar has Close on the left and Edit on the right. Edit is shown only when details load successfully."
+        },
+        {
+          "title": "Editing a Habit",
+          "body": "Edit Habit shows name, read-only start date, reminder settings, selected days, the Use schedule for history? toggle, an editable calendar, helper text, and a Delete button at the bottom. Delete uses a confirmation dialog."
         }
       ]
     },
     {
-      "title": "Pills",
+      "title": "Habit History & Counts",
       "items": [
         {
-          "title": "Start date creates the base history",
-          "body": "When a pill is created, the app uses the Start Date to generate the initial taken history automatically."
+          "title": "How Habit history is stored",
+          "body": "Habit history is stored as HabitCompletion rows. A day is completed when it has a positive completion source. A day is skipped when it has a non-positive source. A day is empty only when there is no row for that day."
         },
         {
-          "title": "Use schedule for history",
-          "body": "If enabled, only scheduled days are counted from the start date up to yesterday. If disabled, every day from the start date up to yesterday is counted."
+          "title": "Habit history modes",
+          "body": "Habits store a history mode. Schedule-based means history follows the selected schedule. Every-day means history counts every day from the start date. The selected mode is saved in the model and used later by create, edit, details, reconciliation, backup, and restore."
         },
         {
-          "title": "Today is not auto-counted on create",
-          "body": "Initial pill history is generated only up to yesterday. Creating a pill today does not automatically mark it as taken today."
+          "title": "Habit auto-fill on create",
+          "body": "When a Habit is created, the app auto-fills missing past completed history using the selected history mode. In schedule-based mode, only required past scheduled days are auto-filled. In every-day mode, required past days in the editable history window are auto-filled. Today is not auto-filled."
         },
         {
-          "title": "Editing recent pill history",
-          "body": "Pill history can be corrected only for the recent editable window. Older history stays stored for totals and details, but it is not directly rewritten in edit."
+          "title": "Habit reconciliation",
+          "body": "When the app becomes active, Habits run reconciliation. Reconciliation inserts missing completed history for required past days that do not already have completed or skipped history rows. Existing skipped rows are not rewritten. Existing completed rows are not duplicated."
         },
         {
-          "title": "Pills use total days",
-          "body": "Pills do not use streaks. They only track the total number of days marked as taken."
+          "title": "Habit editable history window",
+          "body": "Habit edit history is limited to the last 30 days and never goes earlier than the habit start date. Older history can still be visible in read-only details, but it is not editable from the edit screen."
+        },
+        {
+          "title": "Today versus past days in Habit edit",
+          "body": "Today can still be empty, completed, or skipped. Past required editable days are not allowed to stay empty. In edit normalization, required past empty Habit days are normalized back to completed."
+        },
+        {
+          "title": "Current streak",
+          "body": "Current streak increases on completed days. A missing unscheduled day does not reset it. A missed scheduled day in the past resets it. Today does not reset the streak just because it is not completed yet."
+        },
+        {
+          "title": "Best streak and completed total",
+          "body": "Best streak is the longest streak found by the same streak logic. Completed for is the total count of unique completed days stored in history."
+        }
+      ]
+    },
+    {
+      "title": "My Pills",
+      "items": [
+        {
+          "title": "Empty and loading states",
+          "body": "If Pills are loading, the screen shows a full-screen progress indicator. If loading is complete and there are no pills, the screen shows No pills yet with the message Create your first pill to track dosage, reminders, and taken days."
+        },
+        {
+          "title": "How Pill cards are grouped",
+          "body": "The Pill dashboard is split into exactly 2 sections: Today and Pending. Today contains pills scheduled for today. Pending contains the rest."
+        },
+        {
+          "title": "What a Pill card shows",
+          "body": "Each Pill card shows the name, dosage, schedule summary, total taken days, reminder text if a reminder exists, and a status icon for today. A green checkmark circle means taken today. A red xmark circle means skipped today."
+        },
+        {
+          "title": "Pill swipe actions",
+          "body": "Leading swipe actions are used for day-state changes. If today is already taken or skipped, the swipe action clears today's state. If today has no state, the swipe actions are Taken and Skip. Trailing swipe currently shows only Info. Edit and Delete are not in card swipe actions."
+        },
+        {
+          "title": "Creating a Pill",
+          "body": "Create Pill includes name, dosage, start date, reminder toggle, reminder time, selected days, Use schedule for history?, and an optional description. Save is enabled only when the pill name is not empty, the dosage is not empty, and at least one day is selected."
+        },
+        {
+          "title": "Pill start date range",
+          "body": "Pill start date can be selected from today back to 5 years earlier. This is a wider range than Habit creation."
+        },
+        {
+          "title": "Pill details screen",
+          "body": "Pill Details shows name, dosage, start date, plan, reminder, taken for, a read-only calendar, and description if one exists. The toolbar has Close on the left and Edit on the right. Edit is shown only when details load successfully."
+        },
+        {
+          "title": "Editing a Pill",
+          "body": "Edit Pill shows name, dosage, read-only start date, reminder settings, selected days, the Use schedule for history? toggle, an editable calendar, helper text, description, and a Delete button at the bottom. Delete uses a confirmation dialog."
+        }
+      ]
+    },
+    {
+      "title": "Pill History & Counts",
+      "items": [
+        {
+          "title": "How Pill history is stored",
+          "body": "Pill history is stored as PillIntake rows. A day is taken when it has a positive intake source. A day is skipped when it has a skipped source. A day is empty only when there is no row for that day."
+        },
+        {
+          "title": "Pill history modes",
+          "body": "Pills store a history mode. Schedule-based means history follows the selected schedule. Every-day means history counts every day from the start date. The selected mode is saved and used later by create, edit, details, reconciliation, backup, and restore."
+        },
+        {
+          "title": "Pill prefilled taken history on create",
+          "body": "Before saving a new Pill, the create screen generates takenDays from the start date up to yesterday. If Use schedule for history? is on, only scheduled days are generated. If it is off, every day from the start date up to yesterday is generated."
+        },
+        {
+          "title": "What repository create does for Pills",
+          "body": "When the Pill is saved, the repository inserts manualEdit intake rows for every generated taken day. After that, it finalizes remaining required past days as skipped. Today is not prefilled."
+        },
+        {
+          "title": "Pill reconciliation",
+          "body": "When the app becomes active, Pills run reconciliation. Reconciliation inserts skipped rows for required past days that still have no intake and no skip. Existing taken rows are preserved. Existing skipped rows are preserved."
+        },
+        {
+          "title": "Pill editable history window",
+          "body": "Pill edit history is limited to the last 30 days and never goes earlier than the pill start date. Older history can still be visible in read-only details, but it is not editable from the edit screen."
+        },
+        {
+          "title": "Today versus past days in Pill edit",
+          "body": "Today can still be empty, taken, or skipped. Past required editable days are not allowed to stay empty. In schedule-based mode only required scheduled past editable days are finalized. In every-day mode all past editable days are finalized."
+        },
+        {
+          "title": "Pill totals",
+          "body": "Pills do not use streaks. Taken for is the total count of unique taken days stored in history."
         }
       ]
     },
@@ -72,82 +182,290 @@
       "title": "Notifications",
       "items": [
         {
-          "title": "Permission is requested during setup",
-          "body": "The app asks for notification permission during app setup so reminders can be available immediately."
+          "title": "Notification categories",
+          "body": "Habits use actions Mark as Completed and Mark as Skipped. Pills use Mark as Taken, Mark as Skipped, and Remind me in 10 mins."
         },
         {
-          "title": "Reminder window is limited",
-          "body": "The app schedules reminders only for a short upcoming window, currently the next 2 days. This helps avoid system notification limits."
+          "title": "Scheduling window",
+          "body": "The app schedules reminder notifications only for the next 2 days. It does not build an unlimited long-range pending queue."
         },
         {
           "title": "Grouped reminders",
-          "body": "If multiple reminders fall at the same time, the app may group them into a single notification instead of showing one per item."
+          "body": "If fewer than 3 reminders land on the same scheduled time, the app creates individual reminders. If 3 or more reminders land on the same scheduled time, the app creates a single aggregated reminder for that time."
         },
         {
-          "title": "Reminders refresh often",
-          "body": "Reminder scheduling is refreshed when the app becomes active and after reminder-related changes such as create, edit, delete, mark, or unmark."
+          "title": "When reminders are eligible",
+          "body": "A reminder candidate is created only when reminder is enabled, the local day is not before the item start date, the local day matches the current schedule, the day is not already completed or taken, the day is not already skipped, and the scheduled reminder time is still in the future."
+        },
+        {
+          "title": "What tapping a reminder does",
+          "body": "Default tapping an individual or aggregated Habit reminder opens My Habits. Default tapping an individual or aggregated Pill reminder opens My Pills."
+        },
+        {
+          "title": "How day resolution works",
+          "body": "Reminder actions do not trust the delivery timestamp as the only source of truth. They use localDate from the notification payload first, and only fall back to the notification date if localDate is missing or invalid."
+        },
+        {
+          "title": "Pill remind later",
+          "body": "Remind me in 10 mins creates a separate delayed Pill reminder exactly 10 minutes from now. The delayed reminder keeps the original pillID and localDate in its payload."
+        },
+        {
+          "title": "Pill remind later persistence",
+          "body": "Snoozed Pill reminders are kept separate from regular scheduled reminders. A global Pill reschedule removes only regular Pill reminders and leaves active remind-later reminders in place. Snoozed reminders are removed when the same pill and day are taken or skipped, or when the pill is deleted."
         }
       ]
     },
     {
-      "title": "History & Counts",
+      "title": "Badge & Overdue Logic",
       "items": [
         {
-          "title": "Habits use streaks",
-          "body": "Habits track current streak, longest streak, and completion history."
+          "title": "What the badge counts",
+          "body": "The app badge is the total number of overdue Habits plus overdue Pills."
         },
         {
-          "title": "Pills use total days only",
-          "body": "Pills track only total days taken. Missed days do not break a streak because pills do not use streak logic."
+          "title": "When a Habit is overdue",
+          "body": "A Habit is overdue when it is scheduled for today, it has a reminder time for today, the reminder time is already in the past or exactly now, and today is neither completed nor skipped."
         },
         {
-          "title": "History windows are different",
-          "body": "Habits and Pills do not use the same history rules everywhere. Create flow, edit flow, and details screens may use different history windows depending on the feature."
+          "title": "When a Pill is overdue",
+          "body": "A Pill is overdue when it is scheduled for today, it has a reminder time for today, the reminder time is already in the past or exactly now, and today is neither taken nor skipped."
         },
         {
-          "title": "Past days are finalized",
-          "body": "Today can still be left empty, but past editable days are not supposed to stay empty. Past days are finalized as either completed/taken or skipped."
-        },
-        {
-          "title": "Habits finalize past days from their saved history mode",
-          "body": "When a habit is created, edited, or reconciled later, past days are finalized using its stored history mode. Schedule-based habits finalize only scheduled past days, while every-day habits finalize every past day from the start date up to yesterday."
-        },
-        {
-          "title": "Pills store a history mode",
-          "body": "Each pill stores whether history follows the schedule or counts every day. That saved mode is used later by edit, reconciliation, reminders, and details."
-        },
-        {
-          "title": "New pills can prefill taken history",
-          "body": "Creating a pill can generate taken history from the start date up to yesterday. In schedule-based mode it fills only scheduled days; in every-day mode it fills every past day. Remaining required past days are then finalized as skipped."
-        },
-        {
-          "title": "Edit keeps today and past days different",
-          "body": "In the edit calendar, today can still cycle through empty, positive, and skipped. Past editable days can switch only between positive and skipped, and any required past habit day left empty is normalized back to completed."
-        },
-        {
-          "title": "Older history stays visible",
-          "body": "Even when older history is not editable, it still contributes to totals and still appears in the visual history where supported."
+          "title": "Projected badge count in notifications",
+          "body": "When the app builds reminder notifications, it also calculates a projected overdue badge count for the exact scheduled reminder time of each notification request."
         }
       ]
     },
     {
-      "title": "Backup",
+      "title": "Backup & Restore",
       "items": [
         {
-          "title": "Backup stores both trackers",
-          "body": "Backup includes both Habits and Pills, including their schedules, reminder settings, and stored history."
+          "title": "What Backup screen shows",
+          "body": "Backup shows Latest backup, Folder, and Total size. It also provides Create Backup and Restore Backup actions."
         },
         {
-          "title": "Restore replaces app data",
-          "body": "When a backup is restored, the app rebuilds the stored data from that backup. This can change what appears in both trackers."
+          "title": "Backup file names",
+          "body": "The main backup file is LoonyBear.json.gz. If a previous main backup exists, it is moved to LoonyBear.previous.json.gz before a new main backup is written."
         },
         {
-          "title": "Notifications are rebuilt after restore",
-          "body": "After restore, reminder notifications are rebuilt from the restored data so reminders match the current stored state."
+          "title": "What backup includes",
+          "body": "Backup includes Habits, Habit schedules, Habit completions, Habit ordering, Pills, Pill schedules, Pill intakes, reminder settings, and stored history modes for both trackers."
         },
         {
-          "title": "Use backup for manual correction if needed",
-          "body": "If something was entered incorrectly a long time ago, backup data can be a practical way to inspect or correct older stored records."
+          "title": "Restore safety snapshot",
+          "body": "Before restore, the app tries to create a restore snapshot file named LoonyBear.restore-snapshot.json.gz. If snapshot payload creation fails because the local store is already corrupted, restore can still continue. If snapshot encoding, compression, or writing fails, restore is aborted."
+        },
+        {
+          "title": "Restore validation",
+          "body": "Restore validates schema version, history mode values, schedule masks, source values, and duplicate identifiers before replacing the store."
+        },
+        {
+          "title": "What restore does after success",
+          "body": "After a successful restore, the app resets the read context, refreshes dashboards, and rebuilds Habit and Pill notifications from restored data."
+        },
+        {
+          "title": "Folder access",
+          "body": "Backup uses a stored security-scoped folder bookmark. If the bookmark is no longer valid, the Backup screen asks the user to choose the folder again before backup or restore can continue."
+        }
+      ]
+    },
+    {
+      "title": "Settings & Reference",
+      "items": [
+        {
+          "title": "Settings sections",
+          "body": "Settings contains Appearance, Backup, Rules & Logic, Apple Watch notifications, iPhone widgets, and the current app version and build."
+        },
+        {
+          "title": "What Rules & Logic is",
+          "body": "Rules & Logic is a local reference screen loaded from RulesLogicContent.json inside the app bundle. If the file cannot be loaded or decoded, the screen shows Rules & Logic unavailable."
+        },
+        {
+          "title": "Version footer",
+          "body": "Settings shows Version <short version> and Build <build number> from the app bundle metadata."
+        }
+      ]
+    },
+    {
+      "title": "Technical Documentation: Architecture",
+      "items": [
+        {
+          "title": "Top-level composition",
+          "body": "The app is composed from LoonyBearApp, AppEnvironment, ContentView, and RootTabView. AppEnvironment builds HabitAppState, PillAppState, NotificationService, PillNotificationService, AppBadgeService, AppNotificationCoordinator, and WidgetSyncService dependencies."
+        },
+        {
+          "title": "Main state holders",
+          "body": "HabitAppState owns Habit dashboard loading, create, update, delete, daily mutations, detail state loading, reconciliation trigger, and Habit notification preparation. PillAppState owns the same responsibilities for Pills, plus Pill reordering."
+        },
+        {
+          "title": "Storage architecture",
+          "body": "All persisted application data is stored in Core Data. Habits and Pills use separate repositories: CoreDataHabitRepository and CoreDataPillRepository. Both repositories use a shared CoreDataRepositoryContext for background writes and read-context refresh."
+        },
+        {
+          "title": "Screen model",
+          "body": "The app uses a tab root with sheet-based create, details, and edit flows. The default tab is My Pills. Sheets are identified by enum state carrying either a fixed mode or a UUID."
+        }
+      ]
+    },
+    {
+      "title": "Technical Documentation: Domain Models",
+      "items": [
+        {
+          "title": "Habit model types",
+          "body": "HabitType has exactly 2 values: build and quit. CompletionSource has exactly 6 values: swipe, manual edit, notification, restore, auto fill, and skipped. HabitHistoryMode has exactly 2 values: scheduleBased and everyDay."
+        },
+        {
+          "title": "Pill model types",
+          "body": "PillCompletionSource has exactly 5 values: swipe, manual edit, notification, restore, and skipped. PillHistoryMode has exactly 2 values: scheduleBased and everyDay."
+        },
+        {
+          "title": "Reminder time rules",
+          "body": "ReminderTime stores hour and minute as integers. ReminderTime.default rounds the current time up to a 5-minute boundary. If rounding reaches 60 minutes, the hour is incremented and minute becomes 0."
+        },
+        {
+          "title": "Weekday model",
+          "body": "WeekdaySet is an OptionSet with Monday through Sunday bit flags. It also defines weekdays, weekends, and daily. Summary text is Daily, Weekdays, Weekends, or a comma-separated ordered list from Mon through Sun."
+        }
+      ]
+    },
+    {
+      "title": "Technical Documentation: Persistence & Data Rules",
+      "items": [
+        {
+          "title": "Persistence container",
+          "body": "The persistent container name is LoonyBear. The main viewContext automatically merges parent changes and uses NSMergeByPropertyObjectTrumpMergePolicy. Background contexts use the same merge policy."
+        },
+        {
+          "title": "Read and write coordination",
+          "body": "Repositories perform writes through CoreDataRepositoryContext.performWrite. After a successful write, the read context is refreshed with refreshAllObjects. If the read context is main queue and the current thread is already main, refreshAllObjects is called directly."
+        },
+        {
+          "title": "Editable history window",
+          "body": "EditableHistoryWindow.dates returns up to 30 days ending at today, never earlier than startDate. EditableHistoryWindow.pastDates returns the same window without today."
+        },
+        {
+          "title": "Past day normalization",
+          "body": "EditableHistoryContract.normalizedSelection normalizes all day sets to start-of-day values and fills missing required past days using either positive or skipped default selection. Any skipped day that is also positive is removed from the skipped set."
+        },
+        {
+          "title": "Schedule applicability",
+          "body": "HistoryScheduleApplicability can compute past editable days, past scheduled editable days, and past required editable days. Effective schedule for a given day is the latest schedule version whose effectiveFrom is not later than that day, ordered by effectiveFrom, version, and createdAt."
+        }
+      ]
+    },
+    {
+      "title": "Technical Documentation: Habit Pipeline",
+      "items": [
+        {
+          "title": "Create Habit validations",
+          "body": "CreateHabitUseCase requires a non-empty trimmed name and at least one schedule day. CoreDataHabitRepository also enforces a hard limit of 20 habits."
+        },
+        {
+          "title": "Habit create storage",
+          "body": "Habit creation inserts a Habit row, inserts the first HabitScheduleVersion row, stores historyModeRaw based on Use schedule for history?, and then auto-fills missing past completed rows through autoFillMissingCompletedCompletions."
+        },
+        {
+          "title": "Habit auto-fill source",
+          "body": "Habit auto-fill inserts HabitCompletion rows with sourceRaw equal to auto fill. Auto-fill never overwrites existing completed rows, never overwrites skipped rows, and never duplicates a day that already has history objects."
+        },
+        {
+          "title": "Habit update behavior",
+          "body": "Habit update changes name, history mode, reminder fields, and optionally inserts a new HabitScheduleVersion if the weekday mask changed. Editable history is then normalized and written back day by day using manual edit or skipped sources."
+        },
+        {
+          "title": "Habit today actions",
+          "body": "completeHabitToday creates a swipe completion or converts an existing skipped row to swipe. skipHabitToday inserts skipped if no row exists and leaves already skipped rows unchanged. clearHabitDayStateToday deletes today's row if it exists."
+        },
+        {
+          "title": "Habit reconciliation behavior",
+          "body": "Habit reconciliation loops through all Habit rows, loads schedules and completions, resolves required past days from history mode, and auto-fills missing completed rows. It saves only if at least one row was inserted."
+        }
+      ]
+    },
+    {
+      "title": "Technical Documentation: Pill Pipeline",
+      "items": [
+        {
+          "title": "Create Pill validations",
+          "body": "Create Pill requires a non-empty trimmed name, a non-empty trimmed dosage, and at least one schedule day. There is no hard create-count cap in the Pill repository code."
+        },
+        {
+          "title": "Create Pill day generation",
+          "body": "Before save, CreatePillView generates takenDays from startDate through yesterday. If Use schedule for history? is on, it includes only days matching scheduleDays. If it is off, it includes every day in that range."
+        },
+        {
+          "title": "Pill create storage",
+          "body": "Pill creation inserts a Pill row, inserts the first PillScheduleVersion row, stores historyModeRaw, inserts one PillIntake per generated taken day with sourceRaw manual edit, and then finalizes remaining required past days as skipped."
+        },
+        {
+          "title": "Pill update behavior",
+          "body": "Pill update changes name, dosage, details, history mode, reminder fields, and optionally inserts a new PillScheduleVersion if the weekday mask changed. Editable history is normalized and written back day by day using manual edit or skipped sources."
+        },
+        {
+          "title": "Pill today actions",
+          "body": "markTakenToday creates a swipe intake or converts an existing skipped row to swipe. skipPillToday inserts skipped if no row exists and leaves already skipped rows unchanged. clearPillDayStateToday deletes today's row if it exists."
+        },
+        {
+          "title": "Pill reconciliation behavior",
+          "body": "Pill reconciliation loops through all Pill rows, loads schedules and intakes, resolves required past days from history mode, and inserts missing skipped rows. It saves only if at least one row was inserted."
+        }
+      ]
+    },
+    {
+      "title": "Technical Documentation: Notifications & Badge",
+      "items": [
+        {
+          "title": "Shared notification helpers",
+          "body": "NotificationSupport defines Notification.Name keys for store changes and tab opening, a NotificationStoreContext for Core Data notification reads and writes, local notification authorization helpers, stale delivered cleanup, pending request removal helpers, and localDate identifier encoding and parsing."
+        },
+        {
+          "title": "Habit notification constants",
+          "body": "Habit notifications use categoryIdentifier habit.reminder, summaryCategoryIdentifier habit.reminder.summary, action identifiers habit.complete and habit.skip, schedulingWindowDays 2, and aggregationThreshold 3."
+        },
+        {
+          "title": "Pill notification constants",
+          "body": "Pill notifications use categoryIdentifier pill.reminder, summaryCategoryIdentifier pill.reminder.summary, action identifiers pill.take, pill.skip, and pill.remind_later, schedulingWindowDays 2, aggregationThreshold 3, and remindLaterInterval 600 seconds."
+        },
+        {
+          "title": "Reminder candidate rules",
+          "body": "Both Habit and Pill reminder services build candidates only when reminder is enabled, reminderTime exists, the local day is not before startDate, the local day matches the schedule, the local day is not already completed or taken, the local day is not skipped, and the scheduled reminder time is still in the future."
+        },
+        {
+          "title": "Default tap routing",
+          "body": "Habit default taps route aggregated and individual Habit notifications to My Habits. Pill default taps route pill_aggregated and pill notifications to My Pills."
+        },
+        {
+          "title": "Badge calculation",
+          "body": "AppBadgeService calculates overdue Habits and overdue Pills separately and sums them. Overdue means scheduled today, reminder time exists and is in the past or now, and today's state is neither completed/taken nor skipped."
+        }
+      ]
+    },
+    {
+      "title": "Technical Documentation: Backup, Reliability & Widgets",
+      "items": [
+        {
+          "title": "Backup schema and files",
+          "body": "Backup schemaVersion is 1. The main backup file is LoonyBear.json.gz. The previous backup file is LoonyBear.previous.json.gz. The restore snapshot file is LoonyBear.restore-snapshot.json.gz."
+        },
+        {
+          "title": "Backup payload contents",
+          "body": "BackupArchive contains habits, habit schedule versions, habit completion records, habit ordering, pills, pill schedule versions, and pill intake records. BackupHabit and BackupPill both carry stored historyMode values."
+        },
+        {
+          "title": "Restore safety and validation",
+          "body": "Restore first attempts to create a compressed snapshot of the current store. If snapshot payload creation fails with a DataIntegrityError, restore continues. If snapshot encoding, compression, or file writing fails, restore aborts. Restore validates schema version, history modes, reminder times, weekday masks, source values, foreign key references, and duplicate identifiers before replacing the store."
+        },
+        {
+          "title": "Reliability layer",
+          "body": "ReliabilitySupport defines DataIntegrityIssue, DataIntegrityReport, DataIntegrityError, IntegrityReportBuilder, ReminderValidation, WeekdayValidation, and ReliabilityLog. DataIntegrityError reports the operation name and the count of corrupted records detected."
+        },
+        {
+          "title": "Compression service",
+          "body": "CompressionService performs gzip compression and decompression using zlib. The two failure cases exposed by the service are compressionFailed and decompressionFailed."
+        },
+        {
+          "title": "Widget snapshot system",
+          "body": "WidgetSyncService writes a WidgetSnapshot built from the Habit dashboard only. WidgetSnapshotStore saves the snapshot into app group group.com.valr4k.LoonyBear when available, otherwise into Application Support under LoonyBear/widget-snapshot.json, and reloads all widget timelines after a successful save."
         }
       ]
     }
