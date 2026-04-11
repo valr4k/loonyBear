@@ -26,9 +26,7 @@ struct LoonyBearApp: App {
                         .environment(\.managedObjectContext, environment.persistenceController.container.viewContext)
                         .onChange(of: scenePhase) { _, newPhase in
                             if newPhase == .active {
-                                environment.appState.refreshDashboard()
-                                environment.pillAppState.refreshDashboard()
-                                environment.appState.notificationService.handleAppDidBecomeActive()
+                                environment.appState.handleAppDidBecomeActive()
                                 environment.pillAppState.handleAppDidBecomeActive()
                             }
                         }

@@ -1,8 +1,10 @@
 import Foundation
 
+@MainActor
 protocol HabitRepository {
     func fetchDashboardHabits() throws -> [HabitCardProjection]
     func fetchHabitDetails(id: UUID) throws -> HabitDetailsProjection?
+    func reconcilePastDays(today: Date) throws -> Int
     func createHabit(from draft: CreateHabitDraft) throws -> UUID
     func completeHabitToday(id: UUID) throws
     func skipHabitToday(id: UUID) throws

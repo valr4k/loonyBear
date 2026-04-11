@@ -53,6 +53,11 @@ struct CoreDataRepositoryContext {
     }
 
     func refreshReadContext() {
+        if readContext.concurrencyType == .mainQueueConcurrencyType, Thread.isMainThread {
+            readContext.refreshAllObjects()
+            return
+        }
+
         readContext.performAndWait {
             readContext.refreshAllObjects()
         }
@@ -77,6 +82,173 @@ enum EditableHistoryWindow {
         }
 
         return Set(dates.filter { $0 >= editableStart && $0 <= normalizedToday })
+    }
+
+    static func pastDates(
+        startDate: Date,
+        today: Date = Date(),
+        maxDays: Int = 30,
+        calendar: Calendar = .current
+    ) -> Set<Date> {
+        let normalizedToday = calendar.startOfDay(for: today)
+        return dates(
+            startDate: startDate,
+            today: normalizedToday,
+            maxDays: maxDays,
+            calendar: calendar
+        ).filter { $0 < normalizedToday }
+    }
+}
+
+enum EditableHistorySelection: Equatable {
+    case none
+    case positive
+    case skipped
+}
+
+enum EditableHistoryStateMachine {
+    static func nextSelection(
+        current: EditableHistorySelection,
+        for day: Date,
+        today: Date = Date(),
+        calendar: Calendar = .current
+    ) -> EditableHistorySelection {
+        let normalizedDay = calendar.startOfDay(for: day)
+        let normalizedToday = calendar.startOfDay(for: today)
+
+        if normalizedDay == normalizedToday {
+            switch current {
+            case .none:
+                return .positive
+            case .positive:
+                return .skipped
+            case .skipped:
+                return .none
+            }
+        }
+
+        switch current {
+        case .positive:
+            return .skipped
+        case .skipped:
+            return .positive
+        case .none:
+            return .skipped
+        }
+    }
+}
+
+enum EditableHistoryContract {
+    static func normalizedSelection(
+        positiveDays: Set<Date>,
+        skippedDays: Set<Date>,
+        requiredFinalizedDays: Set<Date>,
+        pastDefaultSelection: EditableHistorySelection = .skipped,
+        today: Date = Date(),
+        calendar: Calendar = .current
+    ) -> (positiveDays: Set<Date>, skippedDays: Set<Date>) {
+        let normalizedToday = calendar.startOfDay(for: today)
+        let normalizedRequiredFinalizedDays = Set(requiredFinalizedDays.map { calendar.startOfDay(for: $0) })
+        var normalizedPositiveDays = Set(positiveDays.map { calendar.startOfDay(for: $0) })
+        var normalizedSkippedDays = Set(skippedDays.map { calendar.startOfDay(for: $0) })
+
+        let pastPositiveDays = normalizedPositiveDays.intersection(normalizedRequiredFinalizedDays)
+        let missingPastStates = normalizedRequiredFinalizedDays
+            .filter { $0 < normalizedToday }
+            .subtracting(pastPositiveDays)
+            .subtracting(normalizedSkippedDays)
+
+        switch pastDefaultSelection {
+        case .positive:
+            normalizedPositiveDays.formUnion(missingPastStates)
+        case .skipped:
+            normalizedSkippedDays.formUnion(missingPastStates)
+        case .none:
+            break
+        }
+        normalizedSkippedDays.subtract(normalizedPositiveDays)
+
+        return (normalizedPositiveDays, normalizedSkippedDays)
+    }
+}
+
+protocol HistoryScheduleVersionLike {
+    var weekdays: WeekdaySet { get }
+    var effectiveFrom: Date { get }
+    var createdAt: Date { get }
+    var version: Int { get }
+}
+
+extension HabitScheduleVersion: HistoryScheduleVersionLike {}
+extension PillScheduleVersion: HistoryScheduleVersionLike {}
+
+enum HistoryScheduleApplicability {
+    static func pastEditableDays(
+        in editableDays: Set<Date>,
+        today: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Set<Date> {
+        let normalizedToday = calendar.startOfDay(for: today)
+        return Set(editableDays.map { calendar.startOfDay(for: $0) }.filter { $0 < normalizedToday })
+    }
+
+    static func pastScheduledEditableDays<Schedule: HistoryScheduleVersionLike>(
+        in editableDays: Set<Date>,
+        schedules: [Schedule],
+        today: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Set<Date> {
+        let pastEditableDays = pastEditableDays(in: editableDays, today: today, calendar: calendar)
+        return Set(pastEditableDays.filter { day in
+            guard let weekdays = effectiveWeekdays(on: day, from: schedules, calendar: calendar) else {
+                return false
+            }
+            return weekdays.contains(calendar.weekdaySet(for: day))
+        })
+    }
+
+    static func pastRequiredEditableDays<Schedule: HistoryScheduleVersionLike>(
+        in editableDays: Set<Date>,
+        schedules: [Schedule],
+        historyMode: HabitHistoryMode,
+        today: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Set<Date> {
+        switch historyMode {
+        case .scheduleBased:
+            return pastScheduledEditableDays(
+                in: editableDays,
+                schedules: schedules,
+                today: today,
+                calendar: calendar
+            )
+        case .everyDay:
+            return pastEditableDays(
+                in: editableDays,
+                today: today,
+                calendar: calendar
+            )
+        }
+    }
+
+    static func effectiveWeekdays<Schedule: HistoryScheduleVersionLike>(
+        on day: Date,
+        from schedules: [Schedule],
+        calendar: Calendar = .current
+    ) -> WeekdaySet? {
+        let normalizedDay = calendar.startOfDay(for: day)
+        return schedules
+            .sorted { lhs, rhs in
+                if lhs.effectiveFrom != rhs.effectiveFrom {
+                    return lhs.effectiveFrom < rhs.effectiveFrom
+                }
+                if lhs.version != rhs.version {
+                    return lhs.version < rhs.version
+                }
+                return lhs.createdAt < rhs.createdAt
+            }
+            .last { calendar.startOfDay(for: $0.effectiveFrom) <= normalizedDay }?
+            .weekdays
     }
 }
 

@@ -28,7 +28,7 @@ struct NotificationServiceTests {
         draft.startDate = Calendar.current.startOfDay(for: Date())
         draft.scheduleDays = .daily
         draft.reminderEnabled = true
-        draft.reminderTime = reminderTimeMinutesFromNow(5)
+        draft.reminderTime = reminderTimeHoursFromNow(2)
 
         let expectedCount = expectedRequestCount(
             reminderTime: draft.reminderTime,
@@ -38,7 +38,10 @@ struct NotificationServiceTests {
 
         service.rescheduleAllNotifications()
 
-        let requests = try await waitForPendingRequests(expectedCount: expectedCount)
+        let requests = try await waitForPendingRequests(
+            expectedCount: expectedCount,
+            matching: { $0.identifier.hasPrefix("habit_\(habitID.uuidString.lowercased())_") }
+        )
         let identifiers = Set(requests.map(\.identifier))
 
         #expect(requests.count == expectedCount)
@@ -79,7 +82,10 @@ struct NotificationServiceTests {
 
         service.rescheduleAllNotifications()
 
-        let requests = try await waitForPendingRequests(expectedCount: expectedCount)
+        let requests = try await waitForPendingRequests(
+            expectedCount: expectedCount,
+            matching: { $0.identifier.hasPrefix("pill_\(pillID.uuidString.lowercased())_") }
+        )
         let identifiers = Set(requests.map(\.identifier))
 
         #expect(requests.count == expectedCount)
@@ -140,7 +146,12 @@ struct NotificationServiceTests {
         habitService.rescheduleAllNotifications()
         pillService.rescheduleAllNotifications()
 
-        let requests = try await waitForPendingRequests(expectedCount: expectedGroupsPerDomain * 2)
+        let requests = try await waitForPendingRequests(
+            expectedCount: expectedGroupsPerDomain * 2,
+            matching: {
+                $0.identifier.hasPrefix("habit_summary_") || $0.identifier.hasPrefix("pill_summary_")
+            }
+        )
         let habitSummaryIdentifiers = requests
             .map(\.identifier)
             .filter { $0.hasPrefix("habit_summary_") }
@@ -211,7 +222,305 @@ struct NotificationServiceTests {
         )
 
         #expect(habitCategory.actions.map(\.identifier) == ["habit.complete", "habit.skip"])
-        #expect(pillCategory.actions.map(\.identifier) == ["pill.take", "pill.skip"])
+        #expect(pillCategory.actions.map(\.identifier) == ["pill.take", "pill.skip", "pill.remind_later"])
+    }
+
+    @Test
+    func habitCompleteActionUsesPayloadLocalDateAfterMidnight() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = NotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        let yesterday = Calendar.current.startOfDay(for: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date())
+        let today = Calendar.current.startOfDay(for: Date())
+        let notificationDate = Calendar.current.date(byAdding: .hour, value: 1, to: today) ?? today
+
+        var draft = CreateHabitDraft()
+        draft.name = "Walk"
+        draft.startDate = yesterday
+        draft.scheduleDays = Calendar.current.weekdaySet(for: today)
+        let habitID = try repository.createHabit(from: draft)
+
+        let userInfo: [AnyHashable: Any] = [
+            "type": "individual",
+            "habitID": habitID.uuidString,
+            "localDate": LocalNotificationSupport.localDateIdentifier(for: yesterday, calendar: .current),
+        ]
+
+        #expect(service.handleNotificationResponse(
+            type: "individual",
+            userInfo: userInfo,
+            actionIdentifier: "habit.complete",
+            notificationDate: notificationDate
+        ))
+
+        let details = try #require(try repository.fetchHabitDetails(id: habitID))
+        #expect(details.completedDays.contains(yesterday))
+        #expect(!details.completedDays.contains(today))
+        #expect(!details.skippedDays.contains(today))
+    }
+
+    @Test
+    func habitSkipActionUsesPayloadLocalDateAfterMidnight() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = NotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        let yesterday = Calendar.current.startOfDay(for: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date())
+        let today = Calendar.current.startOfDay(for: Date())
+        let notificationDate = Calendar.current.date(byAdding: .hour, value: 1, to: today) ?? today
+
+        var draft = CreateHabitDraft()
+        draft.name = "Read"
+        draft.startDate = yesterday
+        draft.scheduleDays = Calendar.current.weekdaySet(for: today)
+        let habitID = try repository.createHabit(from: draft)
+
+        let userInfo: [AnyHashable: Any] = [
+            "type": "individual",
+            "habitID": habitID.uuidString,
+            "localDate": LocalNotificationSupport.localDateIdentifier(for: yesterday, calendar: .current),
+        ]
+
+        #expect(service.handleNotificationResponse(
+            type: "individual",
+            userInfo: userInfo,
+            actionIdentifier: "habit.skip",
+            notificationDate: notificationDate
+        ))
+
+        let details = try #require(try repository.fetchHabitDetails(id: habitID))
+        #expect(details.skippedDays.contains(yesterday))
+        #expect(!details.skippedDays.contains(today))
+        #expect(!details.completedDays.contains(today))
+    }
+
+    @Test
+    func pillTakeActionUsesPayloadLocalDateAfterMidnight() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = PillNotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        let yesterday = Calendar.current.startOfDay(for: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date())
+        let today = Calendar.current.startOfDay(for: Date())
+        let notificationDate = Calendar.current.date(byAdding: .hour, value: 1, to: today) ?? today
+
+        var draft = PillDraft()
+        draft.name = "Vitamin D"
+        draft.dosage = "1 tablet"
+        draft.startDate = yesterday
+        let pillID = try repository.createPill(from: draft)
+        try repository.clearPillDayStateToday(id: pillID)
+
+        let userInfo: [AnyHashable: Any] = [
+            "type": "pill",
+            "pillID": pillID.uuidString,
+            "localDate": LocalNotificationSupport.localDateIdentifier(for: yesterday, calendar: .current),
+        ]
+
+        #expect(service.handleNotificationResponse(
+            type: "pill",
+            userInfo: userInfo,
+            actionIdentifier: "pill.take",
+            notificationDate: notificationDate
+        ))
+
+        let details = try #require(try repository.fetchPillDetails(id: pillID))
+        #expect(details.takenDays.contains(yesterday))
+        #expect(!details.takenDays.contains(today))
+        #expect(!details.skippedDays.contains(today))
+    }
+
+    @Test
+    func pillSkipActionUsesPayloadLocalDateAfterMidnight() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = PillNotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        let yesterday = Calendar.current.startOfDay(for: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date())
+        let today = Calendar.current.startOfDay(for: Date())
+        let notificationDate = Calendar.current.date(byAdding: .hour, value: 1, to: today) ?? today
+
+        var draft = PillDraft()
+        draft.name = "Omega 3"
+        draft.dosage = "2 capsules"
+        draft.startDate = yesterday
+        let pillID = try repository.createPill(from: draft)
+        try repository.clearPillDayStateToday(id: pillID)
+
+        let userInfo: [AnyHashable: Any] = [
+            "type": "pill",
+            "pillID": pillID.uuidString,
+            "localDate": LocalNotificationSupport.localDateIdentifier(for: yesterday, calendar: .current),
+        ]
+
+        #expect(service.handleNotificationResponse(
+            type: "pill",
+            userInfo: userInfo,
+            actionIdentifier: "pill.skip",
+            notificationDate: notificationDate
+        ))
+
+        let details = try #require(try repository.fetchPillDetails(id: pillID))
+        #expect(details.skippedDays.contains(yesterday))
+        #expect(!details.skippedDays.contains(today))
+        #expect(!details.takenDays.contains(today))
+    }
+
+    @Test
+    func pillRemindLaterActionSchedulesNotificationInTenMinutes() async throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = PillNotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        try await clearNotifications()
+
+        let today = Calendar.current.startOfDay(for: Date())
+        var draft = PillDraft()
+        draft.name = "Vitamin D"
+        draft.dosage = "1 tablet"
+        draft.startDate = today
+        let pillID = try repository.createPill(from: draft)
+
+        #expect(service.handleNotificationResponse(
+            type: "pill",
+            userInfo: [
+                "type": "pill",
+                "pillID": pillID.uuidString,
+                "localDate": LocalNotificationSupport.localDateIdentifier(for: today, calendar: .current),
+            ],
+            actionIdentifier: "pill.remind_later",
+            notificationDate: Date(),
+            fallbackTitle: "Vitamin D",
+            fallbackBody: "Take 1 tablet."
+        ))
+
+        let requests = try await waitForPendingRequests(
+            expectedCount: 1,
+            matching: { $0.identifier.contains("remindlater_") }
+        )
+        let request = try #require(requests.first)
+        let trigger = try #require(request.trigger as? UNCalendarNotificationTrigger)
+        let nextTriggerDate = try #require(trigger.nextTriggerDate())
+        let interval = nextTriggerDate.timeIntervalSinceNow
+
+        #expect(request.content.categoryIdentifier == "pill.reminder")
+        #expect(request.content.title == "Vitamin D")
+        #expect(request.content.body == "Take 1 tablet.")
+        #expect(interval >= 9 * 60)
+        #expect(interval <= 11 * 60)
+
+        try await clearNotifications()
+    }
+
+    @Test
+    func habitNotificationActionFallsBackToNotificationDateWhenLocalDateIsMissing() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = NotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        let yesterday = Calendar.current.startOfDay(for: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date())
+        let today = Calendar.current.startOfDay(for: Date())
+        let notificationDate = Calendar.current.date(byAdding: .hour, value: 1, to: today) ?? today
+
+        var draft = CreateHabitDraft()
+        draft.name = "Meditate"
+        draft.startDate = yesterday
+        draft.scheduleDays = Calendar.current.weekdaySet(for: today)
+        let habitID = try repository.createHabit(from: draft)
+
+        let userInfo: [AnyHashable: Any] = [
+            "type": "individual",
+            "habitID": habitID.uuidString,
+        ]
+
+        #expect(service.handleNotificationResponse(
+            type: "individual",
+            userInfo: userInfo,
+            actionIdentifier: "habit.complete",
+            notificationDate: notificationDate
+        ))
+
+        let details = try #require(try repository.fetchHabitDetails(id: habitID))
+        #expect(details.completedDays.contains(today))
+        #expect(!details.completedDays.contains(yesterday))
+    }
+
+    @Test
+    func pillNotificationActionFallsBackToNotificationDateWhenLocalDateIsInvalid() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = PillNotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        let yesterday = Calendar.current.startOfDay(for: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date())
+        let today = Calendar.current.startOfDay(for: Date())
+        let notificationDate = Calendar.current.date(byAdding: .hour, value: 1, to: today) ?? today
+
+        var draft = PillDraft()
+        draft.name = "Magnesium"
+        draft.dosage = "1 capsule"
+        draft.startDate = yesterday
+        let pillID = try repository.createPill(from: draft)
+        try repository.clearPillDayStateToday(id: pillID)
+
+        let userInfo: [AnyHashable: Any] = [
+            "type": "pill",
+            "pillID": pillID.uuidString,
+            "localDate": "invalid-date",
+        ]
+
+        #expect(service.handleNotificationResponse(
+            type: "pill",
+            userInfo: userInfo,
+            actionIdentifier: "pill.take",
+            notificationDate: notificationDate
+        ))
+
+        let details = try #require(try repository.fetchPillDetails(id: pillID))
+        #expect(details.takenDays.contains(today))
+        #expect(!details.takenDays.contains(yesterday))
     }
 
     @Test
@@ -238,7 +547,8 @@ struct NotificationServiceTests {
 
         service.rescheduleAllNotifications()
         let initialRequests = try await waitForPendingRequests(
-            expectedCount: expectedRequestCount(reminderTime: draft.reminderTime, schedulingWindowDays: 2)
+            expectedCount: expectedRequestCount(reminderTime: draft.reminderTime, schedulingWindowDays: 2),
+            matching: { $0.identifier.hasPrefix("habit_\(habitID.uuidString.lowercased())_") }
         )
         let initialIdentifiers = Set(initialRequests.map(\.identifier))
 
@@ -258,10 +568,12 @@ struct NotificationServiceTests {
 
         service.rescheduleAllNotifications()
         _ = try await waitForPendingRequests(
-            expectedCount: expectedRequestCount(reminderTime: updatedDraft.reminderTime, schedulingWindowDays: 2)
+            expectedCount: expectedRequestCount(reminderTime: updatedDraft.reminderTime, schedulingWindowDays: 2),
+            matching: { $0.identifier.hasPrefix("habit_\(habitID.uuidString.lowercased())_") }
         )
         let updatedIdentifiers = try await waitForPendingIdentifiers(
-            expectedCount: expectedRequestCount(reminderTime: updatedDraft.reminderTime, schedulingWindowDays: 2)
+            expectedCount: expectedRequestCount(reminderTime: updatedDraft.reminderTime, schedulingWindowDays: 2),
+            matching: { $0.hasPrefix("habit_\(habitID.uuidString.lowercased())_") }
         ) { identifiers in
             identifiers != initialIdentifiers
         }
@@ -531,7 +843,10 @@ struct NotificationServiceTests {
 
         let expectedCount = expectedRequestCount(reminderTime: draft.reminderTime, schedulingWindowDays: 2)
         service.rescheduleAllNotifications()
-        let initialRequests = try await waitForPendingRequests(expectedCount: expectedCount)
+        let initialRequests = try await waitForPendingRequests(
+            expectedCount: expectedCount,
+            matching: { $0.identifier.hasPrefix("habit_\(habitID.uuidString.lowercased())_") }
+        )
         let initialIdentifiers = Set(initialRequests.map(\.identifier))
 
         let context = persistence.container.viewContext
@@ -545,7 +860,9 @@ struct NotificationServiceTests {
         service.rescheduleAllNotifications()
         try await Task.sleep(for: .milliseconds(300))
 
-        let preservedRequests = await pendingRequests()
+        let preservedRequests = await pendingRequests(
+            matching: { $0.identifier.hasPrefix("habit_\(habitID.uuidString.lowercased())_") }
+        )
         #expect(Set(preservedRequests.map(\.identifier)) == initialIdentifiers)
 
         try await clearNotifications()
@@ -614,7 +931,10 @@ struct NotificationServiceTests {
 
         let expectedCount = expectedRequestCount(reminderTime: draft.reminderTime, schedulingWindowDays: 2)
         service.rescheduleAllNotifications()
-        let initialRequests = try await waitForPendingRequests(expectedCount: expectedCount)
+        let initialRequests = try await waitForPendingRequests(
+            expectedCount: expectedCount,
+            matching: { $0.identifier.hasPrefix("pill_\(pillID.uuidString.lowercased())_") }
+        )
         let initialIdentifiers = Set(initialRequests.map(\.identifier))
 
         let context = persistence.container.viewContext
@@ -628,7 +948,9 @@ struct NotificationServiceTests {
         service.rescheduleAllNotifications()
         try await Task.sleep(for: .milliseconds(300))
 
-        let preservedRequests = await pendingRequests()
+        let preservedRequests = await pendingRequests(
+            matching: { $0.identifier.hasPrefix("pill_\(pillID.uuidString.lowercased())_") }
+        )
         #expect(Set(preservedRequests.map(\.identifier)) == initialIdentifiers)
 
         try await clearNotifications()
@@ -689,37 +1011,43 @@ struct NotificationServiceTests {
         try await Task.sleep(for: .milliseconds(50))
     }
 
-    private func waitForPendingRequests(expectedCount: Int) async throws -> [UNNotificationRequest] {
+    private func waitForPendingRequests(
+        expectedCount: Int,
+        matching predicate: @escaping (UNNotificationRequest) -> Bool = { _ in true }
+    ) async throws -> [UNNotificationRequest] {
         for _ in 0..<20 {
-            let requests = await pendingRequests()
+            let requests = await pendingRequests(matching: predicate)
             if requests.count == expectedCount {
                 return requests
             }
             try await Task.sleep(for: .milliseconds(100))
         }
 
-        return await pendingRequests()
+        return await pendingRequests(matching: predicate)
     }
 
     private func waitForPendingIdentifiers(
         expectedCount: Int,
+        matching filter: @escaping (String) -> Bool = { _ in true },
         until predicate: (Set<String>) -> Bool
     ) async throws -> Set<String> {
         for _ in 0..<20 {
-            let identifiers = Set(await pendingRequests().map(\.identifier))
+            let identifiers = Set(await pendingRequests().map(\.identifier).filter(filter))
             if identifiers.count == expectedCount, predicate(identifiers) {
                 return identifiers
             }
             try await Task.sleep(for: .milliseconds(100))
         }
 
-        return Set(await pendingRequests().map(\.identifier))
+        return Set(await pendingRequests().map(\.identifier).filter(filter))
     }
 
-    private func pendingRequests() async -> [UNNotificationRequest] {
+    private func pendingRequests(
+        matching predicate: @escaping (UNNotificationRequest) -> Bool = { _ in true }
+    ) async -> [UNNotificationRequest] {
         await withCheckedContinuation { continuation in
             UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
-                continuation.resume(returning: requests)
+                continuation.resume(returning: requests.filter(predicate))
             }
         }
     }

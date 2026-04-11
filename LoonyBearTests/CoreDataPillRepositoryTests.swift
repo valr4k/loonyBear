@@ -4,6 +4,7 @@ import Testing
 
 @testable import LoonyBear
 
+@MainActor
 @Suite
 struct CoreDataPillRepositoryTests {
     @Test
@@ -81,7 +82,7 @@ struct CoreDataPillRepositoryTests {
         var draft = PillDraft()
         draft.name = "Vitamin D"
         draft.dosage = "1 tablet"
-        draft.startDate = TestSupport.makeDate(2026, 4, 1)
+        draft.startDate = Calendar.current.startOfDay(for: Date())
         draft.scheduleDays = .daily
 
         let pillID = try repository.createPill(from: draft)
@@ -144,6 +145,7 @@ struct CoreDataPillRepositoryTests {
             dosage: details.dosage,
             details: details.details ?? "",
             startDate: details.startDate,
+            historyMode: details.historyMode,
             scheduleDays: details.scheduleDays,
             reminderEnabled: details.reminderEnabled,
             reminderTime: details.reminderTime ?? ReminderTime(hour: 9, minute: 0),
@@ -159,6 +161,186 @@ struct CoreDataPillRepositoryTests {
     }
 
     @Test
+    func updatePillNormalizesPastEditableNoneToSkipped() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let yesterday = try #require(calendar.date(byAdding: .day, value: -1, to: today))
+
+        var draft = PillDraft()
+        draft.name = "Vitamin D"
+        draft.dosage = "1 tablet"
+        draft.startDate = yesterday
+        draft.scheduleDays = .daily
+        draft.useScheduleForHistory = false
+
+        let pillID = try repository.createPill(from: draft)
+        let details = try #require(try repository.fetchPillDetails(id: pillID))
+        #expect(details.skippedDays.contains(yesterday))
+
+        let editDraft = EditPillDraft(
+            id: pillID,
+            name: details.name,
+            dosage: details.dosage,
+            details: details.details ?? "",
+            startDate: details.startDate,
+            historyMode: details.historyMode,
+            scheduleDays: details.scheduleDays,
+            reminderEnabled: details.reminderEnabled,
+            reminderTime: details.reminderTime ?? ReminderTime(hour: 9, minute: 0),
+            takenDays: [],
+            skippedDays: []
+        )
+
+        try repository.updatePill(from: editDraft)
+
+        let updatedDetails = try #require(try repository.fetchPillDetails(id: pillID))
+        #expect(updatedDetails.skippedDays.contains(yesterday))
+        #expect(!updatedDetails.takenDays.contains(yesterday))
+    }
+
+    @Test
+    func scheduleBasedPillDoesNotCreateSkippedForPastUnscheduledDays() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataPillRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let yesterday = try #require(calendar.date(byAdding: .day, value: -1, to: today))
+        let unscheduledPastDay = try #require(
+            (2...7)
+                .compactMap { calendar.date(byAdding: .day, value: -$0, to: today) }
+                .map { calendar.startOfDay(for: $0) }
+                .first { calendar.weekdaySet(for: $0) != calendar.weekdaySet(for: yesterday) }
+        )
+
+        var draft = PillDraft()
+        draft.name = "Vitamin D"
+        draft.dosage = "1 tablet"
+        draft.startDate = unscheduledPastDay
+        draft.scheduleDays = calendar.weekdaySet(for: yesterday)
+        draft.useScheduleForHistory = true
+
+        let pillID = try repository.createPill(from: draft)
+        let details = try #require(try repository.fetchPillDetails(id: pillID))
+        #expect(details.historyMode == .scheduleBased)
+        #expect(details.skippedDays.contains(yesterday))
+        #expect(!details.skippedDays.contains(unscheduledPastDay))
+
+        let editDraft = EditPillDraft(
+            id: pillID,
+            name: details.name,
+            dosage: details.dosage,
+            details: details.details ?? "",
+            startDate: details.startDate,
+            historyMode: details.historyMode,
+            scheduleDays: details.scheduleDays,
+            reminderEnabled: details.reminderEnabled,
+            reminderTime: details.reminderTime ?? ReminderTime(hour: 9, minute: 0),
+            takenDays: [],
+            skippedDays: []
+        )
+
+        try repository.updatePill(from: editDraft)
+
+        let updatedDetails = try #require(try repository.fetchPillDetails(id: pillID))
+        #expect(updatedDetails.skippedDays.contains(yesterday))
+        #expect(!updatedDetails.skippedDays.contains(unscheduledPastDay))
+
+        let request = NSFetchRequest<NSManagedObject>(entityName: "PillIntake")
+        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            NSPredicate(format: "pillID == %@", pillID as CVarArg),
+            NSPredicate(format: "localDate == %@", unscheduledPastDay as CVarArg),
+        ])
+        #expect(try context.count(for: request) == 0)
+    }
+
+    @Test
+    func everyDayHistoryPillFinalizesAllPastEditableDays() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let yesterday = try #require(calendar.date(byAdding: .day, value: -1, to: today))
+        let twoDaysAgo = try #require(calendar.date(byAdding: .day, value: -2, to: today))
+
+        var draft = PillDraft()
+        draft.name = "Magnesium"
+        draft.dosage = "1 capsule"
+        draft.startDate = twoDaysAgo
+        draft.scheduleDays = calendar.weekdaySet(for: yesterday)
+        draft.useScheduleForHistory = false
+
+        let pillID = try repository.createPill(from: draft)
+        let details = try #require(try repository.fetchPillDetails(id: pillID))
+
+        #expect(details.historyMode == .everyDay)
+        #expect(details.skippedDays.contains(yesterday))
+        #expect(details.skippedDays.contains(twoDaysAgo))
+    }
+
+    @Test
+    func reconcilePastDaysAutoFinalizesScheduledPillHistory() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataPillRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let yesterday = try #require(calendar.date(byAdding: .day, value: -1, to: today))
+
+        let pillID = UUID()
+        let pill = NSEntityDescription.insertNewObject(forEntityName: "Pill", into: context)
+        pill.setValue(pillID, forKey: "id")
+        pill.setValue("Vitamin D", forKey: "name")
+        pill.setValue("1 tablet", forKey: "dosage")
+        pill.setValue(Int32(0), forKey: "sortOrder")
+        pill.setValue(yesterday, forKey: "startDate")
+        pill.setValue(PillHistoryMode.scheduleBased.rawValue, forKey: "historyModeRaw")
+        pill.setValue(false, forKey: "reminderEnabled")
+        pill.setValue(Date(), forKey: "createdAt")
+        pill.setValue(Date(), forKey: "updatedAt")
+        pill.setValue(Int32(1), forKey: "version")
+
+        let schedule = NSEntityDescription.insertNewObject(forEntityName: "PillScheduleVersion", into: context)
+        schedule.setValue(UUID(), forKey: "id")
+        schedule.setValue(pillID, forKey: "pillID")
+        schedule.setValue(Int16(WeekdaySet.daily.rawValue), forKey: "weekdayMask")
+        schedule.setValue(yesterday, forKey: "effectiveFrom")
+        schedule.setValue(Date(), forKey: "createdAt")
+        schedule.setValue(Int32(1), forKey: "version")
+        schedule.setValue(pill, forKey: "pill")
+        try context.save()
+
+        let inserted = try repository.reconcilePastDays(today: today)
+        #expect(inserted == 1)
+
+        let details = try #require(try repository.fetchPillDetails(id: pillID))
+        #expect(details.skippedDays.contains(yesterday))
+
+        let secondInserted = try repository.reconcilePastDays(today: today)
+        #expect(secondInserted == 0)
+
+        let request = NSFetchRequest<NSManagedObject>(entityName: "PillIntake")
+        request.predicate = NSPredicate(format: "pillID == %@", pillID as CVarArg)
+        let intakes = try context.fetch(request)
+        #expect(intakes.count == 1)
+        #expect(intakes.first?.value(forKey: "sourceRaw") as? String == PillCompletionSource.skipped.rawValue)
+    }
+
+    @Test
     func clearRemovesSkippedStateAndReturnsPillToNormalDayState() throws {
         let persistence = PersistenceController(inMemory: true)
         let repository = CoreDataPillRepository(
@@ -169,7 +351,7 @@ struct CoreDataPillRepositoryTests {
         var draft = PillDraft()
         draft.name = "Magnesium"
         draft.dosage = "1 capsule"
-        draft.startDate = TestSupport.makeDate(2026, 4, 1)
+        draft.startDate = Calendar.current.startOfDay(for: Date())
         draft.scheduleDays = .daily
 
         let pillID = try repository.createPill(from: draft)
@@ -204,6 +386,7 @@ struct CoreDataPillRepositoryTests {
         object.setValue("Vitamin D", forKey: "name")
         object.setValue("1 tablet", forKey: "dosage")
         object.setValue(Date(), forKey: "startDate")
+        object.setValue(PillHistoryMode.scheduleBased.rawValue, forKey: "historyModeRaw")
         object.setValue(false, forKey: "reminderEnabled")
         object.setValue(Date(), forKey: "createdAt")
         object.setValue(Date(), forKey: "updatedAt")
@@ -284,6 +467,7 @@ struct CoreDataPillRepositoryTests {
             dosage: "2 tablets",
             details: "After breakfast",
             startDate: created.startDate,
+            historyMode: created.historyMode,
             scheduleDays: .weekends,
             reminderEnabled: true,
             reminderTime: ReminderTime(hour: 8, minute: 15),

@@ -83,21 +83,7 @@ struct MyHabitsView: View {
                                     } label: {
                                         Image(systemName: "info")
                                     }
-                                    .tint(.indigo)
-
-                                    Button {
-                                        onEditHabit(habit)
-                                    } label: {
-                                        Image(systemName: "pencil")
-                                    }
                                     .tint(.blue)
-
-                                    Button {
-                                        habitPendingDeletion = habit
-                                    } label: {
-                                        Image(systemName: "trash")
-                                    }
-                                    .tint(.red)
                                 }
                             }
                         } header: {
@@ -229,11 +215,13 @@ private struct HabitCardView: View {
                     if habit.isCompletedToday {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.title3)
-                            .foregroundStyle(.green)
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, .green)
                     } else if habit.isSkippedToday {
                         Image(systemName: "xmark.circle.fill")
                             .font(.title3)
-                            .foregroundStyle(.red)
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, .red)
                     }
                 }
             .frame(width: 40)

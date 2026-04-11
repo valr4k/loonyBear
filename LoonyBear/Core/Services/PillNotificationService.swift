@@ -8,8 +8,10 @@ final class PillNotificationService {
     private let summaryCategoryIdentifier = "pill.reminder.summary"
     private let takeActionIdentifier = "pill.take"
     private let skipActionIdentifier = "pill.skip"
+    private let remindLaterActionIdentifier = "pill.remind_later"
     private let aggregationThreshold = 3
     private let schedulingWindowDays = 2
+    private let remindLaterInterval: TimeInterval = 10 * 60
     private let storeContext: NotificationStoreContext
     private let center = UNUserNotificationCenter.current()
     private let prefix = "pill_"
@@ -49,10 +51,15 @@ final class PillNotificationService {
             title: "Mark as Skipped",
             options: []
         )
+        let remindLaterAction = UNNotificationAction(
+            identifier: remindLaterActionIdentifier,
+            title: "Remind me in 10 mins",
+            options: []
+        )
 
         let category = UNNotificationCategory(
             identifier: categoryIdentifier,
-            actions: [takeAction, skipAction],
+            actions: [takeAction, skipAction, remindLaterAction],
             intentIdentifiers: [],
             options: []
         )
@@ -140,26 +147,54 @@ final class PillNotificationService {
             return false
         }
 
-        if handleDefaultTapRouting(type: type, actionIdentifier: response.actionIdentifier) {
+        return handleNotificationResponse(
+            type: type,
+            userInfo: response.notification.request.content.userInfo,
+            actionIdentifier: response.actionIdentifier,
+            notificationDate: response.notification.date,
+            fallbackTitle: response.notification.request.content.title,
+            fallbackBody: response.notification.request.content.body
+        )
+    }
+
+    @discardableResult
+    func handleNotificationResponse(
+        type: String,
+        userInfo: [AnyHashable: Any],
+        actionIdentifier: String,
+        notificationDate: Date,
+        fallbackTitle: String? = nil,
+        fallbackBody: String? = nil
+    ) -> Bool {
+        if handleDefaultTapRouting(type: type, actionIdentifier: actionIdentifier) {
             return true
         }
 
         guard type == "pill" else { return false }
 
         guard
-            let pillIDString = response.notification.request.content.userInfo["pillID"] as? String,
+            let pillIDString = userInfo["pillID"] as? String,
             let pillID = UUID(uuidString: pillIDString)
         else {
             return true
         }
 
-        let deliveryDay = calendar.startOfDay(for: response.notification.date)
+        let deliveryDay = localDate(from: userInfo, fallbackDate: notificationDate)
         let didMutateStore: Bool
-        switch response.actionIdentifier {
+        switch actionIdentifier {
         case takeActionIdentifier:
             didMutateStore = createIntakeIfNeeded(for: pillID, on: deliveryDay, source: .notification)
         case skipActionIdentifier:
             didMutateStore = createSkippedIntakeIfNeeded(for: pillID, on: deliveryDay)
+        case remindLaterActionIdentifier:
+            removeDeliveredNotifications(forPillID: pillID, on: deliveryDay)
+            scheduleRemindLaterNotification(
+                for: pillID,
+                on: deliveryDay,
+                fallbackTitle: fallbackTitle,
+                fallbackBody: fallbackBody
+            )
+            return true
         default:
             return true
         }
@@ -198,6 +233,86 @@ final class PillNotificationService {
 
     private func cleanupStaleDeliveredNotifications() {
         LocalNotificationSupport.cleanupStaleDeliveredNotifications(center: center, calendar: calendar)
+    }
+
+    private func localDate(from userInfo: [AnyHashable: Any], fallbackDate: Date) -> Date {
+        guard let identifier = userInfo["localDate"] as? String,
+              let parsedDate = LocalNotificationSupport.parseLocalDateIdentifier(identifier, calendar: calendar) else {
+            return calendar.startOfDay(for: fallbackDate)
+        }
+
+        return parsedDate
+    }
+
+    private func scheduleRemindLaterNotification(
+        for pillID: UUID,
+        on localDate: Date,
+        fallbackTitle: String?,
+        fallbackBody: String?
+    ) {
+        let content = makeRemindLaterContent(
+            for: pillID,
+            on: localDate,
+            fallbackTitle: fallbackTitle,
+            fallbackBody: fallbackBody
+        )
+        let remindDate = Date().addingTimeInterval(remindLaterInterval)
+        let triggerDate = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: remindDate)
+        let trigger = UNCalendarNotificationTrigger(dateMatching: triggerDate, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: remindLaterNotificationIdentifier(for: pillID, scheduledDateTime: remindDate),
+            content: content,
+            trigger: trigger
+        )
+        center.add(request) { error in
+            if let error {
+                ReliabilityLog.error(
+                    "notification.pill.remindLater request \(request.identifier) failed: \(error.localizedDescription)"
+                )
+            }
+        }
+    }
+
+    private func makeRemindLaterContent(
+        for pillID: UUID,
+        on localDate: Date,
+        fallbackTitle: String?,
+        fallbackBody: String?
+    ) -> UNMutableNotificationContent {
+        let content = UNMutableNotificationContent()
+        let fallbackDetails: (String, String)?
+        do {
+            fallbackDetails = try storeContext.performRead { context in
+            let request = NSFetchRequest<NSManagedObject>(entityName: "Pill")
+            request.predicate = NSPredicate(format: "id == %@", pillID as CVarArg)
+            request.fetchLimit = 1
+            guard let pill = try context.fetch(request).first else {
+                return nil
+            }
+
+            guard
+                let name = pill.stringValue(forKey: "name"),
+                let dosage = pill.stringValue(forKey: "dosage")
+            else {
+                return nil
+            }
+
+            return (name, "Take \(dosage).")
+            }
+        } catch {
+            fallbackDetails = nil
+        }
+
+        content.title = fallbackTitle ?? fallbackDetails?.0 ?? "Pill reminder"
+        content.body = fallbackBody ?? fallbackDetails?.1 ?? "Time to take your pill."
+        content.sound = .default
+        content.categoryIdentifier = categoryIdentifier
+        content.userInfo = [
+            "type": "pill",
+            "pillID": pillID.uuidString,
+            "localDate": LocalNotificationSupport.localDateIdentifier(for: localDate, calendar: calendar),
+        ]
+        return content
     }
 
     func makePendingNotificationRequests() throws -> [UNNotificationRequest] {
@@ -393,6 +508,7 @@ final class PillNotificationService {
         content.userInfo = [
             "type": "pill",
             "pillID": candidate.pillID.uuidString,
+            "localDate": LocalNotificationSupport.localDateIdentifier(for: candidate.localDate, calendar: calendar),
         ]
 
         let triggerDate = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: candidate.scheduledDateTime)
@@ -418,6 +534,7 @@ final class PillNotificationService {
         content.userInfo = [
             "type": "pill_aggregated",
             "count": candidates.count,
+            "localDate": LocalNotificationSupport.localDateIdentifier(for: scheduledDateTime, calendar: calendar),
         ]
 
         let triggerDate = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: scheduledDateTime)
@@ -525,12 +642,23 @@ final class PillNotificationService {
         }
 
         guard validatedSchedules.count == schedules.count else { return nil }
-        let latest = validatedSchedules.max {
+        guard let latest = validatedSchedules.max(by: {
             if $0.0 != $1.0 { return $0.0 < $1.0 }
             if $0.1 != $1.1 { return $0.1 < $1.1 }
             return $0.2 < $1.2
+        }) else {
+            return WeekdaySet(rawValue: 0)
         }
-        return WeekdaySet(rawValue: latest?.3 ?? 0)
+        guard WeekdayValidation.isValidMask(latest.3) else {
+            report.append(
+                area: "notification",
+                entityName: object.entityName,
+                object: object,
+                message: "Habit reminder configuration contains invalid weekdayMask."
+            )
+            return nil
+        }
+        return WeekdaySet(rawValue: latest.3)
     }
 
     private func loadPillScheduleDays(
@@ -561,12 +689,23 @@ final class PillNotificationService {
         }
 
         guard validatedSchedules.count == schedules.count else { return nil }
-        let latest = validatedSchedules.max {
+        guard let latest = validatedSchedules.max(by: {
             if $0.0 != $1.0 { return $0.0 < $1.0 }
             if $0.1 != $1.1 { return $0.1 < $1.1 }
             return $0.2 < $1.2
+        }) else {
+            return WeekdaySet(rawValue: 0)
         }
-        return WeekdaySet(rawValue: latest?.3 ?? 0)
+        guard WeekdayValidation.isValidMask(latest.3) else {
+            report.append(
+                area: "notification",
+                entityName: object.entityName,
+                object: object,
+                message: "Pill reminder configuration contains invalid weekdayMask."
+            )
+            return nil
+        }
+        return WeekdaySet(rawValue: latest.3)
     }
 
     private func loadHabitCompletionEntries(
@@ -635,6 +774,10 @@ final class PillNotificationService {
 
     private func aggregatedNotificationIdentifier(for scheduledDateTime: Date) -> String {
         "\(prefix)summary_\(timestampString(for: scheduledDateTime))"
+    }
+
+    private func remindLaterNotificationIdentifier(for pillID: UUID, scheduledDateTime: Date) -> String {
+        "\(notificationIdentifierPrefix(for: pillID))remindlater_\(timestampString(for: scheduledDateTime))"
     }
 
     private func timestampString(for date: Date) -> String {

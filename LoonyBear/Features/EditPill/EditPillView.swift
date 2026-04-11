@@ -12,6 +12,7 @@ struct EditPillView: View {
     @State private var validationMessage: String?
     @State private var isSaving = false
     @State private var isDismissingKeyboardForNonTextControl = false
+    @State private var isShowingDeleteConfirmation = false
 
     private enum Field: Hashable {
         case description
@@ -25,6 +26,7 @@ struct EditPillView: View {
             dosage: details.dosage,
             details: details.details ?? "",
             startDate: details.startDate,
+            historyMode: details.historyMode,
             scheduleDays: details.scheduleDays,
             reminderEnabled: details.reminderEnabled,
             reminderTime: details.reminderTime ?? ReminderTime.default(),
@@ -99,17 +101,34 @@ struct EditPillView: View {
                 }
 
                 AppCard {
-                    InlineDaysSelector(selection: scheduleDaysBinding)
-                        .simultaneousGesture(TapGesture().onEnded {
-                            dismissKeyboardForNonTextControl()
-                        })
-                    if draft.scheduleDays.rawValue == 0 {
-                        HStack {
-                            AppInlineErrorText(text: AppCopy.chooseAtLeastOneDay)
+                    VStack(alignment: .leading, spacing: 0) {
+                        InlineDaysSelector(selection: scheduleDaysBinding)
+                            .simultaneousGesture(TapGesture().onEnded {
+                                dismissKeyboardForNonTextControl()
+                            })
+
+                        AppSectionDivider()
+
+                        HStack(spacing: 16) {
+                            Text("Use schedule for history?")
+                                .foregroundStyle(.primary)
+
                             Spacer()
+
+                            Toggle("", isOn: useScheduleForHistoryBinding)
+                                .labelsHidden()
                         }
                         .padding(.horizontal, 18)
-                        .padding(.bottom, 16)
+                        .padding(.vertical, 18)
+
+                        if draft.scheduleDays.rawValue == 0 {
+                            HStack {
+                                AppInlineErrorText(text: AppCopy.chooseAtLeastOneDay)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 18)
+                            .padding(.bottom, 16)
+                        }
                     }
                 }
 
@@ -142,6 +161,26 @@ struct EditPillView: View {
                         .padding(.vertical, 18)
                 }
                 .id(Field.description)
+
+                Button(role: .destructive) {
+                    isShowingDeleteConfirmation = true
+                } label: {
+                    Text("Delete")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+                .controlSize(.large)
+                .frame(maxWidth: .infinity)
+                .disabled(isSaving)
+                .confirmationDialog("Delete Pill?", isPresented: $isShowingDeleteConfirmation, titleVisibility: .visible) {
+                    Button("Yes", role: .destructive) {
+                        deletePill()
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("This pill will be permanently deleted.")
+                }
 
                 if let validationMessage {
                     AppValidationBanner(message: validationMessage)
@@ -246,6 +285,13 @@ struct EditPillView: View {
         )
     }
 
+    private var useScheduleForHistoryBinding: Binding<Bool> {
+        Binding(
+            get: { draft.historyMode.usesScheduleForHistory },
+            set: { draft.historyMode = $0 ? .scheduleBased : .everyDay }
+        )
+    }
+
     private var isFormValid: Bool {
         !draft.trimmedName.isEmpty && !draft.trimmedDosage.isEmpty && draft.scheduleDays.rawValue != 0
     }
@@ -277,6 +323,21 @@ struct EditPillView: View {
                 isSaving = false
             }
         }
+    }
+
+    private func deletePill() {
+        isSaving = true
+        validationMessage = nil
+
+        pillAppState.deletePill(id: draft.id)
+        if let errorMessage = pillAppState.actionErrorMessage {
+            validationMessage = errorMessage
+            isSaving = false
+            return
+        }
+
+        isSaving = false
+        dismiss()
     }
 
     private func normalizedDraft() -> EditPillDraft {

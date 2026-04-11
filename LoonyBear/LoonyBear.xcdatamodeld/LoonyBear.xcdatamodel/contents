@@ -16,6 +16,7 @@
     <entity name="Habit" representedClassName="NSManagedObject" syncable="YES">
         <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="historyModeRaw" attributeType="String" defaultValueString="scheduleBased"/>
         <attribute name="name" attributeType="String"/>
         <attribute name="reminderEnabled" attributeType="Boolean" usesScalarValueType="YES"/>
         <attribute name="reminderHour" optional="YES" attributeType="Integer 16" usesScalarValueType="YES"/>
@@ -68,6 +69,7 @@
         <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="detailsText" optional="YES" attributeType="String"/>
         <attribute name="dosage" attributeType="String"/>
+        <attribute name="historyModeRaw" attributeType="String" defaultValueString="scheduleBased"/>
         <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="name" attributeType="String"/>
         <attribute name="reminderEnabled" attributeType="Boolean" usesScalarValueType="YES"/>

@@ -21,10 +21,20 @@ enum CompletionSource: String, Codable {
     case manualEdit = "manual edit"
     case notification = "notification"
     case restore = "restore"
+    case autoFill = "auto fill"
     case skipped = "skipped"
 
     var countsAsCompletion: Bool {
         self != .skipped
+    }
+}
+
+enum HabitHistoryMode: String, Codable, Equatable {
+    case scheduleBased = "scheduleBased"
+    case everyDay = "everyDay"
+
+    var usesScheduleForHistory: Bool {
+        self == .scheduleBased
     }
 }
 
@@ -102,6 +112,7 @@ struct Habit: Identifiable, Equatable {
     let name: String
     let sortOrder: Int
     let startDate: Date
+    let historyMode: HabitHistoryMode
     let reminderEnabled: Bool
     let reminderTime: ReminderTime?
     let createdAt: Date
@@ -158,6 +169,7 @@ struct CreateHabitDraft: Equatable {
     var name = ""
     var startDate: Date = Calendar.current.startOfDay(for: Date())
     var scheduleDays: WeekdaySet = .daily
+    var useScheduleForHistory = true
     var reminderEnabled = false
     var reminderTime = ReminderTime.default()
 
@@ -171,11 +183,36 @@ struct EditHabitDraft: Equatable {
     let type: HabitType
     let startDate: Date
     var name: String
+    var historyMode: HabitHistoryMode
     var scheduleDays: WeekdaySet
     var reminderEnabled: Bool
     var reminderTime: ReminderTime
     var completedDays: Set<Date>
     var skippedDays: Set<Date>
+
+    init(
+        id: UUID,
+        type: HabitType,
+        startDate: Date,
+        name: String,
+        historyMode: HabitHistoryMode = .scheduleBased,
+        scheduleDays: WeekdaySet,
+        reminderEnabled: Bool,
+        reminderTime: ReminderTime,
+        completedDays: Set<Date>,
+        skippedDays: Set<Date>
+    ) {
+        self.id = id
+        self.type = type
+        self.startDate = startDate
+        self.name = name
+        self.historyMode = historyMode
+        self.scheduleDays = scheduleDays
+        self.reminderEnabled = reminderEnabled
+        self.reminderTime = reminderTime
+        self.completedDays = completedDays
+        self.skippedDays = skippedDays
+    }
 
     var trimmedName: String {
         name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -187,6 +224,7 @@ struct HabitDetailsProjection: Equatable {
     let type: HabitType
     let name: String
     let startDate: Date
+    let historyMode: HabitHistoryMode
     let scheduleSummary: String
     let scheduleDays: WeekdaySet
     let reminderEnabled: Bool

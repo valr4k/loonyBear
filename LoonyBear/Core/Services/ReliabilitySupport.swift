@@ -7,6 +7,13 @@ struct DataIntegrityIssue: Equatable, Sendable {
     let entityName: String
     let objectIdentifier: String
     let message: String
+
+    nonisolated static func == (lhs: DataIntegrityIssue, rhs: DataIntegrityIssue) -> Bool {
+        lhs.area == rhs.area &&
+        lhs.entityName == rhs.entityName &&
+        lhs.objectIdentifier == rhs.objectIdentifier &&
+        lhs.message == rhs.message
+    }
 }
 
 struct DataIntegrityReport: Equatable, Sendable {
@@ -19,6 +26,10 @@ struct DataIntegrityReport: Equatable, Sendable {
     var summary: String {
         "\(issues.count) corrupted record(s) detected."
     }
+
+    nonisolated static func == (lhs: DataIntegrityReport, rhs: DataIntegrityReport) -> Bool {
+        lhs.issues == rhs.issues
+    }
 }
 
 struct DataIntegrityError: LocalizedError, Equatable, Sendable {
@@ -27,6 +38,10 @@ struct DataIntegrityError: LocalizedError, Equatable, Sendable {
 
     var errorDescription: String? {
         "Data integrity problem during \(operation). \(report.summary)"
+    }
+
+    nonisolated static func == (lhs: DataIntegrityError, rhs: DataIntegrityError) -> Bool {
+        lhs.operation == rhs.operation && lhs.report == rhs.report
     }
 }
 

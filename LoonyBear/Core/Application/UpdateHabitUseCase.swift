@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 struct UpdateHabitUseCase {
     let repository: HabitRepository
 

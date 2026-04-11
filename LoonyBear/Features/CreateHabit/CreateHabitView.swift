@@ -133,16 +133,37 @@ struct CreateHabitView: View {
     }
 
     private var daysSection: some View {
-        AppCard {
-            InlineDaysSelector(selection: scheduleDaysBinding)
-            if shouldShowScheduleValidation {
-                HStack {
-                    AppInlineErrorText(text: AppCopy.chooseAtLeastOneDay)
-                    Spacer()
+        VStack(alignment: .leading, spacing: 10) {
+            AppCard {
+                VStack(alignment: .leading, spacing: 0) {
+                    InlineDaysSelector(selection: scheduleDaysBinding)
+
+                    AppSectionDivider()
+
+                    HStack(spacing: 16) {
+                        Text("Use schedule for history?")
+                            .foregroundStyle(.primary)
+
+                        Spacer()
+
+                        Toggle("", isOn: $draft.useScheduleForHistory)
+                            .labelsHidden()
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 18)
+
+                    if shouldShowScheduleValidation {
+                        HStack {
+                            AppInlineErrorText(text: AppCopy.chooseAtLeastOneDay)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 18)
+                        .padding(.bottom, 16)
+                    }
                 }
-                .padding(.horizontal, 18)
-                .padding(.bottom, 16)
             }
+
+            AppHelperText(text: historyHelperText)
         }
     }
 
@@ -179,6 +200,12 @@ struct CreateHabitView: View {
 
     private var shouldShowScheduleValidation: Bool {
         draft.scheduleDays.rawValue == 0
+    }
+
+    private var historyHelperText: String {
+        draft.useScheduleForHistory
+            ? AppCopy.habitHistoryFollowsSchedule
+            : AppCopy.habitHistoryCountsEveryDay
     }
 
     private var scheduleDaysBinding: Binding<WeekdaySet> {

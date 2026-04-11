@@ -13,6 +13,7 @@ struct AppEnvironment {
     let notificationCoordinator: AppNotificationCoordinator
     let badgeService: AppBadgeService
 
+    @MainActor
     static func live() -> AppBootstrapState {
         let persistenceController = PersistenceController.shared
         if let loadError = persistenceController.loadError {
@@ -44,12 +45,14 @@ struct AppEnvironment {
             loadDashboardUseCase: LoadDashboardUseCase(repository: repository),
             createHabitUseCase: CreateHabitUseCase(repository: repository),
             updateHabitUseCase: UpdateHabitUseCase(repository: repository),
+            reconcileHistoryUseCase: ReconcileHabitHistoryUseCase(repository: repository),
             repository: repository,
             notificationService: notificationService,
             widgetSyncService: widgetSyncService,
             badgeService: badgeService
         )
         let pillAppState = PillAppState(
+            reconcileHistoryUseCase: ReconcilePillHistoryUseCase(repository: pillRepository),
             repository: pillRepository,
             notificationService: pillNotificationService,
             badgeService: badgeService
@@ -97,12 +100,14 @@ struct AppEnvironment {
             loadDashboardUseCase: LoadDashboardUseCase(repository: repository),
             createHabitUseCase: CreateHabitUseCase(repository: repository),
             updateHabitUseCase: UpdateHabitUseCase(repository: repository),
+            reconcileHistoryUseCase: ReconcileHabitHistoryUseCase(repository: repository),
             repository: repository,
             notificationService: notificationService,
             widgetSyncService: widgetSyncService,
             badgeService: badgeService
         )
         let pillAppState = PillAppState(
+            reconcileHistoryUseCase: ReconcilePillHistoryUseCase(repository: pillRepository),
             repository: pillRepository,
             notificationService: pillNotificationService,
             badgeService: badgeService

@@ -65,11 +65,67 @@ struct BackupHabit: Codable {
     let name: String
     let sortOrder: Int
     let startDate: Date
+    let historyMode: String
     let reminderEnabled: Bool
     let reminderTime: BackupReminderTime?
     let createdAt: Date
     let updatedAt: Date
     let version: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case type
+        case name
+        case sortOrder
+        case startDate
+        case historyMode
+        case reminderEnabled
+        case reminderTime
+        case createdAt
+        case updatedAt
+        case version
+    }
+
+    init(
+        id: UUID,
+        type: String,
+        name: String,
+        sortOrder: Int,
+        startDate: Date,
+        historyMode: String = HabitHistoryMode.scheduleBased.rawValue,
+        reminderEnabled: Bool,
+        reminderTime: BackupReminderTime?,
+        createdAt: Date,
+        updatedAt: Date,
+        version: Int
+    ) {
+        self.id = id
+        self.type = type
+        self.name = name
+        self.sortOrder = sortOrder
+        self.startDate = startDate
+        self.historyMode = historyMode
+        self.reminderEnabled = reminderEnabled
+        self.reminderTime = reminderTime
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.version = version
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        type = try container.decode(String.self, forKey: .type)
+        name = try container.decode(String.self, forKey: .name)
+        sortOrder = try container.decode(Int.self, forKey: .sortOrder)
+        startDate = try container.decode(Date.self, forKey: .startDate)
+        historyMode = try container.decodeIfPresent(String.self, forKey: .historyMode) ?? HabitHistoryMode.scheduleBased.rawValue
+        reminderEnabled = try container.decode(Bool.self, forKey: .reminderEnabled)
+        reminderTime = try container.decodeIfPresent(BackupReminderTime.self, forKey: .reminderTime)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        version = try container.decode(Int.self, forKey: .version)
+    }
 }
 
 struct BackupScheduleVersion: Codable {
@@ -107,11 +163,71 @@ struct BackupPill: Codable {
     let details: String?
     let sortOrder: Int
     let startDate: Date
+    let historyMode: String
     let reminderEnabled: Bool
     let reminderTime: BackupReminderTime?
     let createdAt: Date
     let updatedAt: Date
     let version: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case dosage
+        case details
+        case sortOrder
+        case startDate
+        case historyMode
+        case reminderEnabled
+        case reminderTime
+        case createdAt
+        case updatedAt
+        case version
+    }
+
+    init(
+        id: UUID,
+        name: String,
+        dosage: String,
+        details: String?,
+        sortOrder: Int,
+        startDate: Date,
+        historyMode: String,
+        reminderEnabled: Bool,
+        reminderTime: BackupReminderTime?,
+        createdAt: Date,
+        updatedAt: Date,
+        version: Int
+    ) {
+        self.id = id
+        self.name = name
+        self.dosage = dosage
+        self.details = details
+        self.sortOrder = sortOrder
+        self.startDate = startDate
+        self.historyMode = historyMode
+        self.reminderEnabled = reminderEnabled
+        self.reminderTime = reminderTime
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.version = version
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        dosage = try container.decode(String.self, forKey: .dosage)
+        details = try container.decodeIfPresent(String.self, forKey: .details)
+        sortOrder = try container.decode(Int.self, forKey: .sortOrder)
+        startDate = try container.decode(Date.self, forKey: .startDate)
+        historyMode = try container.decodeIfPresent(String.self, forKey: .historyMode) ?? PillHistoryMode.scheduleBased.rawValue
+        reminderEnabled = try container.decode(Bool.self, forKey: .reminderEnabled)
+        reminderTime = try container.decodeIfPresent(BackupReminderTime.self, forKey: .reminderTime)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        version = try container.decode(Int.self, forKey: .version)
+    }
 }
 
 struct BackupPillScheduleVersion: Codable {

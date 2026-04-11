@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 struct LoadDashboardUseCase {
     let repository: HabitRepository
 

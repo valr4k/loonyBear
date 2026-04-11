@@ -83,21 +83,7 @@ struct MyPillsView: View {
                                     } label: {
                                         Image(systemName: "info")
                                     }
-                                    .tint(.indigo)
-
-                                    Button {
-                                        onEditPill(pill)
-                                    } label: {
-                                        Image(systemName: "pencil")
-                                    }
                                     .tint(.blue)
-
-                                    Button {
-                                        pillPendingDeletion = pill
-                                    } label: {
-                                        Image(systemName: "trash")
-                                    }
-                                    .tint(.red)
                                 }
                             }
                         } header: {

@@ -269,6 +269,16 @@ final class BackupService {
                     )
                     continue
                 }
+                let historyModeRaw = (habit.value(forKey: "historyModeRaw") as? String) ?? HabitHistoryMode.scheduleBased.rawValue
+                guard HabitHistoryMode(rawValue: historyModeRaw) != nil else {
+                    report.append(
+                        area: "backup",
+                        entityName: habit.entityName,
+                        object: habit,
+                        message: "Habit row contains invalid historyModeRaw."
+                    )
+                    continue
+                }
 
                 let reminderEnabled = habit.value(forKey: "reminderEnabled") as? Bool ?? false
                 let reminderTime = ReminderValidation.validatedReminderTime(
@@ -294,6 +304,7 @@ final class BackupService {
                         name: name,
                         sortOrder: Int(habit.value(forKey: "sortOrder") as? Int32 ?? 0),
                         startDate: startDate,
+                        historyMode: historyModeRaw,
                         reminderEnabled: reminderEnabled,
                         reminderTime: reminderTime.map { BackupReminderTime(hour: $0.hour, minute: $0.minute) },
                         createdAt: createdAt,
@@ -392,6 +403,7 @@ final class BackupService {
                     let dosage = pill.value(forKey: "dosage") as? String,
                     let startDate = pill.value(forKey: "startDate") as? Date,
                     let createdAt = pill.value(forKey: "createdAt") as? Date,
+                    let historyModeRaw = pill.value(forKey: "historyModeRaw") as? String,
                     let updatedAt = pill.value(forKey: "updatedAt") as? Date
                 else {
                     report.append(
@@ -399,6 +411,15 @@ final class BackupService {
                         entityName: pill.entityName,
                         object: pill,
                         message: "Pill row is missing required fields."
+                    )
+                    continue
+                }
+                guard PillHistoryMode(rawValue: historyModeRaw) != nil else {
+                    report.append(
+                        area: "backup",
+                        entityName: pill.entityName,
+                        object: pill,
+                        message: "Pill row contains invalid historyModeRaw."
                     )
                     continue
                 }
@@ -428,6 +449,7 @@ final class BackupService {
                         details: pill.value(forKey: "detailsText") as? String,
                         sortOrder: Int(pill.value(forKey: "sortOrder") as? Int32 ?? 0),
                         startDate: startDate,
+                        historyMode: historyModeRaw,
                         reminderEnabled: reminderEnabled,
                         reminderTime: reminderTime.map { BackupReminderTime(hour: $0.hour, minute: $0.minute) },
                         createdAt: createdAt,
@@ -551,6 +573,7 @@ final class BackupService {
                     object.setValue(habit.name, forKey: "name")
                     object.setValue(Int32(habit.sortOrder), forKey: "sortOrder")
                     object.setValue(habit.startDate, forKey: "startDate")
+                    object.setValue(habit.historyMode, forKey: "historyModeRaw")
                     object.setValue(habit.reminderEnabled, forKey: "reminderEnabled")
                     object.setValue(habit.reminderTime.map { Int16($0.hour) }, forKey: "reminderHour")
                     object.setValue(habit.reminderTime.map { Int16($0.minute) }, forKey: "reminderMinute")
@@ -593,6 +616,7 @@ final class BackupService {
                     object.setValue(pill.details, forKey: "detailsText")
                     object.setValue(Int32(pill.sortOrder), forKey: "sortOrder")
                     object.setValue(pill.startDate, forKey: "startDate")
+                    object.setValue(pill.historyMode, forKey: "historyModeRaw")
                     object.setValue(pill.reminderEnabled, forKey: "reminderEnabled")
                     object.setValue(pill.reminderTime.map { Int16($0.hour) }, forKey: "reminderHour")
                     object.setValue(pill.reminderTime.map { Int16($0.minute) }, forKey: "reminderMinute")
@@ -691,6 +715,15 @@ final class BackupService {
                 )
                 continue
             }
+            guard HabitHistoryMode(rawValue: habit.historyMode) != nil else {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupHabit",
+                    objectIdentifier: objectIdentifier,
+                    message: "Habit backup payload contains invalid history mode."
+                )
+                continue
+            }
 
             if habit.reminderEnabled {
                 guard let reminderTime = habit.reminderTime else {
@@ -779,6 +812,15 @@ final class BackupService {
 
         for pill in archive.pills {
             let objectIdentifier = "pill:\(pill.id.uuidString)"
+            guard PillHistoryMode(rawValue: pill.historyMode) != nil else {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupPill",
+                    objectIdentifier: objectIdentifier,
+                    message: "Pill backup payload contains invalid history mode."
+                )
+                continue
+            }
             if pill.reminderEnabled {
                 guard let reminderTime = pill.reminderTime else {
                     report.append(

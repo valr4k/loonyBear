@@ -18,9 +18,11 @@ enum AppCopy {
     static let backupFolderHint = "Backups stay in the selected Files folder even if the app is deleted. After reinstalling, choose the same folder again before restoring."
     static let pillHistoryFollowsSchedule = "History follows your selected schedule from the start date."
     static let pillHistoryCountsEveryDay = "History counts every day from the start date."
+    static let habitHistoryFollowsSchedule = "History follows your selected schedule from the start date."
+    static let habitHistoryCountsEveryDay = "History counts every day from the start date."
     static let pillDescriptionPlaceholder = "Notes (optional)"
-    static let habitHistoryHint = "Tap a day to switch between none, completed, and skipped.\nYou can edit only the last 30 days, but not before the start date."
-    static let pillHistoryHint = "Tap a day to switch between none, taken, and skipped.\nYou can edit only the last 30 days, but not before the start date."
+    static let habitHistoryHint = "Today: None, Completed, or Skipped.\nPast days: Completed or Skipped only.\nYou can edit the last 30 days.\nDays before the start date can’t be edited"
+    static let pillHistoryHint = "Today: None, Taken, or Skipped.\nPast days: Taken or Skipped only.\nYou can edit the last 30 days.\nDays before the start date can’t be edited"
 }
 
 enum AppBackgroundStyle {

@@ -11,9 +11,11 @@ enum PillRepositoryError: LocalizedError {
     }
 }
 
+@MainActor
 protocol PillRepository {
     func fetchDashboardPills() throws -> [PillCardProjection]
     func fetchPillDetails(id: UUID) throws -> PillDetailsProjection?
+    func reconcilePastDays(today: Date) throws -> Int
     func createPill(from draft: PillDraft) throws -> UUID
     func updatePill(from draft: EditPillDraft) throws
     func deletePill(id: UUID) throws

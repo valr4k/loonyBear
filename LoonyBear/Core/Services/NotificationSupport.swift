@@ -153,4 +153,20 @@ enum LocalNotificationSupport {
             components.day ?? 0
         )
     }
+
+    static func parseLocalDateIdentifier(_ identifier: String, calendar: Calendar) -> Date? {
+        guard identifier.count == 8 else { return nil }
+        guard let year = Int(identifier.prefix(4)),
+              let month = Int(identifier.dropFirst(4).prefix(2)),
+              let day = Int(identifier.suffix(2)) else {
+            return nil
+        }
+
+        let components = DateComponents(year: year, month: month, day: day)
+        guard let date = calendar.date(from: components) else {
+            return nil
+        }
+
+        return calendar.startOfDay(for: date)
+    }
 }

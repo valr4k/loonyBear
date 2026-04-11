@@ -17,6 +17,7 @@ enum CreateHabitError: LocalizedError, Equatable {
     }
 }
 
+@MainActor
 struct CreateHabitUseCase {
     let repository: HabitRepository
 

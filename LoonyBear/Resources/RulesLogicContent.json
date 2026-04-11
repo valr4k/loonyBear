@@ -36,6 +36,10 @@
         {
           "title": "Schedule changes",
           "body": "If you change a habit schedule later, the app keeps the historical record that already exists. It does not fully recalculate older completions from scratch."
+        },
+        {
+          "title": "Use schedule for history",
+          "body": "Each habit stores whether history follows the schedule or counts every day from the start date. That saved mode is used later by create, edit, reconciliation, details, and backup."
         }
       ]
     },
@@ -99,6 +103,26 @@
         {
           "title": "History windows are different",
           "body": "Habits and Pills do not use the same history rules everywhere. Create flow, edit flow, and details screens may use different history windows depending on the feature."
+        },
+        {
+          "title": "Past days are finalized",
+          "body": "Today can still be left empty, but past editable days are not supposed to stay empty. Past days are finalized as either completed/taken or skipped."
+        },
+        {
+          "title": "Habits finalize past days from their saved history mode",
+          "body": "When a habit is created, edited, or reconciled later, past days are finalized using its stored history mode. Schedule-based habits finalize only scheduled past days, while every-day habits finalize every past day from the start date up to yesterday."
+        },
+        {
+          "title": "Pills store a history mode",
+          "body": "Each pill stores whether history follows the schedule or counts every day. That saved mode is used later by edit, reconciliation, reminders, and details."
+        },
+        {
+          "title": "New pills can prefill taken history",
+          "body": "Creating a pill can generate taken history from the start date up to yesterday. In schedule-based mode it fills only scheduled days; in every-day mode it fills every past day. Remaining required past days are then finalized as skipped."
+        },
+        {
+          "title": "Edit keeps today and past days different",
+          "body": "In the edit calendar, today can still cycle through empty, positive, and skipped. Past editable days can switch only between positive and skipped, and any required past habit day left empty is normalized back to completed."
         },
         {
           "title": "Older history stays visible",

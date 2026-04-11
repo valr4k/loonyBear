@@ -16,11 +16,18 @@ final class PillAppState: ObservableObject {
     @Published private(set) var actionErrorMessage: String?
     @Published private(set) var detailErrorMessage: String?
 
+    private let reconcileHistoryUseCase: ReconcilePillHistoryUseCase
     private let repository: PillRepository
     let notificationService: PillNotificationService
     private let sideEffectCoordinator: PillSideEffectCoordinator
 
-    init(repository: PillRepository, notificationService: PillNotificationService, badgeService: AppBadgeService) {
+    init(
+        reconcileHistoryUseCase: ReconcilePillHistoryUseCase,
+        repository: PillRepository,
+        notificationService: PillNotificationService,
+        badgeService: AppBadgeService
+    ) {
+        self.reconcileHistoryUseCase = reconcileHistoryUseCase
         self.repository = repository
         self.notificationService = notificationService
         sideEffectCoordinator = PillSideEffectCoordinator(
@@ -47,6 +54,22 @@ final class PillAppState: ObservableObject {
     }
 
     func handleAppDidBecomeActive() {
+        var reconciliationErrorMessage: String?
+
+        do {
+            let finalizedDays = try reconcileHistoryUseCase.execute()
+            if finalizedDays > 0 {
+                ReliabilityLog.info("pill.history.reconcile finalized \(finalizedDays) day(s)")
+            }
+        } catch {
+            reconciliationErrorMessage = error.localizedDescription
+            ReliabilityLog.error("pill.history.reconcile failed: \(error.localizedDescription)")
+        }
+
+        refreshDashboard()
+        if let reconciliationErrorMessage {
+            actionErrorMessage = reconciliationErrorMessage
+        }
         notificationService.handleAppDidBecomeActive()
     }
 

@@ -4,6 +4,7 @@ struct PillDetailsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var pillAppState: PillAppState
     let pill: PillCardProjection
+    let onEdit: (UUID) -> Void
 
     @State private var details: PillDetailsProjection?
     @State private var detailErrorMessage: String?
@@ -15,6 +16,11 @@ struct PillDetailsView: View {
         calendar.firstWeekday = 2
         return calendar.date(from: calendar.dateComponents([.year, .month], from: Date())) ?? Date()
     }()
+
+    init(pill: PillCardProjection, onEdit: @escaping (UUID) -> Void = { _ in }) {
+        self.pill = pill
+        self.onEdit = onEdit
+    }
 
     var body: some View {
         AppScreen(backgroundStyle: .pills, topPadding: 8) {
@@ -107,6 +113,15 @@ struct PillDetailsView: View {
                     Image(systemName: "xmark")
                 }
                 .accessibilityLabel("Close")
+            }
+
+            if details != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Edit") {
+                        onEdit(pill.id)
+                    }
+                    .accessibilityLabel("Edit Pill")
+                }
             }
         }
         .onAppear {

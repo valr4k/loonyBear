@@ -20,6 +20,7 @@ final class HabitAppState: ObservableObject {
     private let loadDashboardUseCase: LoadDashboardUseCase
     private let createHabitUseCase: CreateHabitUseCase
     private let updateHabitUseCase: UpdateHabitUseCase
+    private let reconcileHistoryUseCase: ReconcileHabitHistoryUseCase
     private let repository: HabitRepository
     let notificationService: NotificationService
     private let sideEffectCoordinator: HabitSideEffectCoordinator
@@ -28,6 +29,7 @@ final class HabitAppState: ObservableObject {
         loadDashboardUseCase: LoadDashboardUseCase,
         createHabitUseCase: CreateHabitUseCase,
         updateHabitUseCase: UpdateHabitUseCase,
+        reconcileHistoryUseCase: ReconcileHabitHistoryUseCase,
         repository: HabitRepository,
         notificationService: NotificationService,
         widgetSyncService: WidgetSyncService,
@@ -36,6 +38,7 @@ final class HabitAppState: ObservableObject {
         self.loadDashboardUseCase = loadDashboardUseCase
         self.createHabitUseCase = createHabitUseCase
         self.updateHabitUseCase = updateHabitUseCase
+        self.reconcileHistoryUseCase = reconcileHistoryUseCase
         self.repository = repository
         self.notificationService = notificationService
         sideEffectCoordinator = HabitSideEffectCoordinator(
@@ -158,6 +161,26 @@ final class HabitAppState: ObservableObject {
 
     func syncNotificationsAfterHabitUpdate(from draft: EditHabitDraft) async {
         await sideEffectCoordinator.syncNotificationsAfterUpdate(from: draft)
+    }
+
+    func handleAppDidBecomeActive() {
+        var reconciliationErrorMessage: String?
+
+        do {
+            let finalizedDays = try reconcileHistoryUseCase.execute()
+            if finalizedDays > 0 {
+                ReliabilityLog.info("habit.history.reconcile finalized \(finalizedDays) day(s)")
+            }
+        } catch {
+            reconciliationErrorMessage = error.localizedDescription
+            ReliabilityLog.error("habit.history.reconcile failed: \(error.localizedDescription)")
+        }
+
+        refreshDashboard()
+        if let reconciliationErrorMessage {
+            actionErrorMessage = reconciliationErrorMessage
+        }
+        notificationService.handleAppDidBecomeActive()
     }
 
     func refreshDashboard() {

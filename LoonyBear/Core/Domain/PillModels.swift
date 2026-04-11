@@ -12,6 +12,15 @@ enum PillCompletionSource: String, Codable {
     }
 }
 
+enum PillHistoryMode: String, Codable, Equatable {
+    case scheduleBased = "scheduleBased"
+    case everyDay = "everyDay"
+
+    var usesScheduleForHistory: Bool {
+        self == .scheduleBased
+    }
+}
+
 struct Pill: Identifiable, Equatable {
     let id: UUID
     let name: String
@@ -19,6 +28,7 @@ struct Pill: Identifiable, Equatable {
     let details: String?
     let sortOrder: Int
     let startDate: Date
+    let historyMode: PillHistoryMode
     let reminderEnabled: Bool
     let reminderTime: ReminderTime?
     let createdAt: Date
@@ -65,6 +75,7 @@ struct PillDetailsProjection: Equatable {
     let dosage: String
     let details: String?
     let startDate: Date
+    let historyMode: PillHistoryMode
     let scheduleSummary: String
     let scheduleDays: WeekdaySet
     let reminderEnabled: Bool
@@ -111,6 +122,7 @@ struct EditPillDraft: Equatable {
     var dosage: String
     var details: String
     let startDate: Date
+    var historyMode: PillHistoryMode
     var scheduleDays: WeekdaySet
     var reminderEnabled: Bool
     var reminderTime: ReminderTime

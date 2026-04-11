@@ -496,6 +496,43 @@ struct BackupServiceTests {
     }
 
     @Test
+    func restoreArchiveAcceptsAutoFillHabitCompletionSource() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataHabitRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = makeBackupService(context: context, persistence: persistence)
+
+        var archive = makeValidArchive()
+        archive = BackupArchive(
+            schemaVersion: archive.schemaVersion,
+            exportedAt: archive.exportedAt,
+            habits: archive.habits,
+            scheduleVersions: archive.scheduleVersions,
+            completionRecords: [
+                BackupCompletion(
+                    id: archive.completionRecords[0].id,
+                    habitId: archive.completionRecords[0].habitId,
+                    localDate: archive.completionRecords[0].localDate,
+                    source: CompletionSource.autoFill.rawValue,
+                    createdAt: archive.completionRecords[0].createdAt
+                ),
+            ],
+            ordering: archive.ordering,
+            pills: archive.pills,
+            pillScheduleVersions: archive.pillScheduleVersions,
+            pillIntakeRecords: archive.pillIntakeRecords
+        )
+
+        try service.restoreArchive(archive)
+
+        let restoredHabit = try #require(try repository.fetchHabitDetails(id: archive.habits[0].id))
+        #expect(restoredHabit.completedDays.contains(archive.completionRecords[0].localDate))
+    }
+
+    @Test
     func restoreArchiveRejectsInvalidPillIntakeSourceAndPreservesExistingData() throws {
         let persistence = PersistenceController(inMemory: true)
         let context = persistence.container.viewContext
@@ -628,6 +665,7 @@ struct BackupServiceTests {
                     details: archive.pills[0].details,
                     sortOrder: archive.pills[0].sortOrder,
                     startDate: archive.pills[0].startDate,
+                    historyMode: archive.pills[0].historyMode,
                     reminderEnabled: true,
                     reminderTime: BackupReminderTime(hour: 25, minute: 0),
                     createdAt: archive.pills[0].createdAt,
@@ -647,6 +685,48 @@ struct BackupServiceTests {
         }
 
         #expect(try repository.fetchDashboardPills().count == 1)
+    }
+
+    @Test
+    func restoreArchivePreservesHabitHistoryMode() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataHabitRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = makeBackupService(context: context, persistence: persistence)
+        let archive = makeValidArchive()
+        let migratedArchive = BackupArchive(
+            schemaVersion: archive.schemaVersion,
+            exportedAt: archive.exportedAt,
+            habits: [
+                BackupHabit(
+                    id: archive.habits[0].id,
+                    type: archive.habits[0].type,
+                    name: archive.habits[0].name,
+                    sortOrder: archive.habits[0].sortOrder,
+                    startDate: archive.habits[0].startDate,
+                    historyMode: HabitHistoryMode.everyDay.rawValue,
+                    reminderEnabled: archive.habits[0].reminderEnabled,
+                    reminderTime: archive.habits[0].reminderTime,
+                    createdAt: archive.habits[0].createdAt,
+                    updatedAt: archive.habits[0].updatedAt,
+                    version: archive.habits[0].version
+                ),
+            ],
+            scheduleVersions: archive.scheduleVersions,
+            completionRecords: archive.completionRecords,
+            ordering: archive.ordering,
+            pills: archive.pills,
+            pillScheduleVersions: archive.pillScheduleVersions,
+            pillIntakeRecords: archive.pillIntakeRecords
+        )
+
+        try service.restoreArchive(migratedArchive)
+
+        let details = try #require(try repository.fetchHabitDetails(id: archive.habits[0].id))
+        #expect(details.historyMode == .everyDay)
     }
 
     @Test
@@ -848,6 +928,7 @@ private extension BackupServiceTests {
                     details: nil,
                     sortOrder: 0,
                     startDate: now,
+                    historyMode: PillHistoryMode.scheduleBased.rawValue,
                     reminderEnabled: true,
                     reminderTime: BackupReminderTime(hour: 8, minute: 30),
                     createdAt: now,

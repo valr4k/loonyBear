@@ -493,11 +493,13 @@ struct AppBadgeServiceTests {
     }
 }
 
+@MainActor
 private struct FakeHabitRepository: HabitRepository {
     let habits: [HabitCardProjection]
 
     func fetchDashboardHabits() throws -> [HabitCardProjection] { habits }
     func fetchHabitDetails(id: UUID) throws -> HabitDetailsProjection? { nil }
+    func reconcilePastDays(today: Date) throws -> Int { 0 }
     func createHabit(from draft: CreateHabitDraft) throws -> UUID { fatalError("Unused in tests") }
     func completeHabitToday(id: UUID) throws { fatalError("Unused in tests") }
     func skipHabitToday(id: UUID) throws { fatalError("Unused in tests") }
@@ -506,11 +508,13 @@ private struct FakeHabitRepository: HabitRepository {
     func updateHabit(from draft: EditHabitDraft) throws { fatalError("Unused in tests") }
 }
 
+@MainActor
 private struct FakePillRepository: PillRepository {
     let pills: [PillCardProjection]
 
     func fetchDashboardPills() throws -> [PillCardProjection] { pills }
     func fetchPillDetails(id: UUID) throws -> PillDetailsProjection? { nil }
+    func reconcilePastDays(today: Date) throws -> Int { 0 }
     func createPill(from draft: PillDraft) throws -> UUID { fatalError("Unused in tests") }
     func updatePill(from draft: EditPillDraft) throws { fatalError("Unused in tests") }
     func deletePill(id: UUID) throws { fatalError("Unused in tests") }

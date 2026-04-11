@@ -9,6 +9,7 @@ struct EditHabitView: View {
     @State private var validationMessage: String?
     @State private var displayedMonth: Date
     @State private var isSaving = false
+    @State private var isShowingDeleteConfirmation = false
 
     init(details: HabitDetailsProjection, onSaveSuccess: @escaping () -> Void = {}) {
         self.onSaveSuccess = onSaveSuccess
@@ -17,6 +18,7 @@ struct EditHabitView: View {
             type: details.type,
             startDate: details.startDate,
             name: details.name,
+            historyMode: details.historyMode,
             scheduleDays: details.scheduleDays,
             reminderEnabled: details.reminderEnabled,
             reminderTime: details.reminderTime ?? ReminderTime.default(),
@@ -75,17 +77,35 @@ struct EditHabitView: View {
             }
 
             AppCard {
-                InlineDaysSelector(selection: scheduleDaysBinding)
+                VStack(alignment: .leading, spacing: 0) {
+                    InlineDaysSelector(selection: scheduleDaysBinding)
 
-                if draft.scheduleDays.rawValue == 0 {
-                    HStack {
-                        validationText(AppCopy.chooseAtLeastOneDay)
+                    AppSectionDivider()
+
+                    HStack(spacing: 16) {
+                        Text("Use schedule for history?")
+                            .foregroundStyle(.primary)
+
                         Spacer()
+
+                        Toggle("", isOn: useScheduleForHistoryBinding)
+                            .labelsHidden()
                     }
                     .padding(.horizontal, 18)
-                    .padding(.bottom, 16)
+                    .padding(.vertical, 18)
+
+                    if draft.scheduleDays.rawValue == 0 {
+                        HStack {
+                            validationText(AppCopy.chooseAtLeastOneDay)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 18)
+                        .padding(.bottom, 16)
+                    }
                 }
             }
+
+            AppHelperText(text: historyHelperText)
 
             VStack(alignment: .leading, spacing: 8) {
                 AppCard {
@@ -103,6 +123,26 @@ struct EditHabitView: View {
 
                 HabitHistoryLegend()
                 AppHelperText(text: AppCopy.habitHistoryHint)
+            }
+
+            Button(role: .destructive) {
+                isShowingDeleteConfirmation = true
+            } label: {
+                Text("Delete")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.capsule)
+            .controlSize(.large)
+            .frame(maxWidth: .infinity)
+            .disabled(isSaving)
+            .confirmationDialog("Delete Habit?", isPresented: $isShowingDeleteConfirmation, titleVisibility: .visible) {
+                Button("Yes", role: .destructive) {
+                    deleteHabit()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This habit will be permanently deleted.")
             }
 
             if let validationMessage {
@@ -199,6 +239,19 @@ struct EditHabitView: View {
         )
     }
 
+    private var useScheduleForHistoryBinding: Binding<Bool> {
+        Binding(
+            get: { draft.historyMode.usesScheduleForHistory },
+            set: { draft.historyMode = $0 ? .scheduleBased : .everyDay }
+        )
+    }
+
+    private var historyHelperText: String {
+        draft.historyMode.usesScheduleForHistory
+            ? AppCopy.habitHistoryFollowsSchedule
+            : AppCopy.habitHistoryCountsEveryDay
+    }
+
     private func save() {
         guard isFormValid else {
             validationMessage = draft.trimmedName.isEmpty ? "Habit name is required." : AppCopy.chooseAtLeastOneDay
@@ -222,6 +275,21 @@ struct EditHabitView: View {
                 isSaving = false
             }
         }
+    }
+
+    private func deleteHabit() {
+        isSaving = true
+        validationMessage = nil
+
+        appState.deleteHabit(id: draft.id)
+        if let errorMessage = appState.actionErrorMessage {
+            validationMessage = errorMessage
+            isSaving = false
+            return
+        }
+
+        isSaving = false
+        dismiss()
     }
 
     private func normalizedDraft() -> EditHabitDraft {
@@ -403,17 +471,35 @@ private struct HabitHistoryCalendarView: View {
         let normalizedDate = calendar.startOfDay(for: date)
         guard editableDays.contains(normalizedDate) else { return }
 
+        let currentSelection: EditableHistorySelection
         switch dayStyle(for: normalizedDate) {
         case .available:
-            completedDays.insert(normalizedDate)
-            skippedDays.remove(normalizedDate)
+            currentSelection = .none
         case .completed:
-            completedDays.remove(normalizedDate)
-            skippedDays.insert(normalizedDate)
+            currentSelection = .positive
         case .skipped:
-            skippedDays.remove(normalizedDate)
+            currentSelection = .skipped
         case .disabled:
+            return
+        }
+
+        let nextSelection = EditableHistoryStateMachine.nextSelection(
+            current: currentSelection,
+            for: normalizedDate,
+            today: Date(),
+            calendar: calendar
+        )
+
+        completedDays.remove(normalizedDate)
+        skippedDays.remove(normalizedDate)
+
+        switch nextSelection {
+        case .none:
             break
+        case .positive:
+            completedDays.insert(normalizedDate)
+        case .skipped:
+            skippedDays.insert(normalizedDate)
         }
     }
 
@@ -425,14 +511,15 @@ private struct HabitHistoryCalendarView: View {
     }
 
     private func dayStyle(for date: Date) -> HabitCalendarDayStyle {
+        guard editableDays.contains(date) else {
+            return .disabled
+        }
         if completedDays.contains(date) {
             return .completed
         } else if skippedDays.contains(date) {
             return .skipped
-        } else if editableDays.contains(date) {
-            return .available
         } else {
-            return .disabled
+            return .available
         }
     }
 }

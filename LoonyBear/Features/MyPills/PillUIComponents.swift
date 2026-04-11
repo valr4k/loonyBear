@@ -65,11 +65,13 @@ struct PillCardView: View {
                     if pill.isTakenToday {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.title3)
-                            .foregroundStyle(.green)
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, .green)
                     } else if pill.isSkippedToday {
                         Image(systemName: "xmark.circle.fill")
                             .font(.title3)
-                            .foregroundStyle(.red)
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, .red)
                     }
                 }
             .frame(width: 44)
@@ -273,17 +275,35 @@ struct PillHistoryCalendarView: View {
         let normalizedDate = calendar.startOfDay(for: date)
         guard editableDays.contains(normalizedDate) else { return }
 
+        let currentSelection: EditableHistorySelection
         switch dayStyle(for: normalizedDate) {
         case .available:
-            takenDays.insert(normalizedDate)
-            skippedDays.remove(normalizedDate)
+            currentSelection = .none
         case .taken:
-            takenDays.remove(normalizedDate)
-            skippedDays.insert(normalizedDate)
+            currentSelection = .positive
         case .skipped:
-            skippedDays.remove(normalizedDate)
+            currentSelection = .skipped
         case .disabled:
+            return
+        }
+
+        let nextSelection = EditableHistoryStateMachine.nextSelection(
+            current: currentSelection,
+            for: normalizedDate,
+            today: Date(),
+            calendar: calendar
+        )
+
+        takenDays.remove(normalizedDate)
+        skippedDays.remove(normalizedDate)
+
+        switch nextSelection {
+        case .none:
             break
+        case .positive:
+            takenDays.insert(normalizedDate)
+        case .skipped:
+            skippedDays.insert(normalizedDate)
         }
     }
 
@@ -295,14 +315,15 @@ struct PillHistoryCalendarView: View {
     }
 
     private func dayStyle(for date: Date) -> PillCalendarDayStyle {
+        guard editableDays.contains(date) else {
+            return .disabled
+        }
         if takenDays.contains(date) {
             return .taken
         } else if skippedDays.contains(date) {
             return .skipped
-        } else if editableDays.contains(date) {
-            return .available
         } else {
-            return .disabled
+            return .available
         }
     }
 }

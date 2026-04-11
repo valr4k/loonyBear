@@ -4,6 +4,7 @@ struct HabitDetailsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var appState: HabitAppState
     let habit: HabitCardProjection
+    let onEdit: (UUID) -> Void
     @State private var details: HabitDetailsProjection?
     @State private var detailErrorMessage: String?
     @State private var isIntegrityError = false
@@ -14,6 +15,11 @@ struct HabitDetailsView: View {
         calendar.firstWeekday = 2
         return calendar.date(from: calendar.dateComponents([.year, .month], from: Date())) ?? Date()
     }()
+
+    init(habit: HabitCardProjection, onEdit: @escaping (UUID) -> Void = { _ in }) {
+        self.habit = habit
+        self.onEdit = onEdit
+    }
 
     var body: some View {
         AppScreen(backgroundStyle: .habits, topPadding: 8) {
@@ -29,6 +35,8 @@ struct HabitDetailsView: View {
                     AppValueRow(title: "Start Date", value: details.startDate.formatted(date: .abbreviated, time: .omitted))
                     AppSectionDivider()
                     AppValueRow(title: "Plan", value: details.scheduleSummary)
+                    AppSectionDivider()
+                    AppValueRow(title: "History", value: details.historyMode.usesScheduleForHistory ? "Follows schedule" : "Counts every day")
                     AppSectionDivider()
                     AppValueRow(title: "Reminder", value: details.reminderTime?.formatted ?? "Off")
                 }
@@ -84,6 +92,15 @@ struct HabitDetailsView: View {
                     Image(systemName: "xmark")
                 }
                 .accessibilityLabel("Close")
+            }
+
+            if details != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Edit") {
+                        onEdit(habit.id)
+                    }
+                    .accessibilityLabel("Edit Habit")
+                }
             }
         }
         .onAppear {

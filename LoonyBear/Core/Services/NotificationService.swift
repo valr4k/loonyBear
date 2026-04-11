@@ -172,20 +172,35 @@ final class NotificationService {
             return false
         }
 
-        if handleDefaultTapRouting(type: type, actionIdentifier: response.actionIdentifier) {
+        return handleNotificationResponse(
+            type: type,
+            userInfo: response.notification.request.content.userInfo,
+            actionIdentifier: response.actionIdentifier,
+            notificationDate: response.notification.date
+        )
+    }
+
+    @discardableResult
+    func handleNotificationResponse(
+        type: String,
+        userInfo: [AnyHashable: Any],
+        actionIdentifier: String,
+        notificationDate: Date
+    ) -> Bool {
+        if handleDefaultTapRouting(type: type, actionIdentifier: actionIdentifier) {
             return true
         }
 
         guard
-            let habitIDString = response.notification.request.content.userInfo["habitID"] as? String,
+            let habitIDString = userInfo["habitID"] as? String,
             let habitID = UUID(uuidString: habitIDString)
         else {
             return true
         }
 
-        let deliveryDay = calendar.startOfDay(for: response.notification.date)
+        let deliveryDay = localDate(from: userInfo, fallbackDate: notificationDate)
         let didMutateStore: Bool
-        switch response.actionIdentifier {
+        switch actionIdentifier {
         case completeActionIdentifier:
             didMutateStore = createCompletionIfNeeded(for: habitID, on: deliveryDay, source: .notification)
         case skipActionIdentifier:
@@ -219,6 +234,15 @@ final class NotificationService {
 
     private func cleanupStaleDeliveredNotifications() {
         LocalNotificationSupport.cleanupStaleDeliveredNotifications(center: center, calendar: calendar)
+    }
+
+    private func localDate(from userInfo: [AnyHashable: Any], fallbackDate: Date) -> Date {
+        guard let identifier = userInfo["localDate"] as? String,
+              let parsedDate = LocalNotificationSupport.parseLocalDateIdentifier(identifier, calendar: calendar) else {
+            return calendar.startOfDay(for: fallbackDate)
+        }
+
+        return parsedDate
     }
 
     private func reminderCandidates(for reminder: HabitReminderConfiguration) -> [ScheduledHabitReminderCandidate] {
@@ -519,12 +543,23 @@ final class NotificationService {
         }
 
         guard validatedSchedules.count == schedules.count else { return nil }
-        let latest = validatedSchedules.max {
+        guard let latest = validatedSchedules.max(by: {
             if $0.0 != $1.0 { return $0.0 < $1.0 }
             if $0.1 != $1.1 { return $0.1 < $1.1 }
             return $0.2 < $1.2
+        }) else {
+            return WeekdaySet(rawValue: 0)
         }
-        return WeekdaySet(rawValue: latest?.3 ?? 0)
+        guard WeekdayValidation.isValidMask(latest.3) else {
+            report.append(
+                area: "notification",
+                entityName: object.entityName,
+                object: object,
+                message: "Habit reminder configuration contains invalid weekdayMask."
+            )
+            return nil
+        }
+        return WeekdaySet(rawValue: latest.3)
     }
 
     private func loadPillScheduleDays(
@@ -555,12 +590,23 @@ final class NotificationService {
         }
 
         guard validatedSchedules.count == schedules.count else { return nil }
-        let latest = validatedSchedules.max {
+        guard let latest = validatedSchedules.max(by: {
             if $0.0 != $1.0 { return $0.0 < $1.0 }
             if $0.1 != $1.1 { return $0.1 < $1.1 }
             return $0.2 < $1.2
+        }) else {
+            return WeekdaySet(rawValue: 0)
         }
-        return WeekdaySet(rawValue: latest?.3 ?? 0)
+        guard WeekdayValidation.isValidMask(latest.3) else {
+            report.append(
+                area: "notification",
+                entityName: object.entityName,
+                object: object,
+                message: "Pill reminder configuration contains invalid weekdayMask."
+            )
+            return nil
+        }
+        return WeekdaySet(rawValue: latest.3)
     }
 
     private func loadHabitCompletionEntries(

@@ -101,7 +101,9 @@ struct RootTabView: View {
                 .environmentObject(appState)
         case .details(let habitID):
             if let habit = habitProjection(for: habitID) {
-                HabitDetailsView(habit: habit)
+                HabitDetailsView(habit: habit) { id in
+                    presentedHabitSheet = .edit(id)
+                }
                     .environmentObject(appState)
             } else {
                 ContentUnavailableView(
@@ -139,7 +141,9 @@ struct RootTabView: View {
                 .environmentObject(pillAppState)
         case .details(let pillID):
             if let pill = pillProjection(for: pillID) {
-                PillDetailsView(pill: pill)
+                PillDetailsView(pill: pill) { id in
+                    presentedPillSheet = .edit(id)
+                }
                     .environmentObject(pillAppState)
             } else {
                 ContentUnavailableView(
