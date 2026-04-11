@@ -84,7 +84,7 @@ final class PillNotificationService {
         storeContext.refreshReadContext()
         do {
             let requests = try makePendingNotificationRequests()
-            removePendingPillNotifications {
+            removePendingRegularPillNotifications {
                 for request in requests {
                     self.center.add(request) { error in
                         if let error {
@@ -104,8 +104,10 @@ final class PillNotificationService {
     }
 
     func removeNotifications(forPillID pillID: UUID) {
-        rescheduleAllNotifications()
-        removeDeliveredNotifications(forPillID: pillID)
+        removePendingNotifications(forPillID: pillID) {
+            self.removeDeliveredNotifications(forPillID: pillID)
+            self.rescheduleAllNotifications()
+        }
     }
 
     func removeDeliveredNotifications(forPillID pillID: UUID) {
@@ -188,12 +190,14 @@ final class PillNotificationService {
             didMutateStore = createSkippedIntakeIfNeeded(for: pillID, on: deliveryDay)
         case remindLaterActionIdentifier:
             removeDeliveredNotifications(forPillID: pillID, on: deliveryDay)
-            scheduleRemindLaterNotification(
-                for: pillID,
-                on: deliveryDay,
-                fallbackTitle: fallbackTitle,
-                fallbackBody: fallbackBody
-            )
+            removeSnoozedNotifications(forPillID: pillID, on: deliveryDay) {
+                self.scheduleRemindLaterNotification(
+                    for: pillID,
+                    on: deliveryDay,
+                    fallbackTitle: fallbackTitle,
+                    fallbackBody: fallbackBody
+                )
+            }
             return true
         default:
             return true
@@ -201,7 +205,9 @@ final class PillNotificationService {
 
         removeDeliveredNotifications(forPillID: pillID, on: deliveryDay)
         if didMutateStore {
-            rescheduleAllNotifications()
+            removeSnoozedNotifications(forPillID: pillID, on: deliveryDay) {
+                self.rescheduleAllNotifications()
+            }
         }
         return true
     }
@@ -780,6 +786,15 @@ final class PillNotificationService {
         "\(notificationIdentifierPrefix(for: pillID))remindlater_\(timestampString(for: scheduledDateTime))"
     }
 
+    private func isRegularPillReminderIdentifier(_ identifier: String) -> Bool {
+        guard identifier.hasPrefix(prefix) else { return false }
+        return !isSnoozedPillReminderIdentifier(identifier)
+    }
+
+    private func isSnoozedPillReminderIdentifier(_ identifier: String) -> Bool {
+        identifier.hasPrefix(prefix) && identifier.contains("_remindlater_")
+    }
+
     private func timestampString(for date: Date) -> String {
         LocalNotificationSupport.timestampString(for: date, calendar: calendar)
     }
@@ -900,8 +915,39 @@ final class PillNotificationService {
         return false
     }
 
-    private func removePendingPillNotifications(completion: @escaping () -> Void) {
-        LocalNotificationSupport.removePendingNotifications(center: center, prefix: prefix, completion: completion)
+    func removeSnoozedNotifications(
+        forPillID pillID: UUID,
+        on localDate: Date,
+        completion: @escaping () -> Void = {}
+    ) {
+        let normalizedDate = calendar.startOfDay(for: localDate)
+        LocalNotificationSupport.removePendingNotifications(center: center, matching: { request in
+            guard self.isSnoozedPillReminderIdentifier(request.identifier) else { return false }
+            guard request.identifier.hasPrefix(self.notificationIdentifierPrefix(for: pillID)) else { return false }
+            guard
+                let localDateIdentifier = request.content.userInfo["localDate"] as? String,
+                let requestLocalDate = LocalNotificationSupport.parseLocalDateIdentifier(
+                    localDateIdentifier,
+                    calendar: self.calendar
+                )
+            else {
+                return false
+            }
+            return requestLocalDate == normalizedDate
+        }, completion: completion)
+    }
+
+    private func removePendingNotifications(forPillID pillID: UUID, completion: @escaping () -> Void) {
+        let pillPrefix = notificationIdentifierPrefix(for: pillID)
+        LocalNotificationSupport.removePendingNotifications(center: center, matching: { request in
+            request.identifier.hasPrefix(pillPrefix)
+        }, completion: completion)
+    }
+
+    private func removePendingRegularPillNotifications(completion: @escaping () -> Void) {
+        LocalNotificationSupport.removePendingNotifications(center: center, matching: { request in
+            self.isRegularPillReminderIdentifier(request.identifier)
+        }, completion: completion)
     }
 }
 

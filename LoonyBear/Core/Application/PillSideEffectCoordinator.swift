@@ -10,8 +10,10 @@ struct PillSideEffectCoordinator {
     }
 
     func handleDailyMutation(forPillID pillID: UUID, on day: Date = Date()) {
-        notificationService.rescheduleAllNotifications()
-        notificationService.removeDeliveredNotifications(forPillID: pillID, on: day)
+        notificationService.removeSnoozedNotifications(forPillID: pillID, on: day) {
+            self.notificationService.rescheduleAllNotifications()
+            self.notificationService.removeDeliveredNotifications(forPillID: pillID, on: day)
+        }
     }
 
     func handleDeletion(forPillID pillID: UUID) {

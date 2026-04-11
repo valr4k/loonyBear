@@ -132,6 +132,20 @@ enum LocalNotificationSupport {
         }
     }
 
+    static func removePendingNotifications(
+        center: UNUserNotificationCenter,
+        matching predicate: @escaping (UNNotificationRequest) -> Bool,
+        completion: @escaping () -> Void
+    ) {
+        center.getPendingNotificationRequests { requests in
+            let identifiers = requests
+                .filter(predicate)
+                .map(\.identifier)
+            center.removePendingNotificationRequests(withIdentifiers: identifiers)
+            completion()
+        }
+    }
+
     static func timestampString(for date: Date, calendar: Calendar) -> String {
         let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
         return String(

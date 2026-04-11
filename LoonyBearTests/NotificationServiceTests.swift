@@ -444,6 +444,455 @@ struct NotificationServiceTests {
     }
 
     @Test
+    func pillRemindLaterSurvivesGlobalReschedule() async throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = PillNotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        try await clearNotifications()
+
+        let today = Calendar.current.startOfDay(for: Date())
+        var draft = PillDraft()
+        draft.name = "Vitamin D"
+        draft.dosage = "1 tablet"
+        draft.startDate = today
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = reminderTimeHoursFromNow(2)
+        let pillID = try repository.createPill(from: draft)
+        let expectedRegularCount = expectedRequestCount(reminderTime: draft.reminderTime, schedulingWindowDays: 2)
+
+        service.rescheduleAllNotifications()
+        _ = try await waitForPendingRequests(
+            expectedCount: expectedRegularCount,
+            matching: { $0.identifier.hasPrefix("pill_\(pillID.uuidString.lowercased())_") && !$0.identifier.contains("remindlater_") }
+        )
+
+        #expect(service.handleNotificationResponse(
+            type: "pill",
+            userInfo: [
+                "type": "pill",
+                "pillID": pillID.uuidString,
+                "localDate": LocalNotificationSupport.localDateIdentifier(for: today, calendar: .current),
+            ],
+            actionIdentifier: "pill.remind_later",
+            notificationDate: Date(),
+            fallbackTitle: "Vitamin D",
+            fallbackBody: "Take 1 tablet."
+        ))
+
+        _ = try await waitForPendingRequests(
+            expectedCount: expectedRegularCount + 1,
+            matching: { $0.identifier.hasPrefix("pill_\(pillID.uuidString.lowercased())_") }
+        )
+
+        service.rescheduleAllNotifications()
+
+        let requests = try await waitForPendingRequests(
+            expectedCount: expectedRegularCount + 1,
+            matching: { $0.identifier.hasPrefix("pill_\(pillID.uuidString.lowercased())_") }
+        )
+        let snoozedRequests = requests.filter { $0.identifier.contains("remindlater_") }
+        let regularRequests = requests.filter { !$0.identifier.contains("remindlater_") }
+
+        #expect(snoozedRequests.count == 1)
+        #expect(regularRequests.count == expectedRegularCount)
+
+        try await clearNotifications()
+    }
+
+    @Test
+    func pillRemindLaterSurvivesAppActiveFlow() async throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = PillNotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        try await clearNotifications()
+
+        let today = Calendar.current.startOfDay(for: Date())
+        var draft = PillDraft()
+        draft.name = "Magnesium"
+        draft.dosage = "1 capsule"
+        draft.startDate = today
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = reminderTimeHoursFromNow(2)
+        let pillID = try repository.createPill(from: draft)
+        let expectedRegularCount = expectedRequestCount(reminderTime: draft.reminderTime, schedulingWindowDays: 2)
+
+        service.rescheduleAllNotifications()
+        #expect(service.handleNotificationResponse(
+            type: "pill",
+            userInfo: [
+                "type": "pill",
+                "pillID": pillID.uuidString,
+                "localDate": LocalNotificationSupport.localDateIdentifier(for: today, calendar: .current),
+            ],
+            actionIdentifier: "pill.remind_later",
+            notificationDate: Date(),
+            fallbackTitle: "Magnesium",
+            fallbackBody: "Take 1 capsule."
+        ))
+
+        _ = try await waitForPendingRequests(
+            expectedCount: expectedRegularCount + 1,
+            matching: { $0.identifier.hasPrefix("pill_\(pillID.uuidString.lowercased())_") }
+        )
+
+        service.handleAppDidBecomeActive()
+
+        let requests = try await waitForPendingRequests(
+            expectedCount: expectedRegularCount + 1,
+            matching: { $0.identifier.hasPrefix("pill_\(pillID.uuidString.lowercased())_") }
+        )
+
+        #expect(requests.contains { $0.identifier.contains("remindlater_") })
+
+        try await clearNotifications()
+    }
+
+    @Test
+    func pillRemindLaterSurvivesUnrelatedPillUpdateReschedule() async throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = PillNotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        try await clearNotifications()
+
+        let today = Calendar.current.startOfDay(for: Date())
+
+        var firstDraft = PillDraft()
+        firstDraft.name = "Vitamin D"
+        firstDraft.dosage = "1 tablet"
+        firstDraft.startDate = today
+        firstDraft.scheduleDays = .daily
+        firstDraft.reminderEnabled = true
+        firstDraft.reminderTime = reminderTimeHoursFromNow(2)
+        let firstPillID = try repository.createPill(from: firstDraft)
+
+        var secondDraft = PillDraft()
+        secondDraft.name = "Omega 3"
+        secondDraft.dosage = "2 capsules"
+        secondDraft.startDate = today
+        secondDraft.scheduleDays = .daily
+        secondDraft.reminderEnabled = true
+        secondDraft.reminderTime = reminderTimeHoursFromNow(3)
+        let secondPillID = try repository.createPill(from: secondDraft)
+
+        service.rescheduleAllNotifications()
+        #expect(service.handleNotificationResponse(
+            type: "pill",
+            userInfo: [
+                "type": "pill",
+                "pillID": firstPillID.uuidString,
+                "localDate": LocalNotificationSupport.localDateIdentifier(for: today, calendar: .current),
+            ],
+            actionIdentifier: "pill.remind_later",
+            notificationDate: Date(),
+            fallbackTitle: "Vitamin D",
+            fallbackBody: "Take 1 tablet."
+        ))
+
+        let secondDetails = try #require(try repository.fetchPillDetails(id: secondPillID))
+        let updatedDraft = EditPillDraft(
+            id: secondPillID,
+            name: secondDetails.name,
+            dosage: secondDetails.dosage,
+            details: secondDetails.details ?? "",
+            startDate: secondDetails.startDate,
+            historyMode: secondDetails.historyMode,
+            scheduleDays: secondDetails.scheduleDays,
+            reminderEnabled: true,
+            reminderTime: reminderTimeHoursFromNow(4),
+            takenDays: secondDetails.takenDays,
+            skippedDays: secondDetails.skippedDays
+        )
+        try repository.updatePill(from: updatedDraft)
+
+        service.rescheduleNotifications(forPillID: secondPillID)
+
+        let snoozedRequests = try await waitForPendingRequests(
+            expectedCount: 1,
+            matching: {
+                $0.identifier.hasPrefix("pill_\(firstPillID.uuidString.lowercased())_") &&
+                $0.identifier.contains("remindlater_")
+            }
+        )
+
+        #expect(snoozedRequests.count == 1)
+
+        try await clearNotifications()
+    }
+
+    @Test
+    func pillTakeRemovesSnoozedReminderForSameDay() async throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = PillNotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        try await clearNotifications()
+
+        let today = Calendar.current.startOfDay(for: Date())
+        var draft = PillDraft()
+        draft.name = "Vitamin D"
+        draft.dosage = "1 tablet"
+        draft.startDate = today
+        let pillID = try repository.createPill(from: draft)
+        try repository.clearPillDayStateToday(id: pillID)
+
+        #expect(service.handleNotificationResponse(
+            type: "pill",
+            userInfo: [
+                "type": "pill",
+                "pillID": pillID.uuidString,
+                "localDate": LocalNotificationSupport.localDateIdentifier(for: today, calendar: .current),
+            ],
+            actionIdentifier: "pill.remind_later",
+            notificationDate: Date(),
+            fallbackTitle: "Vitamin D",
+            fallbackBody: "Take 1 tablet."
+        ))
+        _ = try await waitForPendingRequests(expectedCount: 1, matching: { $0.identifier.contains("remindlater_") })
+
+        #expect(service.handleNotificationResponse(
+            type: "pill",
+            userInfo: [
+                "type": "pill",
+                "pillID": pillID.uuidString,
+                "localDate": LocalNotificationSupport.localDateIdentifier(for: today, calendar: .current),
+            ],
+            actionIdentifier: "pill.take",
+            notificationDate: Date()
+        ))
+
+        let remainingRequests = try await waitForPendingRequests(
+            expectedCount: 0,
+            matching: {
+                $0.identifier.hasPrefix("pill_\(pillID.uuidString.lowercased())_") &&
+                $0.identifier.contains("remindlater_")
+            }
+        )
+        #expect(remainingRequests.isEmpty)
+
+        try await clearNotifications()
+    }
+
+    @Test
+    func pillSkipRemovesSnoozedReminderForSameDay() async throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = PillNotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        try await clearNotifications()
+
+        let today = Calendar.current.startOfDay(for: Date())
+        var draft = PillDraft()
+        draft.name = "Omega 3"
+        draft.dosage = "2 capsules"
+        draft.startDate = today
+        let pillID = try repository.createPill(from: draft)
+        try repository.clearPillDayStateToday(id: pillID)
+
+        #expect(service.handleNotificationResponse(
+            type: "pill",
+            userInfo: [
+                "type": "pill",
+                "pillID": pillID.uuidString,
+                "localDate": LocalNotificationSupport.localDateIdentifier(for: today, calendar: .current),
+            ],
+            actionIdentifier: "pill.remind_later",
+            notificationDate: Date(),
+            fallbackTitle: "Omega 3",
+            fallbackBody: "Take 2 capsules."
+        ))
+        _ = try await waitForPendingRequests(expectedCount: 1, matching: { $0.identifier.contains("remindlater_") })
+
+        #expect(service.handleNotificationResponse(
+            type: "pill",
+            userInfo: [
+                "type": "pill",
+                "pillID": pillID.uuidString,
+                "localDate": LocalNotificationSupport.localDateIdentifier(for: today, calendar: .current),
+            ],
+            actionIdentifier: "pill.skip",
+            notificationDate: Date()
+        ))
+
+        let remainingRequests = try await waitForPendingRequests(
+            expectedCount: 0,
+            matching: {
+                $0.identifier.hasPrefix("pill_\(pillID.uuidString.lowercased())_") &&
+                $0.identifier.contains("remindlater_")
+            }
+        )
+        #expect(remainingRequests.isEmpty)
+
+        try await clearNotifications()
+    }
+
+    @Test
+    func deletingPillRemovesSnoozedReminder() async throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = PillNotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        try await clearNotifications()
+
+        let today = Calendar.current.startOfDay(for: Date())
+        var draft = PillDraft()
+        draft.name = "Zinc"
+        draft.dosage = "1 tablet"
+        draft.startDate = today
+        let pillID = try repository.createPill(from: draft)
+
+        #expect(service.handleNotificationResponse(
+            type: "pill",
+            userInfo: [
+                "type": "pill",
+                "pillID": pillID.uuidString,
+                "localDate": LocalNotificationSupport.localDateIdentifier(for: today, calendar: .current),
+            ],
+            actionIdentifier: "pill.remind_later",
+            notificationDate: Date(),
+            fallbackTitle: "Zinc",
+            fallbackBody: "Take 1 tablet."
+        ))
+        _ = try await waitForPendingRequests(expectedCount: 1, matching: { $0.identifier.contains("remindlater_") })
+
+        try repository.deletePill(id: pillID)
+        service.removeNotifications(forPillID: pillID)
+
+        let remainingRequests = try await waitForPendingRequests(
+            expectedCount: 0,
+            matching: { $0.identifier.hasPrefix("pill_\(pillID.uuidString.lowercased())_") }
+        )
+        #expect(remainingRequests.isEmpty)
+
+        try await clearNotifications()
+    }
+
+    @Test
+    func pillRegularRescheduleReplacesOnlyRegularReminders() async throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = PillNotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        try await clearNotifications()
+
+        let today = Calendar.current.startOfDay(for: Date())
+        var draft = PillDraft()
+        draft.name = "Vitamin D"
+        draft.dosage = "1 tablet"
+        draft.startDate = today
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = reminderTimeHoursFromNow(2)
+        let pillID = try repository.createPill(from: draft)
+
+        let initialRegularCount = expectedRequestCount(reminderTime: draft.reminderTime, schedulingWindowDays: 2)
+        service.rescheduleAllNotifications()
+        let initialRegularIdentifiers = try await waitForPendingIdentifiers(
+            expectedCount: initialRegularCount,
+            matching: {
+                $0.hasPrefix("pill_\(pillID.uuidString.lowercased())_") &&
+                !$0.contains("remindlater_")
+            }
+        ) { _ in true }
+
+        #expect(service.handleNotificationResponse(
+            type: "pill",
+            userInfo: [
+                "type": "pill",
+                "pillID": pillID.uuidString,
+                "localDate": LocalNotificationSupport.localDateIdentifier(for: today, calendar: .current),
+            ],
+            actionIdentifier: "pill.remind_later",
+            notificationDate: Date(),
+            fallbackTitle: "Vitamin D",
+            fallbackBody: "Take 1 tablet."
+        ))
+
+        let details = try #require(try repository.fetchPillDetails(id: pillID))
+        let updatedDraft = EditPillDraft(
+            id: pillID,
+            name: details.name,
+            dosage: details.dosage,
+            details: details.details ?? "",
+            startDate: details.startDate,
+            historyMode: details.historyMode,
+            scheduleDays: details.scheduleDays,
+            reminderEnabled: true,
+            reminderTime: reminderTimeHoursFromNow(4),
+            takenDays: details.takenDays,
+            skippedDays: details.skippedDays
+        )
+        try repository.updatePill(from: updatedDraft)
+
+        let updatedRegularCount = expectedRequestCount(reminderTime: updatedDraft.reminderTime, schedulingWindowDays: 2)
+        service.rescheduleAllNotifications()
+
+        let updatedRegularIdentifiers = try await waitForPendingIdentifiers(
+            expectedCount: updatedRegularCount,
+            matching: {
+                $0.hasPrefix("pill_\(pillID.uuidString.lowercased())_") &&
+                !$0.contains("remindlater_")
+            }
+        ) { identifiers in
+            identifiers != initialRegularIdentifiers
+        }
+        let snoozedRequests = await pendingRequests {
+            $0.identifier.hasPrefix("pill_\(pillID.uuidString.lowercased())_") && $0.identifier.contains("remindlater_")
+        }
+
+        #expect(updatedRegularIdentifiers != initialRegularIdentifiers)
+        #expect(snoozedRequests.count == 1)
+
+        try await clearNotifications()
+    }
+
+    @Test
     func habitNotificationActionFallsBackToNotificationDateWhenLocalDateIsMissing() throws {
         let persistence = PersistenceController(inMemory: true)
         let repository = CoreDataHabitRepository(
