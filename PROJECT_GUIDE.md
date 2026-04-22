@@ -77,7 +77,6 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
   - name
   - reminder
   - weekday schedule
-  - history mode
   - recent editable history
   - delete
 
@@ -107,7 +106,6 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
   - description
   - reminder
   - weekday schedule
-  - history mode
   - recent editable history
   - delete
 

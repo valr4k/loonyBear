@@ -59,11 +59,11 @@
         },
         {
           "title": "Habit details screen",
-          "body": "Habit Details shows name, start date, plan, history mode, reminder, current streak, best streak, completed for, and a read-only calendar. The toolbar has Close on the left and Edit on the right. Edit is shown only when details load successfully."
+          "body": "Habit Details shows name, schedule, reminder, start date, current streak, best streak, completed for, and a read-only calendar. The toolbar has Close on the left and Edit on the right. Edit is shown only when details load successfully."
         },
         {
           "title": "Editing a Habit",
-          "body": "Edit Habit shows name, read-only start date, reminder settings, selected days, the Use schedule for history? toggle, an editable calendar, helper text, and a Delete button at the bottom. Delete uses a confirmation dialog."
+          "body": "Edit Habit shows name, read-only start date, reminder settings, selected days, an editable calendar, helper text, and a Delete button at the bottom. Delete uses a confirmation dialog."
         }
       ]
     },
@@ -76,15 +76,15 @@
         },
         {
           "title": "Habit history modes",
-          "body": "Habits store a history mode. Schedule-based means history follows the selected schedule. Every-day means history counts every day from the start date. The selected mode is saved in the model and used later by create, edit, details, reconciliation, backup, and restore."
+          "body": "Habits store a history mode. Schedule-based means history follows the selected schedule. Every-day means history counts every day from the start date. The selected mode is saved in the model and used later by create, details, update normalization, reconciliation, backup, and restore. The Edit screen does not expose a history mode toggle."
         },
         {
           "title": "Habit auto-fill on create",
-          "body": "When a Habit is created, the app auto-fills missing past completed history using the selected history mode. In schedule-based mode, only required past scheduled days are auto-filled. In every-day mode, required past days in the editable history window are auto-filled. Today is not auto-filled."
+          "body": "When a Habit is created, the app finalizes missing past history as skipped using the selected history mode. In schedule-based mode, only required past scheduled days are finalized. In every-day mode, required past days in the editable history window are finalized. Today is not auto-finalized."
         },
         {
           "title": "Habit reconciliation",
-          "body": "When the app becomes active, Habits run reconciliation. Reconciliation inserts missing completed history for required past days that do not already have completed or skipped history rows. Existing skipped rows are not rewritten. Existing completed rows are not duplicated."
+          "body": "When the app becomes active, Habits run reconciliation. Reconciliation inserts missing skipped history for required past days that do not already have completed or skipped history rows. Existing skipped rows are not rewritten. Existing completed rows are not duplicated."
         },
         {
           "title": "Habit editable history window",
@@ -92,7 +92,7 @@
         },
         {
           "title": "Today versus past days in Habit edit",
-          "body": "Today can still be empty, completed, or skipped. Past required editable days are not allowed to stay empty. In edit normalization, required past empty Habit days are normalized back to completed."
+          "body": "Today can still be empty, completed, or skipped. When Edit Habit is saved, past required editable days are re-normalized and persisted so they cannot stay empty after update. Required past empty Habit days are written back as skipped."
         },
         {
           "title": "Current streak",
@@ -137,7 +137,7 @@
         },
         {
           "title": "Editing a Pill",
-          "body": "Edit Pill shows name, dosage, read-only start date, reminder settings, selected days, the Use schedule for history? toggle, an editable calendar, helper text, description, and a Delete button at the bottom. Delete uses a confirmation dialog."
+          "body": "Edit Pill shows name, dosage, read-only start date, reminder settings, selected days, an editable calendar, helper text, description, and a Delete button at the bottom. Delete uses a confirmation dialog."
         }
       ]
     },
@@ -150,7 +150,7 @@
         },
         {
           "title": "Pill history modes",
-          "body": "Pills store a history mode. Schedule-based means history follows the selected schedule. Every-day means history counts every day from the start date. The selected mode is saved and used later by create, edit, details, reconciliation, backup, and restore."
+          "body": "Pills store a history mode. Schedule-based means history follows the selected schedule. Every-day means history counts every day from the start date. The selected mode is saved and used later by create, details, update normalization, reconciliation, backup, and restore. The Edit screen does not expose a history mode toggle."
         },
         {
           "title": "Pill prefilled taken history on create",
@@ -170,7 +170,7 @@
         },
         {
           "title": "Today versus past days in Pill edit",
-          "body": "Today can still be empty, taken, or skipped. Past required editable days are not allowed to stay empty. In schedule-based mode only required scheduled past editable days are finalized. In every-day mode all past editable days are finalized."
+          "body": "Today can still be empty, taken, or skipped. When Edit Pill is saved, past required editable days are re-normalized and persisted so they cannot stay empty after update. In schedule-based mode only required scheduled past editable days are finalized. In every-day mode all past editable days are finalized."
         },
         {
           "title": "Pill totals",
@@ -274,7 +274,7 @@
       "items": [
         {
           "title": "Settings sections",
-          "body": "Settings contains Appearance, Backup, Rules & Logic, Apple Watch notifications, iPhone widgets, and the current app version and build."
+          "body": "Settings contains Appearance, Backup, Rules & Logic, and About. About shows the current app version and build."
         },
         {
           "title": "What Rules & Logic is",
@@ -362,15 +362,15 @@
         },
         {
           "title": "Habit create storage",
-          "body": "Habit creation inserts a Habit row, inserts the first HabitScheduleVersion row, stores historyModeRaw based on Use schedule for history?, and then auto-fills missing past completed rows through autoFillMissingCompletedCompletions."
+          "body": "Habit creation inserts a Habit row, inserts the first HabitScheduleVersion row, stores historyModeRaw based on Use schedule for history?, and then finalizes missing past rows as skipped through insertMissingPastSkippedCompletions."
         },
         {
-          "title": "Habit auto-fill source",
-          "body": "Habit auto-fill inserts HabitCompletion rows with sourceRaw equal to auto fill. Auto-fill never overwrites existing completed rows, never overwrites skipped rows, and never duplicates a day that already has history objects."
+          "title": "Habit auto-finalization source",
+          "body": "Habit auto-finalization inserts HabitCompletion rows with sourceRaw equal to skipped. It never overwrites existing completed rows, never overwrites skipped rows, and never duplicates a day that already has history objects."
         },
         {
           "title": "Habit update behavior",
-          "body": "Habit update changes name, history mode, reminder fields, and optionally inserts a new HabitScheduleVersion if the weekday mask changed. Editable history is then normalized and written back day by day using manual edit or skipped sources."
+          "body": "Habit update changes name, reminder fields, and optionally inserts a new HabitScheduleVersion if the weekday mask changed. Editable history is then normalized and written back day by day using manual edit or skipped sources, using the persisted history mode already stored on the Habit. Saving an edit re-finalizes any required past editable day that the draft left empty, so persisted gaps in past Habit history are not allowed."
         },
         {
           "title": "Habit today actions",
@@ -399,7 +399,7 @@
         },
         {
           "title": "Pill update behavior",
-          "body": "Pill update changes name, dosage, details, history mode, reminder fields, and optionally inserts a new PillScheduleVersion if the weekday mask changed. Editable history is normalized and written back day by day using manual edit or skipped sources."
+          "body": "Pill update changes name, dosage, details, reminder fields, and optionally inserts a new PillScheduleVersion if the weekday mask changed. Editable history is normalized and written back day by day using manual edit or skipped sources, using the persisted history mode already stored on the Pill. Saving an edit re-finalizes any required past editable day that the draft left empty, so persisted gaps in past Pill history are not allowed."
         },
         {
           "title": "Pill today actions",

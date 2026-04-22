@@ -22,7 +22,7 @@ This file describes the behavioral rules that are currently implemented in code.
 - Every Habit stores a `historyMode`.
 - `scheduleBased` means required past history follows the schedule.
 - `everyDay` means required past history counts every past editable day.
-- Habit create, edit, details, reconciliation, backup, and restore all read the stored history mode.
+- Habit create, details, reconciliation, backup, and restore read the stored history mode. Habit update normalization also reads the persisted history mode, but the Edit screen no longer exposes a history mode toggle.
 
 ## Habit Create and Reconciliation
 
@@ -65,7 +65,7 @@ This file describes the behavioral rules that are currently implemented in code.
 - Every Pill stores a `historyMode`.
 - `scheduleBased` means required past history follows the schedule.
 - `everyDay` means required past history counts every past editable day.
-- Pill create, edit, details, reconciliation, backup, and restore all read the stored history mode.
+- Pill create, details, reconciliation, backup, and restore read the stored history mode. Pill update normalization also reads the persisted history mode, but the Edit screen no longer exposes a history mode toggle.
 
 ## Pill Create and Reconciliation
 

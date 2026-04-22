@@ -1,7 +1,7 @@
 import CoreData
 import Foundation
 import Testing
-import UserNotifications
+@preconcurrency import UserNotifications
 import XCTest
 
 @testable import LoonyBear
@@ -36,7 +36,7 @@ struct NotificationServiceTests {
         )
         let habitID = try repository.createHabit(from: draft)
 
-        service.rescheduleAllNotifications()
+        await rescheduleAllNotifications(service)
 
         let requests = try await waitForPendingRequests(
             expectedCount: expectedCount,
@@ -80,7 +80,7 @@ struct NotificationServiceTests {
         )
         let pillID = try repository.createPill(from: draft)
 
-        service.rescheduleAllNotifications()
+        await rescheduleAllNotifications(service)
 
         let requests = try await waitForPendingRequests(
             expectedCount: expectedCount,
@@ -143,8 +143,8 @@ struct NotificationServiceTests {
             _ = try pillRepository.createPill(from: pillDraft)
         }
 
-        habitService.rescheduleAllNotifications()
-        pillService.rescheduleAllNotifications()
+        await rescheduleAllNotifications(habitService)
+        await rescheduleAllNotifications(pillService)
 
         let requests = try await waitForPendingRequests(
             expectedCount: expectedGroupsPerDomain * 2,
@@ -164,6 +164,165 @@ struct NotificationServiceTests {
         #expect(Set(habitSummaryIdentifiers).count == habitSummaryIdentifiers.count)
         #expect(Set(pillSummaryIdentifiers).count == pillSummaryIdentifiers.count)
         #expect(Set(habitSummaryIdentifiers).isDisjoint(with: Set(pillSummaryIdentifiers)))
+
+        try await clearNotifications()
+    }
+
+    @Test
+    func habitPlanningAggregatesMatchingCandidatesWithoutNotificationCenter() {
+        let clock = makeUTCClock()
+        let calendar = clock.calendar
+        let now = makeUTCDate(year: 2025, month: 1, day: 10, hour: 8, minute: 0)
+        let today = calendar.startOfDay(for: now)
+        let reminderTime = ReminderTime(hour: 9, minute: 30)
+
+        let habits = (0..<3).map { index in
+            HabitReminderConfiguration(
+                id: UUID(),
+                name: "Habit \(index)",
+                startDate: today,
+                scheduleDays: .daily,
+                reminderEnabled: true,
+                reminderTime: reminderTime,
+                completedDays: [],
+                skippedDays: []
+            )
+        }
+
+        let candidates = ReminderPlanningSupport.habitCandidates(
+            reminders: habits,
+            now: now,
+            schedulingWindowDays: 2,
+            calendar: calendar
+        )
+        let deliveries = ReminderPlanningSupport.habitDeliveries(
+            candidates: candidates,
+            habits: habits,
+            pills: [],
+            aggregationThreshold: 3,
+            calendar: calendar
+        )
+
+        #expect(candidates.count == 6)
+        #expect(deliveries.count == 2)
+        #expect(deliveries.allSatisfy {
+            if case .aggregated(let groupedCandidates, _, _) = $0 {
+                return groupedCandidates.count == 3
+            }
+            return false
+        })
+    }
+
+    @Test
+    func pillPlanningFiltersPastTakenSkippedAndPreStartCandidatesWithoutNotificationCenter() {
+        let clock = makeUTCClock()
+        let calendar = clock.calendar
+        let now = makeUTCDate(year: 2025, month: 1, day: 10, hour: 8, minute: 0)
+        let today = calendar.startOfDay(for: now)
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)!
+
+        let pills = [
+            PillReminderConfiguration(
+                id: UUID(),
+                name: "Future pill",
+                dosage: "1 tablet",
+                startDate: tomorrow,
+                scheduleDays: .daily,
+                reminderEnabled: true,
+                reminderTime: ReminderTime(hour: 9, minute: 0),
+                takenDays: [],
+                skippedDays: []
+            ),
+            PillReminderConfiguration(
+                id: UUID(),
+                name: "Taken today",
+                dosage: "1 tablet",
+                startDate: today,
+                scheduleDays: .daily,
+                reminderEnabled: true,
+                reminderTime: ReminderTime(hour: 9, minute: 0),
+                takenDays: [today],
+                skippedDays: []
+            ),
+            PillReminderConfiguration(
+                id: UUID(),
+                name: "Eligible",
+                dosage: "1 tablet",
+                startDate: today,
+                scheduleDays: .daily,
+                reminderEnabled: true,
+                reminderTime: ReminderTime(hour: 9, minute: 0),
+                takenDays: [],
+                skippedDays: []
+            ),
+        ]
+
+        let candidates = ReminderPlanningSupport.pillCandidates(
+            reminders: pills,
+            now: now,
+            schedulingWindowDays: 2,
+            calendar: calendar
+        )
+
+        #expect(candidates.count == 4)
+        #expect(Set(candidates.map(\.pillName)) == ["Future pill", "Taken today", "Eligible"])
+    }
+
+    @Test
+    func notificationRescheduleSupportCoalescesOverlappingRunsAndKeepsLatestRequests() async throws {
+        let persistence = PersistenceController(inMemory: true)
+        let storeContext = NotificationStoreContext(
+            readContext: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let center = UNUserNotificationCenter.current()
+        let prefix = "coalesce_\(UUID().uuidString.lowercased())"
+        let tracker = RescheduleInvocationTracker()
+
+        try await clearNotifications()
+
+        let removePendingNotifications: (@escaping () -> Void) -> Void = { completion in
+            let callIndex = tracker.nextRemoveCall()
+            let delay = callIndex == 1 ? 0.15 : 0.01
+
+            DispatchQueue.global().asyncAfter(deadline: .now() + delay) {
+                UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+                completion()
+            }
+        }
+
+        let makePendingRequests: () throws -> [UNNotificationRequest] = {
+            let suffix = tracker.nextRequestSuffix()
+            return [makeNotificationRequest(identifier: "\(prefix)_\(suffix)")]
+        }
+
+        async let first: Void = triggerRescheduleSupport(
+            center: center,
+            storeContext: storeContext,
+            logName: "notification.test.coalesce",
+            removePendingNotifications: removePendingNotifications,
+            makePendingRequests: makePendingRequests
+        )
+
+        async let second: Void = triggerRescheduleSupport(
+            center: center,
+            storeContext: storeContext,
+            logName: "notification.test.coalesce",
+            removePendingNotifications: removePendingNotifications,
+            makePendingRequests: makePendingRequests
+        )
+
+        _ = await (first, second)
+
+        let requests = try await waitForPendingRequests(
+            expectedCount: 1,
+            matching: { $0.identifier.hasPrefix(prefix) }
+        )
+        let counts = tracker.counts
+
+        #expect(counts.make == 2)
+        #expect(counts.remove == 2)
+        #expect(Set(requests.map(\.identifier)) == ["\(prefix)_new"])
 
         try await clearNotifications()
     }
@@ -223,6 +382,391 @@ struct NotificationServiceTests {
 
         #expect(habitCategory.actions.map(\.identifier) == ["habit.complete", "habit.skip"])
         #expect(pillCategory.actions.map(\.identifier) == ["pill.take", "pill.skip", "pill.remind_later"])
+    }
+
+    @Test
+    func habitActionCompletionWaitsForDeliveredCleanup() async throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = NotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        let today = Calendar.current.startOfDay(for: Date())
+        var draft = CreateHabitDraft()
+        draft.name = "Walk"
+        draft.startDate = today
+        draft.scheduleDays = .daily
+        let habitID = try repository.createHabit(from: draft)
+
+        final class SequencingState {
+            var cleanupFinished = false
+            var completionObservedBeforeCleanup = false
+        }
+        let state = SequencingState()
+
+        let handled = await withCheckedContinuation { continuation in
+            service.handleNotificationResponse(
+                type: "individual",
+                userInfo: [
+                    "type": "individual",
+                    "habitID": habitID.uuidString,
+                    "localDate": LocalNotificationSupport.localDateIdentifier(for: today, calendar: .current),
+                ],
+                actionIdentifier: "habit.complete",
+                notificationDate: Date(),
+                onCleanupFinished: {
+                    state.cleanupFinished = true
+                },
+                completion: { handled in
+                    if !state.cleanupFinished {
+                        state.completionObservedBeforeCleanup = true
+                    }
+                    continuation.resume(returning: handled)
+                }
+            )
+        }
+
+        #expect(handled)
+        #expect(state.cleanupFinished)
+        #expect(!state.completionObservedBeforeCleanup)
+    }
+
+    @Test
+    func pillActionCompletionWaitsForDeliveredCleanup() async throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = PillNotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        let today = Calendar.current.startOfDay(for: Date())
+        var draft = PillDraft()
+        draft.name = "Vitamin D"
+        draft.dosage = "1 tablet"
+        draft.startDate = today
+        let pillID = try repository.createPill(from: draft)
+        try repository.clearPillDayStateToday(id: pillID)
+
+        final class SequencingState {
+            var cleanupFinished = false
+            var completionObservedBeforeCleanup = false
+        }
+        let state = SequencingState()
+
+        let handled = await withCheckedContinuation { continuation in
+            service.handleNotificationResponse(
+                type: "pill",
+                userInfo: [
+                    "type": "pill",
+                    "pillID": pillID.uuidString,
+                    "localDate": LocalNotificationSupport.localDateIdentifier(for: today, calendar: .current),
+                ],
+                actionIdentifier: "pill.take",
+                notificationDate: Date(),
+                onCleanupFinished: {
+                    state.cleanupFinished = true
+                },
+                completion: { handled in
+                    if !state.cleanupFinished {
+                        state.completionObservedBeforeCleanup = true
+                    }
+                    continuation.resume(returning: handled)
+                }
+            )
+        }
+
+        #expect(handled)
+        #expect(state.cleanupFinished)
+        #expect(!state.completionObservedBeforeCleanup)
+    }
+
+    @Test
+    func habitActionDoesNotCleanupWhenStoreMutationFails() async throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = NotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        let today = Calendar.current.startOfDay(for: Date())
+        var draft = CreateHabitDraft()
+        draft.name = "Walk"
+        draft.startDate = today
+        draft.scheduleDays = .daily
+        let habitID = try repository.createHabit(from: draft)
+        try repository.completeHabitToday(id: habitID)
+
+        let request = NSFetchRequest<NSManagedObject>(entityName: "HabitCompletion")
+        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            NSPredicate(format: "habitID == %@", habitID as CVarArg),
+            NSPredicate(format: "localDate == %@", today as CVarArg),
+        ])
+        let completion = try #require(persistence.container.viewContext.fetch(request).first)
+        completion.setValue("invalid", forKey: "sourceRaw")
+        try persistence.container.viewContext.save()
+
+        final class CleanupState {
+            var cleanupFinished = false
+        }
+        let state = CleanupState()
+
+        let handled = await withCheckedContinuation { continuation in
+            service.handleNotificationResponse(
+                type: "individual",
+                userInfo: [
+                    "type": "individual",
+                    "habitID": habitID.uuidString,
+                    "localDate": LocalNotificationSupport.localDateIdentifier(for: today, calendar: .current),
+                ],
+                actionIdentifier: "habit.complete",
+                notificationDate: Date(),
+                onCleanupFinished: {
+                    state.cleanupFinished = true
+                },
+                completion: { handled in
+                    continuation.resume(returning: handled)
+                }
+            )
+        }
+
+        #expect(handled)
+        #expect(!state.cleanupFinished)
+    }
+
+    @Test
+    func pillActionDoesNotCleanupWhenStoreMutationFails() async throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = PillNotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        let today = Calendar.current.startOfDay(for: Date())
+        var draft = PillDraft()
+        draft.name = "Vitamin D"
+        draft.dosage = "1 tablet"
+        draft.startDate = today
+        let pillID = try repository.createPill(from: draft)
+        try repository.markTakenToday(id: pillID)
+
+        let request = NSFetchRequest<NSManagedObject>(entityName: "PillIntake")
+        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            NSPredicate(format: "pillID == %@", pillID as CVarArg),
+            NSPredicate(format: "localDate == %@", today as CVarArg),
+        ])
+        let intake = try #require(persistence.container.viewContext.fetch(request).first)
+        intake.setValue("invalid", forKey: "sourceRaw")
+        try persistence.container.viewContext.save()
+
+        final class CleanupState {
+            var cleanupFinished = false
+        }
+        let state = CleanupState()
+
+        let handled = await withCheckedContinuation { continuation in
+            service.handleNotificationResponse(
+                type: "pill",
+                userInfo: [
+                    "type": "pill",
+                    "pillID": pillID.uuidString,
+                    "localDate": LocalNotificationSupport.localDateIdentifier(for: today, calendar: .current),
+                ],
+                actionIdentifier: "pill.take",
+                notificationDate: Date(),
+                onCleanupFinished: {
+                    state.cleanupFinished = true
+                },
+                completion: { handled in
+                    continuation.resume(returning: handled)
+                }
+            )
+        }
+
+        #expect(handled)
+        #expect(!state.cleanupFinished)
+    }
+
+    @Test
+    func defaultTapRoutingCompletionDoesNotRequireCleanup() async throws {
+        let persistence = PersistenceController(inMemory: true)
+        let service = NotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        final class RoutingState {
+            var cleanupFinished = false
+        }
+        let state = RoutingState()
+
+        let handled = await withCheckedContinuation { continuation in
+            service.handleNotificationResponse(
+                type: "individual",
+                userInfo: ["type": "individual"],
+                actionIdentifier: UNNotificationDefaultActionIdentifier,
+                notificationDate: Date(),
+                onCleanupFinished: {
+                    state.cleanupFinished = true
+                },
+                completion: { handled in
+                    continuation.resume(returning: handled)
+                }
+            )
+        }
+
+        #expect(handled)
+        #expect(!state.cleanupFinished)
+    }
+
+    @Test
+    func habitDeliveredCleanupUsesPayloadLocalDateWhenNotificationDateIsDifferent() {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
+
+        let logicalDay = LocalNotificationSupport.deliveredNotificationLogicalDay(
+            userInfo: [
+                "type": "individual",
+                "localDate": LocalNotificationSupport.localDateIdentifier(for: yesterday, calendar: calendar),
+            ],
+            deliveryDate: today,
+            calendar: calendar
+        )
+
+        #expect(logicalDay == yesterday)
+    }
+
+    @Test
+    func pillDeliveredCleanupUsesPayloadLocalDateWhenNotificationDateIsDifferent() {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
+
+        let logicalDay = LocalNotificationSupport.deliveredNotificationLogicalDay(
+            userInfo: [
+                "type": "pill",
+                "localDate": LocalNotificationSupport.localDateIdentifier(for: yesterday, calendar: calendar),
+            ],
+            deliveryDate: today,
+            calendar: calendar
+        )
+
+        #expect(logicalDay == yesterday)
+    }
+
+    @Test
+    func pillRemindLaterCleanupUsesPayloadLocalDateWhenNotificationDateIsDifferent() {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
+
+        let logicalDay = LocalNotificationSupport.deliveredNotificationLogicalDay(
+            userInfo: [
+                "type": "pill",
+                "localDate": LocalNotificationSupport.localDateIdentifier(for: yesterday, calendar: calendar),
+            ],
+            deliveryDate: today,
+            calendar: calendar
+        )
+
+        #expect(logicalDay == yesterday)
+    }
+
+    @Test
+    func deliveredCleanupFallsBackToNotificationDateWhenPayloadLocalDateIsMissing() {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+
+        let logicalDay = LocalNotificationSupport.deliveredNotificationLogicalDay(
+            userInfo: ["type": "pill"],
+            deliveryDate: today,
+            calendar: calendar
+        )
+
+        #expect(logicalDay == today)
+    }
+
+    @Test
+    func deliveredCleanupFallsBackToNotificationDateWhenPayloadLocalDateIsInvalid() {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+
+        let logicalDay = LocalNotificationSupport.deliveredNotificationLogicalDay(
+            userInfo: [
+                "type": "individual",
+                "localDate": "not-a-date",
+            ],
+            deliveryDate: today,
+            calendar: calendar
+        )
+
+        #expect(logicalDay == today)
+    }
+
+    @Test
+    func pillRemindLaterCompletionStillSchedulesNotification() async throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = PillNotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        try await clearNotifications()
+
+        let today = Calendar.current.startOfDay(for: Date())
+        var draft = PillDraft()
+        draft.name = "Vitamin D"
+        draft.dosage = "1 tablet"
+        draft.startDate = today
+        let pillID = try repository.createPill(from: draft)
+
+        let handled = await withCheckedContinuation { continuation in
+            service.handleNotificationResponse(
+                type: "pill",
+                userInfo: [
+                    "type": "pill",
+                    "pillID": pillID.uuidString,
+                    "localDate": LocalNotificationSupport.localDateIdentifier(for: today, calendar: .current),
+                ],
+                actionIdentifier: "pill.remind_later",
+                notificationDate: Date(),
+                fallbackTitle: "Vitamin D",
+                fallbackBody: "Take 1 tablet.",
+                completion: { handled in
+                    continuation.resume(returning: handled)
+                }
+            )
+        }
+
+        #expect(handled)
+        let requests = try await waitForPendingRequests(
+            expectedCount: 1,
+            matching: { $0.identifier.contains("remindlater_") }
+        )
+        #expect(requests.count == 1)
+
+        try await clearNotifications()
     }
 
     @Test
@@ -468,7 +1012,7 @@ struct NotificationServiceTests {
         let pillID = try repository.createPill(from: draft)
         let expectedRegularCount = expectedRequestCount(reminderTime: draft.reminderTime, schedulingWindowDays: 2)
 
-        service.rescheduleAllNotifications()
+        await rescheduleAllNotifications(service)
         _ = try await waitForPendingRequests(
             expectedCount: expectedRegularCount,
             matching: { $0.identifier.hasPrefix("pill_\(pillID.uuidString.lowercased())_") && !$0.identifier.contains("remindlater_") }
@@ -492,7 +1036,7 @@ struct NotificationServiceTests {
             matching: { $0.identifier.hasPrefix("pill_\(pillID.uuidString.lowercased())_") }
         )
 
-        service.rescheduleAllNotifications()
+        await rescheduleAllNotifications(service)
 
         let requests = try await waitForPendingRequests(
             expectedCount: expectedRegularCount + 1,
@@ -532,7 +1076,7 @@ struct NotificationServiceTests {
         let pillID = try repository.createPill(from: draft)
         let expectedRegularCount = expectedRequestCount(reminderTime: draft.reminderTime, schedulingWindowDays: 2)
 
-        service.rescheduleAllNotifications()
+        await rescheduleAllNotifications(service)
         #expect(service.handleNotificationResponse(
             type: "pill",
             userInfo: [
@@ -597,7 +1141,7 @@ struct NotificationServiceTests {
         secondDraft.reminderTime = reminderTimeHoursFromNow(3)
         let secondPillID = try repository.createPill(from: secondDraft)
 
-        service.rescheduleAllNotifications()
+        await rescheduleAllNotifications(service)
         #expect(service.handleNotificationResponse(
             type: "pill",
             userInfo: [
@@ -618,7 +1162,6 @@ struct NotificationServiceTests {
             dosage: secondDetails.dosage,
             details: secondDetails.details ?? "",
             startDate: secondDetails.startDate,
-            historyMode: secondDetails.historyMode,
             scheduleDays: secondDetails.scheduleDays,
             reminderEnabled: true,
             reminderTime: reminderTimeHoursFromNow(4),
@@ -832,7 +1375,7 @@ struct NotificationServiceTests {
         let pillID = try repository.createPill(from: draft)
 
         let initialRegularCount = expectedRequestCount(reminderTime: draft.reminderTime, schedulingWindowDays: 2)
-        service.rescheduleAllNotifications()
+        await rescheduleAllNotifications(service)
         let initialRegularIdentifiers = try await waitForPendingIdentifiers(
             expectedCount: initialRegularCount,
             matching: {
@@ -861,7 +1404,6 @@ struct NotificationServiceTests {
             dosage: details.dosage,
             details: details.details ?? "",
             startDate: details.startDate,
-            historyMode: details.historyMode,
             scheduleDays: details.scheduleDays,
             reminderEnabled: true,
             reminderTime: reminderTimeHoursFromNow(4),
@@ -871,7 +1413,7 @@ struct NotificationServiceTests {
         try repository.updatePill(from: updatedDraft)
 
         let updatedRegularCount = expectedRequestCount(reminderTime: updatedDraft.reminderTime, schedulingWindowDays: 2)
-        service.rescheduleAllNotifications()
+        await rescheduleAllNotifications(service)
 
         let updatedRegularIdentifiers = try await waitForPendingIdentifiers(
             expectedCount: updatedRegularCount,
@@ -994,7 +1536,7 @@ struct NotificationServiceTests {
         draft.reminderTime = reminderTimeOneHourFromNow()
         let habitID = try repository.createHabit(from: draft)
 
-        service.rescheduleAllNotifications()
+        await rescheduleAllNotifications(service)
         let initialRequests = try await waitForPendingRequests(
             expectedCount: expectedRequestCount(reminderTime: draft.reminderTime, schedulingWindowDays: 2),
             matching: { $0.identifier.hasPrefix("habit_\(habitID.uuidString.lowercased())_") }
@@ -1015,7 +1557,7 @@ struct NotificationServiceTests {
         )
         try repository.updateHabit(from: updatedDraft)
 
-        service.rescheduleAllNotifications()
+        await rescheduleAllNotifications(service)
         _ = try await waitForPendingRequests(
             expectedCount: expectedRequestCount(reminderTime: updatedDraft.reminderTime, schedulingWindowDays: 2),
             matching: { $0.identifier.hasPrefix("habit_\(habitID.uuidString.lowercased())_") }
@@ -1291,7 +1833,7 @@ struct NotificationServiceTests {
         let habitID = try repository.createHabit(from: draft)
 
         let expectedCount = expectedRequestCount(reminderTime: draft.reminderTime, schedulingWindowDays: 2)
-        service.rescheduleAllNotifications()
+        await rescheduleAllNotifications(service)
         let initialRequests = try await waitForPendingRequests(
             expectedCount: expectedCount,
             matching: { $0.identifier.hasPrefix("habit_\(habitID.uuidString.lowercased())_") }
@@ -1306,7 +1848,7 @@ struct NotificationServiceTests {
         object.setValue(nil, forKey: "reminderHour")
         try context.save()
 
-        service.rescheduleAllNotifications()
+        await rescheduleAllNotifications(service)
         try await Task.sleep(for: .milliseconds(300))
 
         let preservedRequests = await pendingRequests(
@@ -1379,7 +1921,7 @@ struct NotificationServiceTests {
         let pillID = try repository.createPill(from: draft)
 
         let expectedCount = expectedRequestCount(reminderTime: draft.reminderTime, schedulingWindowDays: 2)
-        service.rescheduleAllNotifications()
+        await rescheduleAllNotifications(service)
         let initialRequests = try await waitForPendingRequests(
             expectedCount: expectedCount,
             matching: { $0.identifier.hasPrefix("pill_\(pillID.uuidString.lowercased())_") }
@@ -1394,7 +1936,7 @@ struct NotificationServiceTests {
         object.setValue(nil, forKey: "reminderMinute")
         try context.save()
 
-        service.rescheduleAllNotifications()
+        await rescheduleAllNotifications(service)
         try await Task.sleep(for: .milliseconds(300))
 
         let preservedRequests = await pendingRequests(
@@ -1453,11 +1995,38 @@ struct NotificationServiceTests {
         }
     }
 
+    private func makeUTCClock() -> AppClock {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return AppClock(calendar: calendar, now: { Date(timeIntervalSince1970: 0) })
+    }
+
+    private func makeUTCDate(year: Int, month: Int, day: Int, hour: Int, minute: Int) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar.date(from: DateComponents(
+            timeZone: calendar.timeZone,
+            year: year,
+            month: month,
+            day: day,
+            hour: hour,
+            minute: minute
+        ))!
+    }
+
     private func clearNotifications() async throws {
         let center = UNUserNotificationCenter.current()
         center.removeAllPendingNotificationRequests()
         center.removeAllDeliveredNotifications()
-        try await Task.sleep(for: .milliseconds(50))
+
+        for _ in 0..<20 {
+            let pendingCount = await pendingRequests().count
+            let deliveredCount = await deliveredNotifications().count
+            if pendingCount == 0, deliveredCount == 0 {
+                return
+            }
+            try await Task.sleep(for: .milliseconds(50))
+        }
     }
 
     private func waitForPendingRequests(
@@ -1499,5 +2068,91 @@ struct NotificationServiceTests {
                 continuation.resume(returning: requests.filter(predicate))
             }
         }
+    }
+
+    private func deliveredNotifications() async -> [UNNotification] {
+        await withCheckedContinuation { continuation in
+            UNUserNotificationCenter.current().getDeliveredNotifications { notifications in
+                continuation.resume(returning: notifications)
+            }
+        }
+    }
+
+    private func rescheduleAllNotifications(_ service: NotificationService) async {
+        await withCheckedContinuation { continuation in
+            service.rescheduleAllNotifications {
+                continuation.resume()
+            }
+        }
+    }
+
+    private func rescheduleAllNotifications(_ service: PillNotificationService) async {
+        await withCheckedContinuation { continuation in
+            service.rescheduleAllNotifications {
+                continuation.resume()
+            }
+        }
+    }
+
+    private func triggerRescheduleSupport(
+        center: UNUserNotificationCenter,
+        storeContext: NotificationStoreContext,
+        logName: String,
+        removePendingNotifications: @escaping (@escaping () -> Void) -> Void,
+        makePendingRequests: @escaping () throws -> [UNNotificationRequest]
+    ) async {
+        await withCheckedContinuation { continuation in
+            NotificationRescheduleSupport.rescheduleAll(
+                center: center,
+                storeContext: storeContext,
+                logName: logName,
+                now: { Date(timeIntervalSince1970: 0) },
+                removeDeliveredAggregatedNotifications: { _ in },
+                removePendingNotifications: removePendingNotifications,
+                makePendingRequests: makePendingRequests
+            ) {
+                continuation.resume()
+            }
+        }
+    }
+
+    nonisolated private func makeNotificationRequest(identifier: String) -> UNNotificationRequest {
+        let content = UNMutableNotificationContent()
+        content.title = "Reminder"
+
+        return UNNotificationRequest(
+            identifier: identifier,
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 60, repeats: false)
+        )
+    }
+}
+
+private final class RescheduleInvocationTracker: @unchecked Sendable {
+    private let lock = NSLock()
+    private var makeCallCount = 0
+    private var removeCallCount = 0
+
+    func nextRemoveCall() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+
+        removeCallCount += 1
+        return removeCallCount
+    }
+
+    func nextRequestSuffix() -> String {
+        lock.lock()
+        defer { lock.unlock() }
+
+        makeCallCount += 1
+        return makeCallCount == 1 ? "old" : "new"
+    }
+
+    var counts: (make: Int, remove: Int) {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return (makeCallCount, removeCallCount)
     }
 }

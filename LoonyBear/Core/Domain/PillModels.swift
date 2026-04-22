@@ -95,7 +95,7 @@ struct PillDraft: Equatable {
     var name = ""
     var dosage = ""
     var details = ""
-    var startDate: Date = Calendar.current.startOfDay(for: Date())
+    var startDate: Date = Calendar.autoupdatingCurrent.startOfDay(for: Date())
     var scheduleDays: WeekdaySet = .daily
     var useScheduleForHistory = true
     var reminderEnabled = false
@@ -122,7 +122,6 @@ struct EditPillDraft: Equatable {
     var dosage: String
     var details: String
     let startDate: Date
-    var historyMode: PillHistoryMode
     var scheduleDays: WeekdaySet
     var reminderEnabled: Bool
     var reminderTime: ReminderTime

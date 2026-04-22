@@ -4,7 +4,6 @@ import SwiftUI
 struct MyPillsView: View {
     @EnvironmentObject private var pillAppState: PillAppState
     @State private var currentTime = Date()
-    @State private var pillPendingDeletion: PillCardProjection?
 
     private let reminderStateTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
     let onCreatePill: () -> Void
@@ -49,28 +48,36 @@ struct MyPillsView: View {
                                 .swipeActions(edge: .leading, allowsFullSwipe: true) {
                                     if pill.isTakenToday {
                                         Button {
-                                            pillAppState.clearPillDayStateToday(id: pill.id)
+                                            Task {
+                                                await pillAppState.clearPillDayStateToday(id: pill.id)
+                                            }
                                         } label: {
                                             Image(systemName: "calendar.badge.minus")
                                         }
                                         .tint(.orange)
                                     } else if pill.isSkippedToday {
                                         Button {
-                                            pillAppState.clearPillDayStateToday(id: pill.id)
+                                            Task {
+                                                await pillAppState.clearPillDayStateToday(id: pill.id)
+                                            }
                                         } label: {
                                             Image(systemName: "calendar.badge.minus")
                                         }
                                         .tint(.orange)
                                     } else {
                                         Button {
-                                            pillAppState.markTakenToday(id: pill.id)
+                                            Task {
+                                                await pillAppState.markTakenToday(id: pill.id)
+                                            }
                                         } label: {
                                             Image(systemName: "checkmark")
                                         }
                                         .tint(.green)
 
                                         Button {
-                                            pillAppState.skipPillToday(id: pill.id)
+                                            Task {
+                                                await pillAppState.skipPillToday(id: pill.id)
+                                            }
                                         } label: {
                                             Image(systemName: "xmark")
                                         }
@@ -113,20 +120,6 @@ struct MyPillsView: View {
                 .accessibilityLabel("Create Pill")
             }
         }
-        .alert("Delete pill?", isPresented: deleteAlertBinding) {
-            Button("Delete", role: .destructive) {
-                if let pillPendingDeletion {
-                    pillAppState.deletePill(id: pillPendingDeletion.id)
-                }
-                pillPendingDeletion = nil
-            }
-
-            Button("Cancel", role: .cancel) {
-                pillPendingDeletion = nil
-            }
-        } message: {
-            Text("This pill will be permanently deleted.")
-        }
         .alert("Action failed", isPresented: actionErrorAlertBinding) {
             Button("OK") {
                 pillAppState.clearActionError()
@@ -150,17 +143,6 @@ struct MyPillsView: View {
             PillDashboardSectionProjection(id: .today, title: "Today", pills: today),
             PillDashboardSectionProjection(id: .pending, title: "Pending", pills: pending),
         ].filter { !$0.pills.isEmpty }
-    }
-
-    private var deleteAlertBinding: Binding<Bool> {
-        Binding(
-            get: { pillPendingDeletion != nil },
-            set: { isPresented in
-                if !isPresented {
-                    pillPendingDeletion = nil
-                }
-            }
-        )
     }
 
     private var actionErrorAlertBinding: Binding<Bool> {

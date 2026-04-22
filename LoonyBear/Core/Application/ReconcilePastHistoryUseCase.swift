@@ -3,17 +3,29 @@ import Foundation
 @MainActor
 struct ReconcileHabitHistoryUseCase {
     let repository: HabitRepository
+    let clock: AppClock
 
-    func execute(today: Date = Date()) throws -> Int {
-        try repository.reconcilePastDays(today: today)
+    init(repository: HabitRepository, clock: AppClock = .live) {
+        self.repository = repository
+        self.clock = clock
+    }
+
+    func execute(today: Date? = nil) throws -> Int {
+        try repository.reconcilePastDays(today: today ?? clock.now())
     }
 }
 
 @MainActor
 struct ReconcilePillHistoryUseCase {
     let repository: PillRepository
+    let clock: AppClock
 
-    func execute(today: Date = Date()) throws -> Int {
-        try repository.reconcilePastDays(today: today)
+    init(repository: PillRepository, clock: AppClock = .live) {
+        self.repository = repository
+        self.clock = clock
+    }
+
+    func execute(today: Date? = nil) throws -> Int {
+        try repository.reconcilePastDays(today: today ?? clock.now())
     }
 }

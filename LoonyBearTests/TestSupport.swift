@@ -23,12 +23,16 @@ enum TestSupport {
         )
     }
 
-    static func makeCompletion(habitID: UUID, localDate: Date) -> HabitCompletion {
+    static func makeCompletion(
+        habitID: UUID,
+        localDate: Date,
+        source: CompletionSource = .manualEdit
+    ) -> HabitCompletion {
         HabitCompletion(
             id: UUID(),
             habitID: habitID,
             localDate: localDate,
-            source: .manualEdit,
+            source: source,
             createdAt: localDate
         )
     }

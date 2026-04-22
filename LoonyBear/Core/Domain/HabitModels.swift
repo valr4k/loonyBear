@@ -57,7 +57,7 @@ struct ReminderTime: Codable, Equatable {
 
     var formatted: String {
         let components = DateComponents(hour: hour, minute: minute)
-        return Calendar.current.date(from: components)?
+        return Calendar.autoupdatingCurrent.date(from: components)?
             .formatted(date: .omitted, time: .shortened) ?? "Not set"
     }
 }
@@ -101,8 +101,25 @@ struct WeekdaySet: OptionSet, Codable, Hashable {
         }
     }
 
+    var compactSummary: String {
+        switch self {
+        case .daily:
+            return "Daily"
+        case .weekdays:
+            return "Weekdays"
+        case .weekends:
+            return "Weekends"
+        default:
+            return "Custom"
+        }
+    }
+
     var summaryOrPlaceholder: String {
         rawValue == 0 ? "Select days" : summary
+    }
+
+    var compactSummaryOrPlaceholder: String {
+        rawValue == 0 ? "Select days" : compactSummary
     }
 }
 
@@ -167,7 +184,7 @@ struct DashboardProjection: Equatable {
 struct CreateHabitDraft: Equatable {
     var type: HabitType = .build
     var name = ""
-    var startDate: Date = Calendar.current.startOfDay(for: Date())
+    var startDate: Date = Calendar.autoupdatingCurrent.startOfDay(for: Date())
     var scheduleDays: WeekdaySet = .daily
     var useScheduleForHistory = true
     var reminderEnabled = false
@@ -183,7 +200,6 @@ struct EditHabitDraft: Equatable {
     let type: HabitType
     let startDate: Date
     var name: String
-    var historyMode: HabitHistoryMode
     var scheduleDays: WeekdaySet
     var reminderEnabled: Bool
     var reminderTime: ReminderTime
@@ -195,7 +211,6 @@ struct EditHabitDraft: Equatable {
         type: HabitType,
         startDate: Date,
         name: String,
-        historyMode: HabitHistoryMode = .scheduleBased,
         scheduleDays: WeekdaySet,
         reminderEnabled: Bool,
         reminderTime: ReminderTime,
@@ -206,7 +221,6 @@ struct EditHabitDraft: Equatable {
         self.type = type
         self.startDate = startDate
         self.name = name
-        self.historyMode = historyMode
         self.scheduleDays = scheduleDays
         self.reminderEnabled = reminderEnabled
         self.reminderTime = reminderTime

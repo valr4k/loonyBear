@@ -3,6 +3,7 @@ import Testing
 
 @testable import LoonyBear
 
+@MainActor
 @Suite
 struct EditableHistoryWindowTests {
     @Test
@@ -97,5 +98,50 @@ struct EditableHistoryWindowTests {
 
         #expect(normalized.positiveDays == Set([yesterday]))
         #expect(normalized.skippedDays.isEmpty)
+    }
+
+    @Test
+    func monthWindowBuildsSortedMonthListFromDates() {
+        let dates: Set<Date> = [
+            TestSupport.makeDate(2026, 4, 30),
+            TestSupport.makeDate(2026, 4, 1),
+            TestSupport.makeDate(2026, 3, 29),
+        ]
+
+        let months = HistoryMonthWindow.months(containing: dates)
+
+        #expect(months == [
+            TestSupport.makeDate(2026, 3, 1),
+            TestSupport.makeDate(2026, 4, 1),
+        ])
+    }
+
+    @Test
+    func monthWindowBuildsInclusiveMonthRangeFromStartDate() {
+        let startDate = TestSupport.makeDate(2026, 2, 14)
+        let endDate = TestSupport.makeDate(2026, 4, 30)
+
+        let months = HistoryMonthWindow.months(from: startDate, through: endDate)
+
+        #expect(months == [
+            TestSupport.makeDate(2026, 2, 1),
+            TestSupport.makeDate(2026, 3, 1),
+            TestSupport.makeDate(2026, 4, 1),
+        ])
+    }
+
+    @Test
+    func startDateSelectionWindowReturnsClosedRangeEndingToday() {
+        let today = TestSupport.makeDate(2026, 4, 30)
+        let calendar = Calendar.current
+
+        let range = StartDateSelectionWindow.range(
+            offset: DateComponents(day: -29),
+            today: today,
+            calendar: calendar
+        )
+
+        #expect(range.lowerBound == TestSupport.makeDate(2026, 4, 1))
+        #expect(range.upperBound == today)
     }
 }

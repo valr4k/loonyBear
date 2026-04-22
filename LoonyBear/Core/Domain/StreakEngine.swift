@@ -3,12 +3,14 @@ import Foundation
 enum StreakEngine {
     static func currentStreak(
         completions: [HabitCompletion],
+        skippedCompletions: [HabitCompletion] = [],
         schedules: [HabitScheduleVersion],
         today: Date,
         calendar: Calendar = .current
     ) -> Int {
         return metrics(
             completions: completions,
+            skippedCompletions: skippedCompletions,
             schedules: schedules,
             today: today,
             calendar: calendar
@@ -26,6 +28,7 @@ enum StreakEngine {
 
         return metrics(
             completions: completions,
+            skippedCompletions: [],
             schedules: schedules,
             today: latestCompletion,
             calendar: calendar
@@ -34,11 +37,13 @@ enum StreakEngine {
 
     private static func metrics(
         completions: [HabitCompletion],
+        skippedCompletions: [HabitCompletion],
         schedules: [HabitScheduleVersion],
         today: Date,
         calendar: Calendar
     ) -> (current: Int, longest: Int) {
         let completionDays = Set(completions.map { calendar.startOfDay(for: $0.localDate) })
+        let skippedDays = Set(skippedCompletions.map { calendar.startOfDay(for: $0.localDate) })
         guard let earliestCompletion = completionDays.min() else {
             return (0, 0)
         }
@@ -66,12 +71,16 @@ enum StreakEngine {
 
         while cursor <= normalizedToday {
             let hasCompletion = completionDays.contains(cursor)
+            let hasSkip = skippedDays.contains(cursor)
             let isScheduled = weekdays(on: cursor, from: normalizedSchedules, calendar: calendar)?
                 .contains(cursor.weekdayMask(calendar: calendar)) ?? false
 
             if hasCompletion {
                 running += 1
                 longest = max(longest, running)
+            } else if hasSkip && isScheduled && cursor == normalizedToday {
+                // An explicit skip on a scheduled "today" should immediately zero the current streak.
+                running = 0
             } else if isScheduled && cursor < normalizedToday {
                 // A missed scheduled day resets the streak at the start of the next local day,
                 // so an uncompleted scheduled "today" doesn't zero out the current streak yet.

@@ -29,6 +29,7 @@ enum BackupServiceError: LocalizedError, Equatable {
 
 final class BackupService {
     typealias SnapshotWriter = (_ data: Data, _ url: URL) throws -> Void
+    typealias ArchiveWriter = (_ data: Data, _ url: URL) throws -> Void
 
     static let shared = BackupService(
         context: PersistenceController.shared.container.viewContext,
@@ -40,6 +41,7 @@ final class BackupService {
     private let defaults: UserDefaults
     private let compressionService: CompressionService
     private let snapshotWriter: SnapshotWriter
+    private let archiveWriter: ArchiveWriter
     private let bookmarkKey = "backup_folder_bookmark"
     private let folderNameKey = "backup_folder_name"
     private let appName = "LoonyBear"
@@ -52,6 +54,9 @@ final class BackupService {
         compressionService: CompressionService = CompressionService(),
         snapshotWriter: @escaping SnapshotWriter = { data, url in
             try data.write(to: url, options: .atomic)
+        },
+        archiveWriter: @escaping ArchiveWriter = { data, url in
+            try data.write(to: url, options: .atomic)
         }
     ) {
         readContext = context
@@ -59,6 +64,7 @@ final class BackupService {
         self.defaults = defaults
         self.compressionService = compressionService
         self.snapshotWriter = snapshotWriter
+        self.archiveWriter = archiveWriter
     }
 
     func saveFolderBookmark(for url: URL) throws {
@@ -70,7 +76,7 @@ final class BackupService {
             url.stopAccessingSecurityScopedResource()
         }
 
-        let bookmark = try url.bookmarkData(options: .minimalBookmark, includingResourceValuesForKeys: nil, relativeTo: nil)
+        let bookmark = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
         defaults.set(bookmark, forKey: bookmarkKey)
         defaults.set(url.lastPathComponent, forKey: folderNameKey)
     }
@@ -94,17 +100,14 @@ final class BackupService {
                 folderName: folderURL.lastPathComponent,
                 latestBackupText: metadata.timestampText,
                 fileSizeText: metadata.fileSizeText,
+                hasLatestBackup: metadata.hasLatestBackup,
                 hasSelectedFolder: true,
                 requiresFolderReselection: false
             )
-        } catch BackupServiceError.invalidFolderAccess {
-            return BackupStatus(
-                folderName: storedFolderName,
-                latestBackupText: "No backups yet",
-                fileSizeText: "—",
-                hasSelectedFolder: true,
-                requiresFolderReselection: true
-            )
+        } catch let error as BackupServiceError where error == .corruptedBackup {
+            return makeArchiveUnavailableStatus(folderName: storedFolderName)
+        } catch {
+            return makeFolderReselectionStatus()
         }
     }
 
@@ -124,18 +127,20 @@ final class BackupService {
             let encoded = try JSONEncoder.backupEncoder.encode(archive)
             let data = try compressionService.gzipCompress(encoded)
 
-            let previousURL = folderURL.appendingPathComponent("\(appName).previous.json.gz")
-            let primaryURL = folderURL.appendingPathComponent("\(appName).json.gz")
+            try coordinateFolderWrite(at: folderURL) { coordinatedFolderURL in
+                let previousURL = coordinatedFolderURL.appendingPathComponent("\(appName).previous.json.gz")
+                let primaryURL = coordinatedFolderURL.appendingPathComponent("\(appName).json.gz")
 
-            if FileManager.default.fileExists(atPath: previousURL.path) {
-                try? FileManager.default.removeItem(at: previousURL)
+                if FileManager.default.fileExists(atPath: previousURL.path) {
+                    try? FileManager.default.removeItem(at: previousURL)
+                }
+
+                if FileManager.default.fileExists(atPath: primaryURL.path) {
+                    try FileManager.default.moveItem(at: primaryURL, to: previousURL)
+                }
+
+                try archiveWriter(data, primaryURL)
             }
-
-            if FileManager.default.fileExists(atPath: primaryURL.path) {
-                try FileManager.default.moveItem(at: primaryURL, to: previousURL)
-            }
-
-            try data.write(to: primaryURL, options: .atomic)
             ReliabilityLog.info("backup.create succeeded")
         } catch {
             ReliabilityLog.error("backup.create failed: \(error.localizedDescription)")
@@ -155,14 +160,16 @@ final class BackupService {
         }
 
         do {
-            let snapshotURL = folderURL.appendingPathComponent("\(appName).restore-snapshot.json.gz")
             do {
                 let snapshotPayload = try makeArchive()
                 do {
                     let snapshotData = try compressionService.gzipCompress(
                         JSONEncoder.backupEncoder.encode(snapshotPayload)
                     )
-                    try snapshotWriter(snapshotData, snapshotURL)
+                    try coordinateFolderWrite(at: folderURL) { coordinatedFolderURL in
+                        let snapshotURL = coordinatedFolderURL.appendingPathComponent("\(appName).restore-snapshot.json.gz")
+                        try snapshotWriter(snapshotData, snapshotURL)
+                    }
                     ReliabilityLog.info("backup.restore snapshot succeeded")
                 } catch {
                     ReliabilityLog.error("backup.restore snapshot write failed, restore aborted: \(error.localizedDescription)")
@@ -233,6 +240,28 @@ final class BackupService {
 
     private var storedFolderName: String {
         defaults.string(forKey: folderNameKey) ?? "Choose folder again"
+    }
+
+    private func makeFolderReselectionStatus() -> BackupStatus {
+        BackupStatus(
+            folderName: storedFolderName,
+            latestBackupText: "No backups yet",
+            fileSizeText: "—",
+            hasLatestBackup: false,
+            hasSelectedFolder: true,
+            requiresFolderReselection: true
+        )
+    }
+
+    private func makeArchiveUnavailableStatus(folderName: String) -> BackupStatus {
+        BackupStatus(
+            folderName: folderName,
+            latestBackupText: "Backup unreadable",
+            fileSizeText: "—",
+            hasLatestBackup: false,
+            hasSelectedFolder: true,
+            requiresFolderReselection: false
+        )
     }
 
     private func makeArchive() throws -> BackupArchive {
@@ -941,14 +970,14 @@ final class BackupService {
         }
     }
 
-    private func readMetadata(in folderURL: URL) throws -> (timestampText: String, fileSizeText: String) {
+    private func readMetadata(in folderURL: URL) throws -> (timestampText: String, fileSizeText: String, hasLatestBackup: Bool) {
         guard let loadedArchive = try loadPreferredArchiveFile(in: folderURL) else {
-            return ("No backups yet", "—")
+            return ("No backups yet", "—", false)
         }
 
         let fileSize = ByteCountFormatter.string(fromByteCount: Int64(loadedArchive.data.count), countStyle: .file)
         let timestamp = loadedArchive.archive.exportedAt.formatted(.dateTime.month(.abbreviated).day().hour().minute())
-        return (timestamp, fileSize)
+        return (timestamp, fileSize, true)
     }
 
     private func loadPreferredArchive(in folderURL: URL) throws -> BackupArchive {
@@ -960,33 +989,35 @@ final class BackupService {
     }
 
     private func loadPreferredArchiveFile(in folderURL: URL) throws -> (archive: BackupArchive, data: Data)? {
-        let candidateURLs = [
-            folderURL.appendingPathComponent("\(appName).json.gz"),
-            folderURL.appendingPathComponent("\(appName).previous.json.gz"),
-        ]
+        try coordinateFolderRead(at: folderURL) { coordinatedFolderURL in
+            let candidateURLs = [
+                coordinatedFolderURL.appendingPathComponent("\(appName).json.gz"),
+                coordinatedFolderURL.appendingPathComponent("\(appName).previous.json.gz"),
+            ]
 
-        var foundExistingArchive = false
-        for candidateURL in candidateURLs where FileManager.default.fileExists(atPath: candidateURL.path) {
-            foundExistingArchive = true
+            var foundExistingArchive = false
+            for candidateURL in candidateURLs where FileManager.default.fileExists(atPath: candidateURL.path) {
+                foundExistingArchive = true
 
-            do {
-                let data = try Data(contentsOf: candidateURL)
-                let decoded = try compressionService.gzipDecompress(data)
-                let archive = try JSONDecoder.backupDecoder.decode(BackupArchive.self, from: decoded)
-                return (archive, data)
-            } catch {
-                guard isRecoverableArchiveReadError(error) else {
-                    throw error
+                do {
+                    let data = try Data(contentsOf: candidateURL)
+                    let decoded = try compressionService.gzipDecompress(data)
+                    let archive = try JSONDecoder.backupDecoder.decode(BackupArchive.self, from: decoded)
+                    return (archive, data)
+                } catch {
+                    guard isRecoverableArchiveReadError(error) else {
+                        throw error
+                    }
+                    continue
                 }
-                continue
             }
-        }
 
-        if foundExistingArchive {
-            throw BackupServiceError.corruptedBackup
-        }
+            if foundExistingArchive {
+                throw BackupServiceError.corruptedBackup
+            }
 
-        return nil
+            return nil
+        }
     }
 
     private func isRecoverableArchiveReadError(_ error: Error) -> Bool {
@@ -1025,6 +1056,51 @@ final class BackupService {
                 context.rollback()
                 result = .failure(error)
             }
+        }
+
+        switch result {
+        case .success(let value):
+            return value
+        case .failure(let error):
+            throw error
+        case .none:
+            throw BackupServiceError.internalFailure
+        }
+    }
+
+    private func coordinateFolderRead<T>(at folderURL: URL, _ accessor: (URL) throws -> T) throws -> T {
+        try coordinateFolderAccess(at: folderURL, writing: false, accessor)
+    }
+
+    private func coordinateFolderWrite<T>(at folderURL: URL, _ accessor: (URL) throws -> T) throws -> T {
+        try coordinateFolderAccess(at: folderURL, writing: true, accessor)
+    }
+
+    private func coordinateFolderAccess<T>(
+        at folderURL: URL,
+        writing: Bool,
+        _ accessor: (URL) throws -> T
+    ) throws -> T {
+        let coordinator = NSFileCoordinator()
+        var coordinationError: NSError?
+        var result: Result<T, Error>?
+
+        let block: (URL) -> Void = { coordinatedURL in
+            do {
+                result = .success(try accessor(coordinatedURL))
+            } catch {
+                result = .failure(error)
+            }
+        }
+
+        if writing {
+            coordinator.coordinate(writingItemAt: folderURL, options: [], error: &coordinationError, byAccessor: block)
+        } else {
+            coordinator.coordinate(readingItemAt: folderURL, options: [], error: &coordinationError, byAccessor: block)
+        }
+
+        if let coordinationError {
+            throw coordinationError
         }
 
         switch result {

@@ -49,44 +49,70 @@ struct PillDetailsView: View {
                     }
                     .padding(.horizontal, 18)
                     .padding(.vertical, 22)
-                    AppSectionDivider()
-                    AppValueRow(title: "Start Date", value: details.startDate.formatted(date: .abbreviated, time: .omitted))
-                    AppSectionDivider()
-                    AppValueRow(title: "Plan", value: details.scheduleSummary)
-                    AppSectionDivider()
-                    AppValueRow(title: "Reminder", value: details.reminderTime?.formatted ?? "Off")
                 }
 
-                AppCard {
-                    AppValueRow(title: "Taken for", value: DayCountFormatter.compactDurationString(for: details.totalTakenDays), valueColor: AnyShapeStyle(.primary))
+                VStack(alignment: .leading, spacing: 8) {
+                    AppFormSectionHeader(title: "Notifications")
+
+                    AppCard {
+                        NavigationLink {
+                            AppReadOnlyScheduleView(
+                                scheduleDays: details.scheduleDays,
+                                backgroundStyle: .pills
+                            )
+                        } label: {
+                            AppValueRow(
+                                title: "Schedule",
+                                value: details.scheduleDays.compactSummary,
+                                valueColor: AnyShapeStyle(.secondary),
+                                showsChevron: true
+                            )
+                        }
+                        .buttonStyle(.plain)
+
+                        AppSectionDivider()
+                        AppValueRow(title: "Reminder", value: details.reminderTime?.formatted ?? "Off")
+                    }
                 }
 
-                AppCard {
-                    PillReadOnlyMonthCalendarView(
-                        month: displayedMonth,
-                        takenDays: details.takenDays,
-                        skippedDays: details.skippedDays,
-                        availableMonths: availableMonths(for: details.startDate),
-                        onMonthChange: { displayedMonth = $0 }
-                    )
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 18)
+                VStack(alignment: .leading, spacing: 8) {
+                    AppFormSectionHeader(title: "History")
+
+                    AppCard {
+                        AppValueRow(title: "Start Date", value: details.startDate.formatted(date: .abbreviated, time: .omitted))
+                        AppSectionDivider()
+                        AppValueRow(title: "Taken for", value: DayCountFormatter.compactDurationString(for: details.totalTakenDays), valueColor: AnyShapeStyle(.secondary))
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    AppFormSectionHeader(title: "Calendar")
+
+                    AppCard {
+                        PillReadOnlyMonthCalendarView(
+                            month: displayedMonth,
+                            takenDays: details.takenDays,
+                            skippedDays: details.skippedDays,
+                            availableMonths: availableMonths(for: details.startDate),
+                            onMonthChange: { displayedMonth = $0 }
+                        )
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 18)
+                    }
                 }
 
                 if let description = details.details, !description.isEmpty {
-                    AppCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Description")
-                                .font(.headline)
-                                .foregroundStyle(.primary)
+                    VStack(alignment: .leading, spacing: 8) {
+                        AppFormSectionHeader(title: "Description")
 
+                        AppCard {
                             Text(description)
                                 .font(.body)
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 18)
+                                .padding(.vertical, 18)
                         }
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 18)
                     }
                 }
             } else if isIntegrityError {
@@ -157,23 +183,6 @@ struct PillDetailsView: View {
     }
 
     private func availableMonths(for startDate: Date) -> [Date] {
-        let calendar = Calendar.current
-        let start = calendar.startOfDay(for: startDate)
-        let today = calendar.startOfDay(for: Date())
-        guard start <= today else { return [] }
-
-        var months: [Date] = []
-        var cursor = calendar.date(from: calendar.dateComponents([.year, .month], from: start)) ?? start
-        let lastMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: today)) ?? today
-
-        while cursor <= lastMonth {
-            months.append(cursor)
-            guard let next = calendar.date(byAdding: .month, value: 1, to: cursor) else {
-                break
-            }
-            cursor = next
-        }
-
-        return months
+        HistoryMonthWindow.months(from: startDate)
     }
 }

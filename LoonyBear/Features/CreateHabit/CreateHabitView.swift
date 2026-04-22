@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 struct CreateHabitView: View {
     @Environment(\.dismiss) private var dismiss
@@ -13,10 +12,11 @@ struct CreateHabitView: View {
         AppScreen(backgroundStyle: .habits, topPadding: 8) {
             VStack(alignment: .leading, spacing: 20) {
                 typeSection
-                detailsSection
-                daysSection
+                nameSection
+                notificationsSection
+                historySection
                 if let validationMessage {
-                    validationBanner(validationMessage)
+                    AppValidationBanner(message: validationMessage)
                 }
             }
         }
@@ -73,121 +73,36 @@ struct CreateHabitView: View {
         }
     }
 
-    private var detailsSection: some View {
-        AppCard {
-            VStack(alignment: .leading, spacing: 0) {
-                HabitNameInputField(text: $draft.name)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 18)
-
-                if shouldShowNameValidation {
-                    AppSectionDivider()
-
-                    Text("Habit name is required.")
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 14)
-                }
-
-                AppSectionDivider()
-
-                DatePicker(
-                    "Start Date",
-                    selection: $draft.startDate,
-                    in: selectableStartDateRange,
-                    displayedComponents: .date
-                )
-                .datePickerStyle(.compact)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 18)
-
-                AppSectionDivider()
-
-                HStack(spacing: 16) {
-                    Text("Reminder")
-                        .foregroundStyle(.primary)
-
-                    Spacer()
-
-                    Toggle("", isOn: $draft.reminderEnabled)
-                        .labelsHidden()
-                }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 18)
-
-                if draft.reminderEnabled {
-                    AppSectionDivider()
-
-                    DatePicker(
-                        "Time",
-                        selection: reminderDateBinding,
-                        displayedComponents: .hourAndMinute
-                    )
-                    .datePickerStyle(.compact)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 18)
-                }
-            }
+    private var nameSection: some View {
+        AppHabitNameCard(text: $draft.name, showsValidation: shouldShowNameValidation) {
+            AppInlineErrorText(text: "Habit name is required.")
         }
     }
 
-    private var daysSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            AppCard {
-                VStack(alignment: .leading, spacing: 0) {
-                    InlineDaysSelector(selection: scheduleDaysBinding)
-
-                    AppSectionDivider()
-
-                    HStack(spacing: 16) {
-                        Text("Use schedule for history?")
-                            .foregroundStyle(.primary)
-
-                        Spacer()
-
-                        Toggle("", isOn: $draft.useScheduleForHistory)
-                            .labelsHidden()
-                    }
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 18)
-
-                    if shouldShowScheduleValidation {
-                        HStack {
-                            AppInlineErrorText(text: AppCopy.chooseAtLeastOneDay)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 18)
-                        .padding(.bottom, 16)
-                    }
-                }
-            }
-
-            AppHelperText(text: historyHelperText)
+    private var historySection: some View {
+        AppFormCardSection(title: "History") {
+            AppStartDatePickerRow(
+                date: $draft.startDate,
+                range: selectableStartDateRange
+            )
         }
     }
 
-    private func validationBanner(_ message: String) -> some View {
-        AppValidationBanner(message: message)
-    }
-
-    private var reminderDateBinding: Binding<Date> {
-        Binding {
-            let components = DateComponents(hour: draft.reminderTime.hour, minute: draft.reminderTime.minute)
-            return Calendar.current.date(from: components) ?? Date()
-        } set: { newValue in
-            let components = Calendar.current.dateComponents([.hour, .minute], from: newValue)
-            draft.reminderTime = ReminderTime(
-                hour: components.hour ?? 20,
-                minute: components.minute ?? 0
+    private var notificationsSection: some View {
+        AppNotificationSettingsSection(
+            scheduleSummary: draft.scheduleDays.compactSummaryOrPlaceholder,
+            reminderEnabled: $draft.reminderEnabled,
+            reminderDate: $draft.reminderTime.dateBinding(fallback: ReminderTime(hour: 20, minute: 0))
+        ) {
+            CreateHabitScheduleView(
+                scheduleDays: $draft.scheduleDays,
+                useScheduleForHistory: $draft.useScheduleForHistory
             )
         }
     }
 
     private var selectableStartDateRange: ClosedRange<Date> {
-        let today = Calendar.autoupdatingCurrent.startOfDay(for: Date())
-        let earliest = Calendar.autoupdatingCurrent.date(byAdding: .day, value: -29, to: today) ?? today
-        return earliest ... today
+        StartDateSelectionWindow.range(offset: DateComponents(day: -29))
     }
 
     private var isFormValid: Bool {
@@ -196,25 +111,6 @@ struct CreateHabitView: View {
 
     private var shouldShowNameValidation: Bool {
         draft.name.isEmpty == false && draft.trimmedName.isEmpty
-    }
-
-    private var shouldShowScheduleValidation: Bool {
-        draft.scheduleDays.rawValue == 0
-    }
-
-    private var historyHelperText: String {
-        draft.useScheduleForHistory
-            ? AppCopy.habitHistoryFollowsSchedule
-            : AppCopy.habitHistoryCountsEveryDay
-    }
-
-    private var scheduleDaysBinding: Binding<WeekdaySet> {
-        Binding(
-            get: { draft.scheduleDays },
-            set: { newValue in
-                draft.scheduleDays = newValue
-            }
-        )
     }
 
     private func saveHabit() {
@@ -231,7 +127,7 @@ struct CreateHabitView: View {
 
         Task {
             do {
-                let habitID = try appState.createHabit(from: savedDraft)
+                let habitID = try await appState.createHabit(from: savedDraft)
                 isSaving = false
                 dismiss()
 
@@ -245,118 +141,23 @@ struct CreateHabitView: View {
     }
 }
 
-struct CenteredInputField: View {
-    @Binding var text: String
-    let placeholder: String
-    let capitalization: UITextAutocapitalizationType
-    let autocorrectionType: UITextAutocorrectionType
-
-    var body: some View {
-        CenteredInputTextField(
-            text: $text,
-            placeholder: placeholder,
-            capitalization: capitalization,
-            autocorrectionType: autocorrectionType
-        )
-            .frame(maxWidth: .infinity, alignment: .center)
-            .frame(height: 28)
-    }
-}
-
-struct HabitNameInputField: View {
-    @Binding var text: String
-
-    var body: some View {
-        CenteredInputField(
-            text: $text,
-            placeholder: "Enter habit name",
-            capitalization: .sentences,
-            autocorrectionType: .default
-        )
-    }
-}
-
-private struct CenteredInputTextField: UIViewRepresentable {
-    @Binding var text: String
-    let placeholder: String
-    let capitalization: UITextAutocapitalizationType
-    let autocorrectionType: UITextAutocorrectionType
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text)
-    }
-
-    func makeUIView(context: Context) -> UITextField {
-        let textField = CenteredCaretTextField(frame: .zero)
-        textField.delegate = context.coordinator
-        textField.adjustsFontForContentSizeCategory = true
-        textField.autocapitalizationType = capitalization
-        textField.autocorrectionType = autocorrectionType
-        textField.borderStyle = .none
-        textField.clearButtonMode = .never
-        textField.returnKeyType = .done
-        textField.enablesReturnKeyAutomatically = false
-        textField.font = .systemFont(ofSize: 20, weight: .semibold)
-        textField.textColor = .label
-        textField.tintColor = .systemBlue
-        textField.textAlignment = .center
-        textField.contentHorizontalAlignment = .center
-        textField.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        textField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        textField.attributedPlaceholder = NSAttributedString(
-            string: placeholder,
-            attributes: [
-                .foregroundColor: UIColor.tertiaryLabel,
-                .font: UIFont.systemFont(ofSize: 20, weight: .semibold),
-            ]
-        )
-        textField.addTarget(context.coordinator, action: #selector(Coordinator.editingChanged(_:)), for: .editingChanged)
-        return textField
-    }
-
-    func updateUIView(_ uiView: UITextField, context: Context) {
-        if uiView.text != text {
-            uiView.text = text
-        }
-    }
-
-    final class Coordinator: NSObject, UITextFieldDelegate {
-        @Binding private var text: String
-
-        init(text: Binding<String>) {
-            _text = text
-        }
-
-        @objc func editingChanged(_ textField: UITextField) {
-            text = textField.text ?? ""
-        }
-
-        func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-            textField.resignFirstResponder()
-            return true
-        }
-    }
-}
-
-private final class CenteredCaretTextField: UITextField {
-    override func caretRect(for position: UITextPosition) -> CGRect {
-        var rect = super.caretRect(for: position)
-        guard (text ?? "").isEmpty else { return rect }
-        rect.origin.x = bounds.midX - (rect.width / 2)
-        return rect
-    }
-}
-
-private struct CreateHabitSection<Content: View>: View {
-    let title: String
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        content
-    }
-}
-
 #Preview {
     CreateHabitView()
         .environmentObject(AppEnvironment.preview.appState)
+}
+
+private struct CreateHabitScheduleView: View {
+    @Binding var scheduleDays: WeekdaySet
+    @Binding var useScheduleForHistory: Bool
+
+    var body: some View {
+        AppScheduleEditorScreen(
+            backgroundStyle: .habits,
+            scheduleDays: $scheduleDays,
+            useScheduleForHistory: $useScheduleForHistory,
+            helperText: useScheduleForHistory
+                ? AppCopy.habitHistoryFollowsSchedule
+                : AppCopy.habitHistoryCountsEveryDay
+        )
+    }
 }

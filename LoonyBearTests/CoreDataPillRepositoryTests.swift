@@ -122,6 +122,51 @@ struct CoreDataPillRepositoryTests {
     }
 
     @Test
+    func markTakenTodayDeduplicatesExistingRowsForToday() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataPillRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        var draft = PillDraft()
+        draft.name = "Vitamin D"
+        draft.dosage = "1 tablet"
+        draft.startDate = Calendar.current.startOfDay(for: Date())
+        draft.scheduleDays = .daily
+
+        let pillID = try repository.createPill(from: draft)
+        let pillRequest = NSFetchRequest<NSManagedObject>(entityName: "Pill")
+        pillRequest.predicate = NSPredicate(format: "id == %@", pillID as CVarArg)
+        let pill = try #require(context.fetch(pillRequest).first)
+        let today = Calendar.current.startOfDay(for: Date())
+
+        for dayOffset in 0..<2 {
+            let intake = NSEntityDescription.insertNewObject(forEntityName: "PillIntake", into: context)
+            intake.setValue(UUID(), forKey: "id")
+            intake.setValue(pillID, forKey: "pillID")
+            intake.setValue(today, forKey: "localDate")
+            intake.setValue(PillCompletionSource.skipped.rawValue, forKey: "sourceRaw")
+            intake.setValue(Date().addingTimeInterval(TimeInterval(dayOffset)), forKey: "createdAt")
+            intake.setValue(pill, forKey: "pill")
+        }
+        try context.save()
+
+        try repository.markTakenToday(id: pillID)
+
+        let request = NSFetchRequest<NSManagedObject>(entityName: "PillIntake")
+        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            NSPredicate(format: "pillID == %@", pillID as CVarArg),
+            NSPredicate(format: "localDate == %@", today as CVarArg),
+        ])
+        let intakes = try context.fetch(request)
+
+        #expect(intakes.count == 1)
+        #expect(intakes.first?.value(forKey: "sourceRaw") as? String == PillCompletionSource.swipe.rawValue)
+    }
+
+    @Test
     func updatePillCanClearEditableSkippedDay() throws {
         let persistence = PersistenceController(inMemory: true)
         let repository = CoreDataPillRepository(
@@ -145,7 +190,6 @@ struct CoreDataPillRepositoryTests {
             dosage: details.dosage,
             details: details.details ?? "",
             startDate: details.startDate,
-            historyMode: details.historyMode,
             scheduleDays: details.scheduleDays,
             reminderEnabled: details.reminderEnabled,
             reminderTime: details.reminderTime ?? ReminderTime(hour: 9, minute: 0),
@@ -161,10 +205,11 @@ struct CoreDataPillRepositoryTests {
     }
 
     @Test
-    func updatePillNormalizesPastEditableNoneToSkipped() throws {
+    func updatePillSaveRefillsPastEditableGap() throws {
         let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
         let repository = CoreDataPillRepository(
-            context: persistence.container.viewContext,
+            context: context,
             makeWriteContext: persistence.makeBackgroundContext
         )
         let calendar = Calendar.current
@@ -179,8 +224,17 @@ struct CoreDataPillRepositoryTests {
         draft.useScheduleForHistory = false
 
         let pillID = try repository.createPill(from: draft)
+        let request = NSFetchRequest<NSManagedObject>(entityName: "PillIntake")
+        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            NSPredicate(format: "pillID == %@", pillID as CVarArg),
+            NSPredicate(format: "localDate == %@", yesterday as CVarArg),
+        ])
+        let intake = try #require(context.fetch(request).first)
+        context.delete(intake)
+        try context.save()
+
         let details = try #require(try repository.fetchPillDetails(id: pillID))
-        #expect(details.skippedDays.contains(yesterday))
+        #expect(!details.skippedDays.contains(yesterday))
 
         let editDraft = EditPillDraft(
             id: pillID,
@@ -188,7 +242,6 @@ struct CoreDataPillRepositoryTests {
             dosage: details.dosage,
             details: details.details ?? "",
             startDate: details.startDate,
-            historyMode: details.historyMode,
             scheduleDays: details.scheduleDays,
             reminderEnabled: details.reminderEnabled,
             reminderTime: details.reminderTime ?? ReminderTime(hour: 9, minute: 0),
@@ -240,7 +293,6 @@ struct CoreDataPillRepositoryTests {
             dosage: details.dosage,
             details: details.details ?? "",
             startDate: details.startDate,
-            historyMode: details.historyMode,
             scheduleDays: details.scheduleDays,
             reminderEnabled: details.reminderEnabled,
             reminderTime: details.reminderTime ?? ReminderTime(hour: 9, minute: 0),
@@ -260,6 +312,60 @@ struct CoreDataPillRepositoryTests {
             NSPredicate(format: "localDate == %@", unscheduledPastDay as CVarArg),
         ])
         #expect(try context.count(for: request) == 0)
+    }
+
+    @Test
+    func updatePillUsesPersistedHistoryModeWhenSavingPastEditableGap() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataPillRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let yesterday = try #require(calendar.date(byAdding: .day, value: -1, to: today))
+        let twoDaysAgo = try #require(calendar.date(byAdding: .day, value: -2, to: today))
+
+        var draft = PillDraft()
+        draft.name = "Vitamin D"
+        draft.dosage = "1 tablet"
+        draft.startDate = twoDaysAgo
+        draft.scheduleDays = calendar.weekdaySet(for: yesterday)
+        draft.useScheduleForHistory = true
+
+        let pillID = try repository.createPill(from: draft)
+        let request = NSFetchRequest<NSManagedObject>(entityName: "PillIntake")
+        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            NSPredicate(format: "pillID == %@", pillID as CVarArg),
+            NSPredicate(format: "localDate == %@", yesterday as CVarArg),
+        ])
+        let intake = try #require(context.fetch(request).first)
+        context.delete(intake)
+        try context.save()
+
+        let details = try #require(try repository.fetchPillDetails(id: pillID))
+        #expect(!details.skippedDays.contains(yesterday))
+
+        let editDraft = EditPillDraft(
+            id: pillID,
+            name: details.name,
+            dosage: details.dosage,
+            details: details.details ?? "",
+            startDate: details.startDate,
+            scheduleDays: details.scheduleDays,
+            reminderEnabled: details.reminderEnabled,
+            reminderTime: details.reminderTime ?? ReminderTime(hour: 9, minute: 0),
+            takenDays: [],
+            skippedDays: []
+        )
+
+        try repository.updatePill(from: editDraft)
+
+        let updatedDetails = try #require(try repository.fetchPillDetails(id: pillID))
+        #expect(updatedDetails.historyMode == .scheduleBased)
+        #expect(updatedDetails.skippedDays.contains(yesterday))
+        #expect(!updatedDetails.skippedDays.contains(twoDaysAgo))
     }
 
     @Test
@@ -467,7 +573,6 @@ struct CoreDataPillRepositoryTests {
             dosage: "2 tablets",
             details: "After breakfast",
             startDate: created.startDate,
-            historyMode: created.historyMode,
             scheduleDays: .weekends,
             reminderEnabled: true,
             reminderTime: ReminderTime(hour: 8, minute: 15),

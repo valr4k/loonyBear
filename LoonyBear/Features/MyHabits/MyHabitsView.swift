@@ -3,7 +3,6 @@ import SwiftUI
 struct MyHabitsView: View {
     @EnvironmentObject private var appState: HabitAppState
     @State private var currentTime = Date()
-    @State private var habitPendingDeletion: HabitCardProjection?
     private let reminderStateTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
     let onCreateHabit: () -> Void
     let onShowHabitInfo: (HabitCardProjection) -> Void
@@ -49,28 +48,36 @@ struct MyHabitsView: View {
                                 .swipeActions(edge: .leading, allowsFullSwipe: true) {
                                     if habit.isCompletedToday {
                                         Button {
-                                            appState.clearHabitDayStateToday(id: habit.id)
+                                            Task {
+                                                await appState.clearHabitDayStateToday(id: habit.id)
+                                            }
                                         } label: {
                                             Image(systemName: "calendar.badge.minus")
                                         }
                                         .tint(.orange)
                                     } else if habit.isSkippedToday {
                                         Button {
-                                            appState.clearHabitDayStateToday(id: habit.id)
+                                            Task {
+                                                await appState.clearHabitDayStateToday(id: habit.id)
+                                            }
                                         } label: {
                                             Image(systemName: "calendar.badge.minus")
                                         }
                                         .tint(.orange)
                                     } else {
                                         Button {
-                                            appState.completeHabitToday(id: habit.id)
+                                            Task {
+                                                await appState.completeHabitToday(id: habit.id)
+                                            }
                                         } label: {
                                             Image(systemName: "checkmark")
                                         }
                                         .tint(.green)
 
                                         Button {
-                                            appState.skipHabitToday(id: habit.id)
+                                            Task {
+                                                await appState.skipHabitToday(id: habit.id)
+                                            }
                                         } label: {
                                             Image(systemName: "xmark")
                                         }
@@ -113,20 +120,6 @@ struct MyHabitsView: View {
                 .accessibilityLabel("Create Habit")
             }
         }
-        .alert("Delete habit?", isPresented: deleteAlertBinding) {
-            Button("Delete", role: .destructive) {
-                if let habitPendingDeletion {
-                    appState.deleteHabit(id: habitPendingDeletion.id)
-                }
-                habitPendingDeletion = nil
-            }
-
-            Button("Cancel", role: .cancel) {
-                habitPendingDeletion = nil
-            }
-        } message: {
-            Text("This habit will be permanently deleted.")
-        }
         .alert("Action failed", isPresented: actionErrorAlertBinding) {
             Button("OK") {
                 appState.clearActionError()
@@ -137,17 +130,6 @@ struct MyHabitsView: View {
         .onReceive(reminderStateTimer) { now in
             currentTime = now
         }
-    }
-
-    private var deleteAlertBinding: Binding<Bool> {
-        Binding(
-            get: { habitPendingDeletion != nil },
-            set: { isPresented in
-                if !isPresented {
-                    habitPendingDeletion = nil
-                }
-            }
-        )
     }
 
     private var actionErrorAlertBinding: Binding<Bool> {

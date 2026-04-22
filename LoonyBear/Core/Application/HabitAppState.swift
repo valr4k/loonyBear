@@ -1,6 +1,5 @@
 import Combine
 import Foundation
-import UserNotifications
 
 enum HabitDetailsLoadState {
     case found(HabitDetailsProjection)
@@ -24,6 +23,7 @@ final class HabitAppState: ObservableObject {
     private let repository: HabitRepository
     let notificationService: NotificationService
     private let sideEffectCoordinator: HabitSideEffectCoordinator
+    private let writeCoordinator = AppStateWriteCoordinator(name: "LoonyBear.HabitAppState.WriteQueue")
 
     init(
         loadDashboardUseCase: LoadDashboardUseCase,
@@ -33,7 +33,8 @@ final class HabitAppState: ObservableObject {
         repository: HabitRepository,
         notificationService: NotificationService,
         widgetSyncService: WidgetSyncService,
-        badgeService: AppBadgeService
+        badgeService: AppBadgeService,
+        clock: AppClock = .live
     ) {
         self.loadDashboardUseCase = loadDashboardUseCase
         self.createHabitUseCase = createHabitUseCase
@@ -44,7 +45,8 @@ final class HabitAppState: ObservableObject {
         sideEffectCoordinator = HabitSideEffectCoordinator(
             notificationService: notificationService,
             widgetSyncService: widgetSyncService,
-            badgeService: badgeService
+            badgeService: badgeService,
+            clock: clock
         )
     }
 
@@ -55,15 +57,12 @@ final class HabitAppState: ObservableObject {
         isLoading = false
     }
 
-    func createHabit(from draft: CreateHabitDraft) throws -> UUID {
-        do {
-            let habitID = try createHabitUseCase.execute(draft: draft)
-            createHabitErrorMessage = nil
-            refreshDashboard()
-            return habitID
-        } catch {
-            createHabitErrorMessage = error.localizedDescription
-            throw error
+    func createHabit(from draft: CreateHabitDraft) async throws -> UUID {
+        try await writeCoordinator.performThrowingMutation(
+            refresh: refreshDashboard,
+            setError: { self.createHabitErrorMessage = $0 }
+        ) {
+            try self.createHabitUseCase.execute(draft: draft)
         }
     }
 
@@ -71,37 +70,48 @@ final class HabitAppState: ObservableObject {
         createHabitErrorMessage = nil
     }
 
-    func completeHabitToday(id: UUID) {
-        let didComplete = performDashboardMutation {
-            try repository.completeHabitToday(id: id)
+    func completeHabitToday(id: UUID) async {
+        let didComplete = await writeCoordinator.performMutation(
+            refresh: refreshDashboard,
+            setError: { self.actionErrorMessage = $0 }
+        ) {
+            try self.repository.completeHabitToday(id: id)
         }
         guard didComplete else { return }
 
         sideEffectCoordinator.handleDailyMutation(forHabitID: id)
     }
 
-    func skipHabitToday(id: UUID) {
-        let didSkip = performDashboardMutation {
-            try repository.skipHabitToday(id: id)
+    func skipHabitToday(id: UUID) async {
+        let didSkip = await writeCoordinator.performMutation(
+            refresh: refreshDashboard,
+            setError: { self.actionErrorMessage = $0 }
+        ) {
+            try self.repository.skipHabitToday(id: id)
         }
         guard didSkip else { return }
 
         sideEffectCoordinator.handleDailyMutation(forHabitID: id)
     }
 
-    func clearHabitDayStateToday(id: UUID) {
-        let didClearDayState = performDashboardMutation {
-            try repository.clearHabitDayStateToday(id: id)
+    func clearHabitDayStateToday(id: UUID) async {
+        let didClearDayState = await writeCoordinator.performMutation(
+            refresh: refreshDashboard,
+            setError: { self.actionErrorMessage = $0 }
+        ) {
+            try self.repository.clearHabitDayStateToday(id: id)
         }
         guard didClearDayState else { return }
 
         sideEffectCoordinator.handleDailyMutation(forHabitID: id)
     }
 
-    func deleteHabit(id: UUID) {
+    func deleteHabit(id: UUID) async {
         do {
             dashboard = dashboardRemovingHabit(id: id)
-            try repository.deleteHabit(id: id)
+            try await writeCoordinator.performWriteOperation {
+                try self.repository.deleteHabit(id: id)
+            }
             sideEffectCoordinator.handleDeletion(forHabitID: id, dashboard: dashboard)
             actionErrorMessage = nil
         } catch {
@@ -144,14 +154,12 @@ final class HabitAppState: ObservableObject {
         return state
     }
 
-    func updateHabit(from draft: EditHabitDraft) throws {
-        do {
-            try updateHabitUseCase.execute(draft: draft)
-            refreshDashboard()
-            actionErrorMessage = nil
-        } catch {
-            actionErrorMessage = error.localizedDescription
-            throw error
+    func updateHabit(from draft: EditHabitDraft) async throws {
+        try await writeCoordinator.performThrowingMutation(
+            refresh: refreshDashboard,
+            setError: { self.actionErrorMessage = $0 }
+        ) {
+            try self.updateHabitUseCase.execute(draft: draft)
         }
     }
 
@@ -163,24 +171,15 @@ final class HabitAppState: ObservableObject {
         await sideEffectCoordinator.syncNotificationsAfterUpdate(from: draft)
     }
 
-    func handleAppDidBecomeActive() {
-        var reconciliationErrorMessage: String?
-
-        do {
-            let finalizedDays = try reconcileHistoryUseCase.execute()
-            if finalizedDays > 0 {
-                ReliabilityLog.info("habit.history.reconcile finalized \(finalizedDays) day(s)")
-            }
-        } catch {
-            reconciliationErrorMessage = error.localizedDescription
-            ReliabilityLog.error("habit.history.reconcile failed: \(error.localizedDescription)")
+    func handleAppDidBecomeActive() async {
+        await writeCoordinator.performReconciliation(
+            logPrefix: "habit.history.reconcile",
+            refresh: refreshDashboard,
+            setError: { self.actionErrorMessage = $0 },
+            afterRefresh: notificationService.handleAppDidBecomeActive
+        ) {
+            try self.reconcileHistoryUseCase.execute()
         }
-
-        refreshDashboard()
-        if let reconciliationErrorMessage {
-            actionErrorMessage = reconciliationErrorMessage
-        }
-        notificationService.handleAppDidBecomeActive()
     }
 
     func refreshDashboard() {
@@ -190,18 +189,6 @@ final class HabitAppState: ObservableObject {
             actionErrorMessage = nil
         } catch {
             actionErrorMessage = error.localizedDescription
-        }
-    }
-
-    private func performDashboardMutation(_ mutation: () throws -> Void) -> Bool {
-        do {
-            try mutation()
-            refreshDashboard()
-            actionErrorMessage = nil
-            return true
-        } catch {
-            actionErrorMessage = error.localizedDescription
-            return false
         }
     }
 

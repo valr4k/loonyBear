@@ -102,6 +102,137 @@ struct IntegrityReportBuilder {
     func makeError(operation: String) -> DataIntegrityError {
         DataIntegrityError(operation: operation, report: DataIntegrityReport(issues: issues))
     }
+
+    mutating func append(report: DataIntegrityReport) {
+        issues.append(contentsOf: report.issues)
+    }
+}
+
+enum AppStartupHealthCheck {
+    @MainActor
+    static func run(
+        context: NSManagedObjectContext,
+        habitRepository: HabitRepository,
+        pillRepository: PillRepository,
+        habitNotificationService: NotificationService,
+        pillNotificationService: PillNotificationService,
+        calendar: Calendar = .autoupdatingCurrent
+    ) throws {
+        var report = IntegrityReportBuilder()
+
+        do {
+            _ = try habitRepository.fetchDashboardHabits()
+            _ = try pillRepository.fetchDashboardPills()
+            _ = try habitNotificationService.makePendingNotificationRequests()
+            _ = try pillNotificationService.makePendingNotificationRequests()
+        } catch let error as DataIntegrityError {
+            report.append(report: error.report)
+        } catch {
+            ReliabilityLog.error("app.startup.healthCheck failed: \(error.localizedDescription)")
+            throw error
+        }
+
+        scanDuplicateHistoryRows(
+            entityName: "HabitCompletion",
+            ownerKey: "habitID",
+            area: "startup.habitHistory",
+            context: context,
+            calendar: calendar,
+            report: &report
+        )
+        scanDuplicateHistoryRows(
+            entityName: "PillIntake",
+            ownerKey: "pillID",
+            area: "startup.pillHistory",
+            context: context,
+            calendar: calendar,
+            report: &report
+        )
+
+        if report.hasIssues {
+            let error = report.makeError(operation: "app.startup.healthCheck")
+            ReliabilityLog.error("app.startup.healthCheck failed: \(error.localizedDescription)")
+            throw error
+        }
+
+        ReliabilityLog.info("app.startup.healthCheck passed")
+    }
+
+    private static func scanDuplicateHistoryRows(
+        entityName: String,
+        ownerKey: String,
+        area: String,
+        context: NSManagedObjectContext,
+        calendar: Calendar,
+        report: inout IntegrityReportBuilder
+    ) {
+        let request = NSFetchRequest<NSManagedObject>(entityName: entityName)
+
+        do {
+            let objects = try context.fetch(request)
+            let groupedObjects = Dictionary(grouping: objects) { object -> String in
+                let ownerIdentifier = object.uuidValue(forKey: ownerKey)?.uuidString ?? "missing-owner"
+                let localDate = object.dateValue(forKey: "localDate")
+                    .map { calendar.startOfDay(for: $0).formatted(.iso8601.year().month().day()) }
+                    ?? "missing-date"
+                return "\(ownerIdentifier)|\(localDate)"
+            }
+
+            for (groupKey, duplicates) in groupedObjects where duplicates.count > 1 {
+                for duplicate in duplicates.dropFirst() {
+                    report.append(
+                        area: area,
+                        entityName: duplicate.entityName,
+                        object: duplicate,
+                        message: "Duplicate history row detected for \(groupKey)."
+                    )
+                }
+            }
+        } catch {
+            report.append(
+                area: area,
+                entityName: entityName,
+                objectIdentifier: entityName,
+                message: "Failed to scan history rows: \(error.localizedDescription)"
+            )
+        }
+    }
+}
+
+@MainActor
+final class AppStartupHealthCheckCoordinator {
+    private enum State {
+        case idle
+        case running
+        case finished
+    }
+
+    private var state: State = .idle
+    private let operation: () throws -> Void
+
+    init(operation: @escaping () throws -> Void) {
+        self.operation = operation
+    }
+
+    func runIfNeeded() async {
+        guard state == .idle else { return }
+        state = .running
+        defer {
+            state = .finished
+        }
+
+        do {
+            try operation()
+        } catch let error as DataIntegrityError {
+            ReliabilityLog.error(
+                "app.startup.healthCheck reported integrity issues and launch will continue: \(error.localizedDescription)"
+            )
+        } catch {
+            ReliabilityLog.error(
+                "app.startup.healthCheck failed after launch: \(error.localizedDescription)"
+            )
+        }
+    }
 }
 
 enum ReminderValidation {

@@ -8,6 +8,150 @@ import Testing
 @Suite
 struct BackupServiceTests {
     @Test
+    func loadStatusReportsNoLatestBackupForSelectedFolderWithoutArchive() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let defaults = try #require(UserDefaults(suiteName: "BackupServiceTests.\(UUID().uuidString)"))
+        let service = BackupService(
+            context: context,
+            makeWorkContext: persistence.makeBackgroundContext,
+            defaults: defaults,
+            compressionService: CompressionService()
+        )
+
+        let folderURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+        try service.saveFolderBookmark(for: folderURL)
+
+        let status = try service.loadStatus()
+
+        #expect(status.hasSelectedFolder)
+        #expect(status.hasUsableFolder)
+        #expect(!status.requiresFolderReselection)
+        #expect(!status.hasLatestBackup)
+    }
+
+    @Test
+    func loadStatusReportsLatestBackupWhenArchiveExists() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let defaults = try #require(UserDefaults(suiteName: "BackupServiceTests.\(UUID().uuidString)"))
+        let compressionService = CompressionService()
+        let service = BackupService(
+            context: context,
+            makeWorkContext: persistence.makeBackgroundContext,
+            defaults: defaults,
+            compressionService: compressionService
+        )
+
+        let folderURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+        try service.saveFolderBookmark(for: folderURL)
+        try writeArchive(makeValidArchive(), to: folderURL, compressionService: compressionService)
+
+        let status = try service.loadStatus()
+
+        #expect(status.hasSelectedFolder)
+        #expect(status.hasUsableFolder)
+        #expect(status.hasLatestBackup)
+    }
+
+    @Test
+    func loadStatusUsesPreviousArchiveMetadataWhenPrimaryIsCorrupted() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let defaults = try #require(UserDefaults(suiteName: "BackupServiceTests.\(UUID().uuidString)"))
+        let compressionService = CompressionService()
+        let service = BackupService(
+            context: context,
+            makeWorkContext: persistence.makeBackgroundContext,
+            defaults: defaults,
+            compressionService: compressionService
+        )
+
+        let folderURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+        try service.saveFolderBookmark(for: folderURL)
+
+        try Data("not-a-gzip-archive".utf8).write(
+            to: folderURL.appendingPathComponent("LoonyBear.json.gz"),
+            options: .atomic
+        )
+        try writeArchive(
+            makeValidArchive(),
+            named: "LoonyBear.previous.json.gz",
+            to: folderURL,
+            compressionService: compressionService
+        )
+
+        let status = try service.loadStatus()
+
+        #expect(status.hasSelectedFolder)
+        #expect(status.hasUsableFolder)
+        #expect(status.hasLatestBackup)
+        #expect(status.fileSizeText != "—")
+        #expect(!status.requiresFolderReselection)
+    }
+
+    @Test
+    func loadStatusRequiresFolderReselectionForBrokenBookmark() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let defaults = try #require(UserDefaults(suiteName: "BackupServiceTests.\(UUID().uuidString)"))
+        defaults.set(Data("broken-bookmark".utf8), forKey: "backup_folder_bookmark")
+        defaults.set("Backups", forKey: "backup_folder_name")
+
+        let service = BackupService(
+            context: context,
+            makeWorkContext: persistence.makeBackgroundContext,
+            defaults: defaults,
+            compressionService: CompressionService()
+        )
+
+        let status = try service.loadStatus()
+
+        #expect(status.hasSelectedFolder)
+        #expect(!status.hasUsableFolder)
+        #expect(status.requiresFolderReselection)
+        #expect(!status.hasLatestBackup)
+        #expect(status.folderName == "Backups")
+    }
+
+    @Test
+    func loadStatusKeepsFolderUsableWhenStoredArchivesAreUnreadable() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let defaults = try #require(UserDefaults(suiteName: "BackupServiceTests.\(UUID().uuidString)"))
+        let service = BackupService(
+            context: context,
+            makeWorkContext: persistence.makeBackgroundContext,
+            defaults: defaults,
+            compressionService: CompressionService()
+        )
+
+        let folderURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+        try service.saveFolderBookmark(for: folderURL)
+
+        try Data("broken-primary".utf8).write(
+            to: folderURL.appendingPathComponent("LoonyBear.json.gz"),
+            options: .atomic
+        )
+        try Data("broken-previous".utf8).write(
+            to: folderURL.appendingPathComponent("LoonyBear.previous.json.gz"),
+            options: .atomic
+        )
+
+        let status = try service.loadStatus()
+
+        #expect(status.hasSelectedFolder)
+        #expect(status.hasUsableFolder)
+        #expect(!status.requiresFolderReselection)
+        #expect(!status.hasLatestBackup)
+        #expect(status.latestBackupText == "Backup unreadable")
+    }
+
+    @Test
     func restoreArchiveRejectsUnsupportedSchemaAndPreservesExistingData() throws {
         let persistence = PersistenceController(inMemory: true)
         let context = persistence.container.viewContext
@@ -133,6 +277,71 @@ struct BackupServiceTests {
     }
 
     @Test
+    func restoreBackupFallsBackToPreviousArchiveWhenPrimaryIsCorrupted() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataHabitRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        let defaults = try #require(UserDefaults(suiteName: "BackupServiceTests.\(UUID().uuidString)"))
+        let compressionService = CompressionService()
+        let service = BackupService(
+            context: context,
+            makeWorkContext: persistence.makeBackgroundContext,
+            defaults: defaults,
+            compressionService: compressionService
+        )
+
+        let folderURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+        try service.saveFolderBookmark(for: folderURL)
+
+        try Data("not-a-gzip-archive".utf8).write(
+            to: folderURL.appendingPathComponent("LoonyBear.json.gz"),
+            options: .atomic
+        )
+
+        let archive = BackupArchive(
+            schemaVersion: 1,
+            exportedAt: Date(),
+            habits: [
+                BackupHabit(
+                    id: UUID(),
+                    type: HabitType.build.rawValue,
+                    name: "Recovered From Previous",
+                    sortOrder: 0,
+                    startDate: Date(),
+                    reminderEnabled: false,
+                    reminderTime: nil,
+                    createdAt: Date(),
+                    updatedAt: Date(),
+                    version: 1
+                ),
+            ],
+            scheduleVersions: [],
+            completionRecords: [],
+            ordering: [],
+            pills: [],
+            pillScheduleVersions: [],
+            pillIntakeRecords: []
+        )
+        try writeArchive(
+            archive,
+            named: "LoonyBear.previous.json.gz",
+            to: folderURL,
+            compressionService: compressionService
+        )
+
+        try service.restoreBackup()
+
+        let habits = try repository.fetchDashboardHabits()
+        #expect(habits.count == 1)
+        #expect(habits.first?.name == "Recovered From Previous")
+    }
+
+    @Test
     func restoreBackupDoesNotFallbackWhenPrimaryUsesUnsupportedSchema() throws {
         let persistence = PersistenceController(inMemory: true)
         let context = persistence.container.viewContext
@@ -207,6 +416,40 @@ struct BackupServiceTests {
         }
 
         #expect(try repository.fetchDashboardHabits().isEmpty)
+    }
+
+    @Test
+    func restoreBackupThrowsCorruptedBackupWhenPrimaryAndPreviousArchivesAreUnreadable() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+
+        let defaults = try #require(UserDefaults(suiteName: "BackupServiceTests.\(UUID().uuidString)"))
+        let service = BackupService(
+            context: context,
+            makeWorkContext: persistence.makeBackgroundContext,
+            defaults: defaults,
+            compressionService: CompressionService()
+        )
+
+        let folderURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+        try service.saveFolderBookmark(for: folderURL)
+
+        try Data("broken-primary".utf8).write(
+            to: folderURL.appendingPathComponent("LoonyBear.json.gz"),
+            options: .atomic
+        )
+        try Data("broken-previous".utf8).write(
+            to: folderURL.appendingPathComponent("LoonyBear.previous.json.gz"),
+            options: .atomic
+        )
+
+        do {
+            try service.restoreBackup()
+            Issue.record("Expected corrupted backup error.")
+        } catch let error as BackupServiceError {
+            #expect(error == .corruptedBackup)
+        }
     }
 
     @Test
@@ -359,6 +602,68 @@ struct BackupServiceTests {
 
         #expect(previousArchive.habits.count == 1)
         #expect(previousArchive.habits.first?.name == "First")
+    }
+
+    @Test
+    func createBackupPreservesPreviousArchiveWhenWritingNewPrimaryFails() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataHabitRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        let defaults = try #require(UserDefaults(suiteName: "BackupServiceTests.\(UUID().uuidString)"))
+        let compressionService = CompressionService()
+        let initialService = BackupService(
+            context: context,
+            makeWorkContext: persistence.makeBackgroundContext,
+            defaults: defaults,
+            compressionService: compressionService
+        )
+
+        let folderURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+        try initialService.saveFolderBookmark(for: folderURL)
+
+        var firstDraft = CreateHabitDraft()
+        firstDraft.name = "First"
+        firstDraft.startDate = TestSupport.makeDate(2026, 4, 1)
+        firstDraft.scheduleDays = .daily
+        _ = try repository.createHabit(from: firstDraft)
+        try initialService.createBackup()
+
+        var secondDraft = CreateHabitDraft()
+        secondDraft.name = "Second"
+        secondDraft.startDate = TestSupport.makeDate(2026, 4, 2)
+        secondDraft.scheduleDays = .daily
+        _ = try repository.createHabit(from: secondDraft)
+
+        let failingService = BackupService(
+            context: context,
+            makeWorkContext: persistence.makeBackgroundContext,
+            defaults: defaults,
+            compressionService: compressionService,
+            archiveWriter: { _, _ in
+                throw CocoaError(.fileWriteOutOfSpace)
+            }
+        )
+
+        do {
+            try failingService.createBackup()
+            Issue.record("Expected primary archive write failure.")
+        } catch let error as CocoaError {
+            #expect(error.code == .fileWriteOutOfSpace)
+        }
+
+        let previousArchive = try readArchive(
+            named: "LoonyBear.previous.json.gz",
+            from: folderURL,
+            compressionService: compressionService
+        )
+        #expect(previousArchive.habits.count == 1)
+        #expect(previousArchive.habits.first?.name == "First")
+        #expect(!FileManager.default.fileExists(atPath: folderURL.appendingPathComponent("LoonyBear.json.gz").path))
     }
 
     @Test
@@ -530,6 +835,44 @@ struct BackupServiceTests {
 
         let restoredHabit = try #require(try repository.fetchHabitDetails(id: archive.habits[0].id))
         #expect(restoredHabit.completedDays.contains(archive.completionRecords[0].localDate))
+    }
+
+    @Test
+    func restoreArchiveAcceptsSkippedHabitCompletionSource() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataHabitRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = makeBackupService(context: context, persistence: persistence)
+
+        var archive = makeValidArchive()
+        archive = BackupArchive(
+            schemaVersion: archive.schemaVersion,
+            exportedAt: archive.exportedAt,
+            habits: archive.habits,
+            scheduleVersions: archive.scheduleVersions,
+            completionRecords: [
+                BackupCompletion(
+                    id: archive.completionRecords[0].id,
+                    habitId: archive.completionRecords[0].habitId,
+                    localDate: archive.completionRecords[0].localDate,
+                    source: CompletionSource.skipped.rawValue,
+                    createdAt: archive.completionRecords[0].createdAt
+                ),
+            ],
+            ordering: archive.ordering,
+            pills: archive.pills,
+            pillScheduleVersions: archive.pillScheduleVersions,
+            pillIntakeRecords: archive.pillIntakeRecords
+        )
+
+        try service.restoreArchive(archive)
+
+        let restoredHabit = try #require(try repository.fetchHabitDetails(id: archive.habits[0].id))
+        #expect(restoredHabit.skippedDays.contains(archive.completionRecords[0].localDate))
+        #expect(!restoredHabit.completedDays.contains(archive.completionRecords[0].localDate))
     }
 
     @Test
@@ -859,6 +1202,27 @@ struct BackupServiceTests {
 }
 
 private extension BackupServiceTests {
+    func writeArchive(_ archive: BackupArchive, to folderURL: URL, compressionService: CompressionService) throws {
+        try writeArchive(archive, named: "LoonyBear.json.gz", to: folderURL, compressionService: compressionService)
+    }
+
+    func writeArchive(_ archive: BackupArchive, named fileName: String, to folderURL: URL, compressionService: CompressionService) throws {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let archiveData = try compressionService.gzipCompress(encoder.encode(archive))
+        try archiveData.write(to: folderURL.appendingPathComponent(fileName), options: .atomic)
+    }
+
+    func readArchive(named fileName: String, from folderURL: URL, compressionService: CompressionService) throws -> BackupArchive {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let archiveData = try Data(contentsOf: folderURL.appendingPathComponent(fileName))
+        return try decoder.decode(
+            BackupArchive.self,
+            from: try compressionService.gzipDecompress(archiveData)
+        )
+    }
+
     func makeBackupService(context: NSManagedObjectContext, persistence: PersistenceController) -> BackupService {
         BackupService(
             context: context,

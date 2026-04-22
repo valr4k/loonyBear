@@ -20,7 +20,8 @@ struct CreatePillView: View {
             AppScreen(backgroundStyle: .pills, topPadding: 8) {
                 VStack(alignment: .leading, spacing: 20) {
                     detailsSection
-                    daysSection
+                    notificationsSection
+                    historySection
                     descriptionSection
 
                     if let validationMessage {
@@ -74,127 +75,59 @@ struct CreatePillView: View {
             .onChange(of: focusedField) { _, field in
                 guard field == .description else { return }
                 isDismissingKeyboardForNonTextControl = false
-                scrollDescriptionIntoView(with: proxy)
+                AppDescriptionFieldSupport.scrollIntoView(
+                    with: proxy,
+                    focusedField: focusedField,
+                    descriptionField: .description,
+                    isDismissingKeyboardForNonTextControl: isDismissingKeyboardForNonTextControl,
+                    anchor: Field.description
+                )
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
-                guard focusedField == .description, !isDismissingKeyboardForNonTextControl else { return }
-                scrollDescriptionIntoView(with: proxy)
+                AppDescriptionFieldSupport.scrollIntoView(
+                    with: proxy,
+                    focusedField: focusedField,
+                    descriptionField: .description,
+                    isDismissingKeyboardForNonTextControl: isDismissingKeyboardForNonTextControl,
+                    anchor: Field.description
+                )
             }
             .animation(.easeInOut(duration: 0.18), value: validationMessage)
         }
     }
 
     private var detailsSection: some View {
-        AppCard {
-            VStack(alignment: .leading, spacing: 0) {
-                CenteredInputField(
-                    text: $draft.name,
-                    placeholder: "Pill name",
-                    capitalization: .sentences,
-                    autocorrectionType: .default
-                )
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 18)
+        AppPillDetailsCard(name: $draft.name, dosage: $draft.dosage)
+    }
 
-                AppSectionDivider()
-
-                CenteredInputField(
-                    text: $draft.dosage,
-                    placeholder: "Dosage",
-                    capitalization: .none,
-                    autocorrectionType: .no
-                )
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 18)
-
-                AppSectionDivider()
-
-                DatePicker(
-                    "Start Date",
-                    selection: $draft.startDate,
-                    in: selectableStartDateRange,
-                    displayedComponents: .date
-                )
-                .datePickerStyle(.compact)
-                .simultaneousGesture(TapGesture().onEnded {
-                    dismissKeyboardForNonTextControl()
-                })
-                .padding(.horizontal, 18)
-                .padding(.vertical, 18)
-
-                AppSectionDivider()
-
-                HStack(spacing: 16) {
-                    Text("Reminder")
-                        .foregroundStyle(.primary)
-
-                    Spacer()
-
-                    Toggle("", isOn: $draft.reminderEnabled)
-                        .labelsHidden()
-                }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 18)
-
-                if draft.reminderEnabled {
-                    AppSectionDivider()
-
-                    DatePicker(
-                        "Time",
-                        selection: reminderDateBinding,
-                        displayedComponents: .hourAndMinute
-                    )
-                    .datePickerStyle(.compact)
-                    .simultaneousGesture(TapGesture().onEnded {
-                        dismissKeyboardForNonTextControl()
-                    })
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 18)
-                }
-            }
+    private var historySection: some View {
+        AppFormCardSection(title: "History") {
+            AppStartDatePickerRow(
+                date: $draft.startDate,
+                range: selectableStartDateRange,
+                onTap: dismissKeyboardForNonTextControl
+            )
         }
     }
 
-    private var daysSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            AppCard {
-                VStack(alignment: .leading, spacing: 0) {
-                    InlineDaysSelector(selection: scheduleDaysBinding)
-                        .simultaneousGesture(TapGesture().onEnded {
-                            dismissKeyboardForNonTextControl()
-                        })
-
-                    AppSectionDivider()
-
-                    HStack(spacing: 16) {
-                        Text("Use schedule for history?")
-                            .foregroundStyle(.primary)
-
-                        Spacer()
-
-                        Toggle("", isOn: $draft.useScheduleForHistory)
-                            .labelsHidden()
-                    }
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 18)
-
-                    if draft.scheduleDays.rawValue == 0 {
-                        HStack {
-                            AppInlineErrorText(text: AppCopy.chooseAtLeastOneDay)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 18)
-                        .padding(.bottom, 16)
-                    }
-                }
-            }
-
-            AppHelperText(text: historyHelperText)
+    private var notificationsSection: some View {
+        AppNotificationSettingsSection(
+            scheduleSummary: draft.scheduleDays.compactSummaryOrPlaceholder,
+            scheduleTap: dismissKeyboardForNonTextControl,
+            reminderEnabled: $draft.reminderEnabled,
+            reminderDate: $draft.reminderTime.dateBinding(fallback: ReminderTime.default()),
+            reminderTimeTap: dismissKeyboardForNonTextControl
+        ) {
+            CreatePillScheduleView(
+                scheduleDays: $draft.scheduleDays,
+                useScheduleForHistory: $draft.useScheduleForHistory,
+                dismissKeyboardForNonTextControl: dismissKeyboardForNonTextControl
+            )
         }
     }
 
     private var descriptionSection: some View {
-        AppCard {
+        AppFormCardSection(title: "Description") {
             TextField(AppCopy.pillDescriptionPlaceholder, text: $draft.details, axis: .vertical)
                 .focused($focusedField, equals: .description)
                 .lineLimit(3 ... 6)
@@ -205,30 +138,7 @@ struct CreatePillView: View {
     }
 
     private var selectableStartDateRange: ClosedRange<Date> {
-        let today = Calendar.autoupdatingCurrent.startOfDay(for: Date())
-        let earliest = Calendar.autoupdatingCurrent.date(byAdding: .year, value: -5, to: today) ?? today
-        return earliest ... today
-    }
-
-    private var reminderDateBinding: Binding<Date> {
-        Binding {
-            let components = DateComponents(hour: draft.reminderTime.hour, minute: draft.reminderTime.minute)
-            return Calendar.current.date(from: components) ?? Date()
-        } set: { newValue in
-            let components = Calendar.current.dateComponents([.hour, .minute], from: newValue)
-            let fallback = ReminderTime.default()
-            draft.reminderTime = ReminderTime(
-                hour: components.hour ?? fallback.hour,
-                minute: components.minute ?? fallback.minute
-            )
-        }
-    }
-
-    private var scheduleDaysBinding: Binding<WeekdaySet> {
-        Binding(
-            get: { draft.scheduleDays },
-            set: { draft.scheduleDays = $0 }
-        )
+        StartDateSelectionWindow.range(offset: DateComponents(year: -5))
     }
 
     private var isFormValid: Bool {
@@ -236,13 +146,11 @@ struct CreatePillView: View {
     }
 
     private var shouldShowDescriptionInset: Bool {
-        focusedField == .description && !isDismissingKeyboardForNonTextControl
-    }
-
-    private var historyHelperText: String {
-        draft.useScheduleForHistory
-            ? AppCopy.pillHistoryFollowsSchedule
-            : AppCopy.pillHistoryCountsEveryDay
+        AppDescriptionFieldSupport.shouldShowInset(
+            focusedField: focusedField,
+            descriptionField: .description,
+            isDismissingKeyboardForNonTextControl: isDismissingKeyboardForNonTextControl
+        )
     }
 
     private func savePill() {
@@ -258,7 +166,7 @@ struct CreatePillView: View {
 
         Task {
             do {
-                let pillID = try pillAppState.createPill(from: savedDraft)
+                let pillID = try await pillAppState.createPill(from: savedDraft)
                 isSaving = false
                 dismiss()
 
@@ -309,26 +217,13 @@ struct CreatePillView: View {
         return AppCopy.chooseAtLeastOneDay
     }
 
-    private func scrollDescriptionIntoView(with proxy: ScrollViewProxy) {
-        guard focusedField == .description, !isDismissingKeyboardForNonTextControl else { return }
-
-        DispatchQueue.main.async {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                proxy.scrollTo(Field.description, anchor: .bottom)
-            }
-        }
-    }
-
     private func dismissKeyboardForNonTextControl() {
-        guard focusedField == .description else { return }
-
-        isDismissingKeyboardForNonTextControl = true
-        focusedField = nil
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            isDismissingKeyboardForNonTextControl = false
-        }
+        AppDescriptionFieldSupport.dismissKeyboardForNonTextControl(
+            focusedField: focusedField,
+            descriptionField: Field.description,
+            setFocusedField: { focusedField = $0 },
+            setIsDismissingKeyboardForNonTextControl: { isDismissingKeyboardForNonTextControl = $0 }
+        )
     }
 }
 
@@ -337,4 +232,22 @@ struct CreatePillView: View {
         CreatePillView()
     }
     .environmentObject(AppEnvironment.preview.pillAppState)
+}
+
+private struct CreatePillScheduleView: View {
+    @Binding var scheduleDays: WeekdaySet
+    @Binding var useScheduleForHistory: Bool
+    let dismissKeyboardForNonTextControl: () -> Void
+
+    var body: some View {
+        AppScheduleEditorScreen(
+            backgroundStyle: .pills,
+            scheduleDays: $scheduleDays,
+            onTap: dismissKeyboardForNonTextControl,
+            useScheduleForHistory: $useScheduleForHistory,
+            helperText: useScheduleForHistory
+                ? AppCopy.pillHistoryFollowsSchedule
+                : AppCopy.pillHistoryCountsEveryDay
+        )
+    }
 }

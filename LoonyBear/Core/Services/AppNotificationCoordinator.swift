@@ -32,20 +32,27 @@ final class AppNotificationCoordinator: NSObject, UNUserNotificationCenterDelega
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        defer { completionHandler() }
-
         guard let type = response.notification.request.content.userInfo["type"] as? String else {
+            completionHandler()
             return
         }
 
-        if type.hasPrefix("pill") {
-            _ = pillNotificationService.handleNotificationResponse(response)
-        } else {
-            _ = habitNotificationService.handleNotificationResponse(response)
+        let finishResponse = {
+            _ = Task { @MainActor in
+                self.badgeService.refreshBadge()
+                completionHandler()
+            }
         }
 
-        Task { @MainActor in
-            self.badgeService.refreshBadge()
+        if type.hasPrefix("pill") {
+            pillNotificationService.handleNotificationResponse(response) { _ in
+                finishResponse()
+            }
+            return
+        }
+
+        habitNotificationService.handleNotificationResponse(response) { _ in
+            finishResponse()
         }
     }
 

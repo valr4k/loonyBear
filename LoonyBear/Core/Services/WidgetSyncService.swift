@@ -5,14 +5,19 @@ import WidgetKit
 
 final class WidgetSyncService {
     private let snapshotStore: WidgetSnapshotStore
+    private let clock: AppClock
 
-    init(snapshotStore: WidgetSnapshotStore = WidgetSnapshotStore()) {
+    init(
+        snapshotStore: WidgetSnapshotStore = WidgetSnapshotStore(),
+        clock: AppClock = .live
+    ) {
         self.snapshotStore = snapshotStore
+        self.clock = clock
     }
 
     func syncSnapshot(from dashboard: DashboardProjection) {
         let snapshot = WidgetSnapshot(
-            generatedAt: Date(),
+            generatedAt: clock.now(),
             sections: dashboard.sections.map { section in
                 WidgetSectionSnapshot(
                     type: section.id.rawValue,

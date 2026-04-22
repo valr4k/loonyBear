@@ -240,9 +240,9 @@ Rules:
 ### 5.8 Habit Update
 `updateHabit(from:)`:
 - updates name
-- updates `historyModeRaw`
 - updates reminder flags and time
 - inserts a new `HabitScheduleVersion` if the weekday mask changed
+- reads the persisted `historyModeRaw` already stored on the Habit
 - builds editable day set from `EditableHistoryWindow.dates(startDate:)`
 - normalizes selected days with `EditableHistoryContract.normalizedSelection(...)`
 - uses `pastDefaultSelection: .positive`
@@ -325,9 +325,9 @@ After that, `autoFinalizeMissingSkippedIntakes(...)` is executed.
 ### 6.8 Pill Update
 `updatePill(from:)`:
 - updates name, dosage, details
-- updates `historyModeRaw`
 - updates reminder flags and time
 - inserts a new `PillScheduleVersion` if weekday mask changed
+- reads the persisted `historyModeRaw` already stored on the Pill
 - builds editable day set from `EditableHistoryWindow.dates(startDate:)`
 - computes required finalized days:
   - `scheduleBased -> pastScheduledEditableDays`

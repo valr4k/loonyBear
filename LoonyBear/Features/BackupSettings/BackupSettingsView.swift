@@ -14,8 +14,13 @@ struct BackupSettingsView: View {
     var body: some View {
         AppScreen(backgroundStyle: .settings) {
             VStack(alignment: .leading, spacing: 24) {
-                infoCard
                 VStack(alignment: .leading, spacing: 8) {
+                    AppFormSectionHeader(title: "Status")
+                    infoCard
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    AppFormSectionHeader(title: "Actions")
                     actionsCard
 
                     AppHelperText(text: AppCopy.backupFolderHint)
@@ -45,9 +50,21 @@ struct BackupSettingsView: View {
     private var infoCard: some View {
         AppCard {
             BackupInfoRow(
-                icon: "externaldrive",
+                icon: latestBackupIcon,
                 title: "Latest backup",
                 value: viewModel.status.latestBackupText,
+                iconColor: viewModel.status.hasLatestBackup ? .green : .red,
+                isTappable: false,
+                action: nil
+            )
+
+            AppSectionDivider(inset: 52)
+
+            BackupInfoRow(
+                icon: viewModel.status.hasLatestBackup ? "externaldrive" : "externaldrive.badge.xmark",
+                title: "Total size",
+                value: viewModel.status.fileSizeText,
+                iconColor: viewModel.status.hasLatestBackup ? .blue : .secondary,
                 isTappable: false,
                 action: nil
             )
@@ -58,20 +75,16 @@ struct BackupSettingsView: View {
                 icon: "folder",
                 title: "Folder",
                 value: viewModel.status.folderName,
+                iconColor: viewModel.status.hasUsableFolder ? .blue : .secondary,
+                valueColor: viewModel.status.hasUsableFolder ? .blue : .red,
                 isTappable: true,
                 action: viewModel.chooseFolder
             )
-
-            AppSectionDivider(inset: 52)
-
-            BackupInfoRow(
-                icon: "trash",
-                title: "Total size",
-                value: viewModel.status.fileSizeText,
-                isTappable: false,
-                action: nil
-            )
         }
+    }
+
+    private var latestBackupIcon: String {
+        viewModel.status.hasLatestBackup ? "checkmark.icloud" : "exclamationmark.icloud"
     }
 
     private var actionsCard: some View {
@@ -144,6 +157,8 @@ private struct BackupInfoRow: View {
     let icon: String
     let title: String
     let value: String
+    var iconColor: Color = .blue
+    var valueColor: Color = .secondary
     let isTappable: Bool
     let action: (() -> Void)?
 
@@ -162,7 +177,7 @@ private struct BackupInfoRow: View {
 
     private var content: some View {
         HStack(spacing: 14) {
-            AppListIcon(symbol: icon)
+            AppListIcon(symbol: icon, tint: iconColor)
 
             Text(title)
                 .foregroundStyle(.primary)
@@ -170,7 +185,7 @@ private struct BackupInfoRow: View {
             Spacer()
 
             Text(value)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(valueColor)
                 .multilineTextAlignment(.trailing)
         }
         .padding(.horizontal, AppLayout.rowHorizontalPadding)

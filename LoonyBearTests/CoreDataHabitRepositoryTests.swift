@@ -164,6 +164,51 @@ struct CoreDataHabitRepositoryTests {
     }
 
     @Test
+    func completeHabitTodayDeduplicatesExistingRowsForToday() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataHabitRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Walk"
+        draft.startDate = Calendar.current.startOfDay(for: Date())
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = false
+
+        let habitID = try repository.createHabit(from: draft)
+        let habitRequest = NSFetchRequest<NSManagedObject>(entityName: "Habit")
+        habitRequest.predicate = NSPredicate(format: "id == %@", habitID as CVarArg)
+        let habit = try #require(context.fetch(habitRequest).first)
+        let today = Calendar.current.startOfDay(for: Date())
+
+        for dayOffset in 0..<2 {
+            let completion = NSEntityDescription.insertNewObject(forEntityName: "HabitCompletion", into: context)
+            completion.setValue(UUID(), forKey: "id")
+            completion.setValue(habitID, forKey: "habitID")
+            completion.setValue(today, forKey: "localDate")
+            completion.setValue(CompletionSource.skipped.rawValue, forKey: "sourceRaw")
+            completion.setValue(Date().addingTimeInterval(TimeInterval(dayOffset)), forKey: "createdAt")
+            completion.setValue(habit, forKey: "habit")
+        }
+        try context.save()
+
+        try repository.completeHabitToday(id: habitID)
+
+        let request = NSFetchRequest<NSManagedObject>(entityName: "HabitCompletion")
+        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            NSPredicate(format: "habitID == %@", habitID as CVarArg),
+            NSPredicate(format: "localDate == %@", today as CVarArg),
+        ])
+        let completions = try context.fetch(request)
+
+        #expect(completions.count == 1)
+        #expect(completions.first?.value(forKey: "sourceRaw") as? String == CompletionSource.swipe.rawValue)
+    }
+
+    @Test
     func clearRemovesSkippedStateAndReturnsHabitToNormalDayState() throws {
         let persistence = PersistenceController(inMemory: true)
         let repository = CoreDataHabitRepository(
@@ -231,7 +276,7 @@ struct CoreDataHabitRepositoryTests {
     }
 
     @Test
-    func createHabitAutoFillsPastScheduledDaysAsCompleted() throws {
+    func createHabitFinalizesPastScheduledDaysAsSkipped() throws {
         let persistence = PersistenceController(inMemory: true)
         let repository = CoreDataHabitRepository(
             context: persistence.container.viewContext,
@@ -248,12 +293,12 @@ struct CoreDataHabitRepositoryTests {
 
         let habitID = try repository.createHabit(from: draft)
         let details = try #require(try repository.fetchHabitDetails(id: habitID))
-        #expect(details.completedDays.contains(yesterday))
-        #expect(!details.skippedDays.contains(yesterday))
+        #expect(!details.completedDays.contains(yesterday))
+        #expect(details.skippedDays.contains(yesterday))
     }
 
     @Test
-    func createHabitAutoFillsOnlyScheduledPastDays() throws {
+    func createHabitFinalizesOnlyScheduledPastDaysAsSkipped() throws {
         let persistence = PersistenceController(inMemory: true)
         let context = persistence.container.viewContext
         let repository = CoreDataHabitRepository(
@@ -277,9 +322,9 @@ struct CoreDataHabitRepositoryTests {
 
         let habitID = try repository.createHabit(from: draft)
         let details = try #require(try repository.fetchHabitDetails(id: habitID))
-        #expect(details.completedDays.contains(yesterday))
+        #expect(!details.completedDays.contains(yesterday))
         #expect(!details.completedDays.contains(unscheduledPastDay))
-        #expect(!details.skippedDays.contains(yesterday))
+        #expect(details.skippedDays.contains(yesterday))
 
         let request = NSFetchRequest<NSManagedObject>(entityName: "HabitCompletion")
         request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
@@ -290,7 +335,7 @@ struct CoreDataHabitRepositoryTests {
     }
 
     @Test
-    func createHabitEveryDayHistoryAutoFillsAllPastDays() throws {
+    func createHabitEveryDayHistoryFinalizesAllPastDaysAsSkipped() throws {
         let persistence = PersistenceController(inMemory: true)
         let repository = CoreDataHabitRepository(
             context: persistence.container.viewContext,
@@ -312,16 +357,18 @@ struct CoreDataHabitRepositoryTests {
         let details = try #require(try repository.fetchHabitDetails(id: habitID))
 
         #expect(details.historyMode == .everyDay)
-        #expect(details.completedDays.contains(threeDaysAgo))
-        #expect(details.completedDays.contains(twoDaysAgo))
-        #expect(details.completedDays.contains(yesterday))
+        #expect(details.skippedDays.contains(threeDaysAgo))
+        #expect(details.skippedDays.contains(twoDaysAgo))
+        #expect(details.skippedDays.contains(yesterday))
+        #expect(details.completedDays.isEmpty)
     }
 
     @Test
-    func updateHabitNormalizesPastEditableNoneToCompleted() throws {
+    func updateHabitSaveRefinalizesPastEditableGapAsSkipped() throws {
         let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
         let repository = CoreDataHabitRepository(
-            context: persistence.container.viewContext,
+            context: context,
             makeWriteContext: persistence.makeBackgroundContext
         )
         let calendar = Calendar.current
@@ -334,8 +381,17 @@ struct CoreDataHabitRepositoryTests {
         draft.scheduleDays = .daily
 
         let habitID = try repository.createHabit(from: draft)
+        let request = NSFetchRequest<NSManagedObject>(entityName: "HabitCompletion")
+        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            NSPredicate(format: "habitID == %@", habitID as CVarArg),
+            NSPredicate(format: "localDate == %@", yesterday as CVarArg),
+        ])
+        let completion = try #require(context.fetch(request).first)
+        context.delete(completion)
+        try context.save()
+
         let details = try #require(try repository.fetchHabitDetails(id: habitID))
-        #expect(details.completedDays.contains(yesterday))
+        #expect(!details.completedDays.contains(yesterday))
 
         let editDraft = EditHabitDraft(
             id: habitID,
@@ -352,8 +408,8 @@ struct CoreDataHabitRepositoryTests {
         try repository.updateHabit(from: editDraft)
 
         let updatedDetails = try #require(try repository.fetchHabitDetails(id: habitID))
-        #expect(updatedDetails.completedDays.contains(yesterday))
-        #expect(!updatedDetails.skippedDays.contains(yesterday))
+        #expect(!updatedDetails.completedDays.contains(yesterday))
+        #expect(updatedDetails.skippedDays.contains(yesterday))
     }
 
     @Test
@@ -381,7 +437,8 @@ struct CoreDataHabitRepositoryTests {
 
         let habitID = try repository.createHabit(from: draft)
         let details = try #require(try repository.fetchHabitDetails(id: habitID))
-        #expect(details.completedDays.contains(yesterday))
+        #expect(!details.completedDays.contains(yesterday))
+        #expect(details.skippedDays.contains(yesterday))
         #expect(!details.completedDays.contains(unscheduledPastDay))
 
         let editDraft = EditHabitDraft(
@@ -399,7 +456,8 @@ struct CoreDataHabitRepositoryTests {
         try repository.updateHabit(from: editDraft)
 
         let updatedDetails = try #require(try repository.fetchHabitDetails(id: habitID))
-        #expect(updatedDetails.completedDays.contains(yesterday))
+        #expect(!updatedDetails.completedDays.contains(yesterday))
+        #expect(updatedDetails.skippedDays.contains(yesterday))
         #expect(!updatedDetails.completedDays.contains(unscheduledPastDay))
 
         let request = NSFetchRequest<NSManagedObject>(entityName: "HabitCompletion")
@@ -411,10 +469,11 @@ struct CoreDataHabitRepositoryTests {
     }
 
     @Test
-    func updateHabitEveryDayNormalizesAllPastEditableDaysToCompleted() throws {
+    func updateHabitUsesPersistedHistoryModeWhenSavingPastEditableGapAsSkipped() throws {
         let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
         let repository = CoreDataHabitRepository(
-            context: persistence.container.viewContext,
+            context: context,
             makeWriteContext: persistence.makeBackgroundContext
         )
         let calendar = Calendar.current
@@ -429,14 +488,23 @@ struct CoreDataHabitRepositoryTests {
         draft.scheduleDays = calendar.weekdaySet(for: yesterday)
 
         let habitID = try repository.createHabit(from: draft)
+        let request = NSFetchRequest<NSManagedObject>(entityName: "HabitCompletion")
+        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            NSPredicate(format: "habitID == %@", habitID as CVarArg),
+            NSPredicate(format: "localDate == %@", yesterday as CVarArg),
+        ])
+        let completion = try #require(context.fetch(request).first)
+        context.delete(completion)
+        try context.save()
+
         let details = try #require(try repository.fetchHabitDetails(id: habitID))
+        #expect(!details.completedDays.contains(yesterday))
 
         let editDraft = EditHabitDraft(
             id: habitID,
             type: details.type,
             startDate: details.startDate,
             name: details.name,
-            historyMode: .everyDay,
             scheduleDays: details.scheduleDays,
             reminderEnabled: details.reminderEnabled,
             reminderTime: details.reminderTime ?? ReminderTime(hour: 9, minute: 0),
@@ -447,14 +515,15 @@ struct CoreDataHabitRepositoryTests {
         try repository.updateHabit(from: editDraft)
 
         let updatedDetails = try #require(try repository.fetchHabitDetails(id: habitID))
-        #expect(updatedDetails.historyMode == .everyDay)
-        #expect(updatedDetails.completedDays.contains(threeDaysAgo))
-        #expect(updatedDetails.completedDays.contains(twoDaysAgo))
-        #expect(updatedDetails.completedDays.contains(yesterday))
+        #expect(updatedDetails.historyMode == .scheduleBased)
+        #expect(!updatedDetails.completedDays.contains(threeDaysAgo))
+        #expect(!updatedDetails.completedDays.contains(twoDaysAgo))
+        #expect(!updatedDetails.completedDays.contains(yesterday))
+        #expect(updatedDetails.skippedDays.contains(yesterday))
     }
 
     @Test
-    func reconcilePastDaysAutoFillsScheduledHabitHistoryAsCompleted() throws {
+    func reconcilePastDaysFinalizesScheduledHabitHistoryAsSkipped() throws {
         let persistence = PersistenceController(inMemory: true)
         let context = persistence.container.viewContext
         let repository = CoreDataHabitRepository(
@@ -491,8 +560,8 @@ struct CoreDataHabitRepositoryTests {
         #expect(inserted == 1)
 
         let details = try #require(try repository.fetchHabitDetails(id: habitID))
-        #expect(details.completedDays.contains(yesterday))
-        #expect(!details.skippedDays.contains(yesterday))
+        #expect(!details.completedDays.contains(yesterday))
+        #expect(details.skippedDays.contains(yesterday))
 
         let secondInserted = try repository.reconcilePastDays(today: today)
         #expect(secondInserted == 0)
@@ -501,7 +570,7 @@ struct CoreDataHabitRepositoryTests {
         request.predicate = NSPredicate(format: "habitID == %@", habitID as CVarArg)
         let completions = try context.fetch(request)
         #expect(completions.count == 1)
-        #expect(completions.first?.value(forKey: "sourceRaw") as? String == CompletionSource.autoFill.rawValue)
+        #expect(completions.first?.value(forKey: "sourceRaw") as? String == CompletionSource.skipped.rawValue)
     }
 
     @Test
@@ -555,7 +624,7 @@ struct CoreDataHabitRepositoryTests {
     }
 
     @Test
-    func reconcilePastDaysEveryDayAutoFillsAllPastHistoryAsCompleted() throws {
+    func reconcilePastDaysEveryDayFinalizesAllPastHistoryAsSkipped() throws {
         let persistence = PersistenceController(inMemory: true)
         let context = persistence.container.viewContext
         let repository = CoreDataHabitRepository(
@@ -596,9 +665,10 @@ struct CoreDataHabitRepositoryTests {
 
         let details = try #require(try repository.fetchHabitDetails(id: habitID))
         #expect(details.historyMode == .everyDay)
-        #expect(details.completedDays.contains(threeDaysAgo))
-        #expect(details.completedDays.contains(twoDaysAgo))
-        #expect(details.completedDays.contains(yesterday))
+        #expect(details.skippedDays.contains(threeDaysAgo))
+        #expect(details.skippedDays.contains(twoDaysAgo))
+        #expect(details.skippedDays.contains(yesterday))
+        #expect(details.completedDays.isEmpty)
     }
 
     @Test

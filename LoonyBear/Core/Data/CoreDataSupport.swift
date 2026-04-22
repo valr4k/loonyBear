@@ -69,7 +69,7 @@ enum EditableHistoryWindow {
         startDate: Date,
         today: Date = Date(),
         maxDays: Int = 30,
-        calendar: Calendar = .current
+        calendar: Calendar = .autoupdatingCurrent
     ) -> Set<Date> {
         let normalizedStartDate = calendar.startOfDay(for: startDate)
         let normalizedToday = calendar.startOfDay(for: today)
@@ -88,7 +88,7 @@ enum EditableHistoryWindow {
         startDate: Date,
         today: Date = Date(),
         maxDays: Int = 30,
-        calendar: Calendar = .current
+        calendar: Calendar = .autoupdatingCurrent
     ) -> Set<Date> {
         let normalizedToday = calendar.startOfDay(for: today)
         return dates(
@@ -97,6 +97,56 @@ enum EditableHistoryWindow {
             maxDays: maxDays,
             calendar: calendar
         ).filter { $0 < normalizedToday }
+    }
+}
+
+enum HistoryMonthWindow {
+    static func months(
+        containing dates: Set<Date>,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> [Date] {
+        let months = Set(
+            dates.compactMap { date in
+                calendar.date(from: calendar.dateComponents([.year, .month], from: date))
+            }
+        )
+        return months.sorted()
+    }
+
+    static func months(
+        from startDate: Date,
+        through endDate: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> [Date] {
+        let normalizedStart = calendar.startOfDay(for: startDate)
+        let normalizedEnd = calendar.startOfDay(for: endDate)
+        guard normalizedStart <= normalizedEnd else { return [] }
+
+        var months: [Date] = []
+        var cursor = calendar.date(from: calendar.dateComponents([.year, .month], from: normalizedStart)) ?? normalizedStart
+        let lastMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: normalizedEnd)) ?? normalizedEnd
+
+        while cursor <= lastMonth {
+            months.append(cursor)
+            guard let next = calendar.date(byAdding: .month, value: 1, to: cursor) else {
+                break
+            }
+            cursor = next
+        }
+
+        return months
+    }
+}
+
+enum StartDateSelectionWindow {
+    static func range(
+        offset: DateComponents,
+        today: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> ClosedRange<Date> {
+        let normalizedToday = calendar.startOfDay(for: today)
+        let earliest = calendar.date(byAdding: offset, to: normalizedToday) ?? normalizedToday
+        return earliest ... normalizedToday
     }
 }
 
@@ -111,7 +161,7 @@ enum EditableHistoryStateMachine {
         current: EditableHistorySelection,
         for day: Date,
         today: Date = Date(),
-        calendar: Calendar = .current
+        calendar: Calendar = .autoupdatingCurrent
     ) -> EditableHistorySelection {
         let normalizedDay = calendar.startOfDay(for: day)
         let normalizedToday = calendar.startOfDay(for: today)
@@ -145,7 +195,7 @@ enum EditableHistoryContract {
         requiredFinalizedDays: Set<Date>,
         pastDefaultSelection: EditableHistorySelection = .skipped,
         today: Date = Date(),
-        calendar: Calendar = .current
+        calendar: Calendar = .autoupdatingCurrent
     ) -> (positiveDays: Set<Date>, skippedDays: Set<Date>) {
         let normalizedToday = calendar.startOfDay(for: today)
         let normalizedRequiredFinalizedDays = Set(requiredFinalizedDays.map { calendar.startOfDay(for: $0) })
@@ -186,7 +236,7 @@ enum HistoryScheduleApplicability {
     static func pastEditableDays(
         in editableDays: Set<Date>,
         today: Date = Date(),
-        calendar: Calendar = .current
+        calendar: Calendar = .autoupdatingCurrent
     ) -> Set<Date> {
         let normalizedToday = calendar.startOfDay(for: today)
         return Set(editableDays.map { calendar.startOfDay(for: $0) }.filter { $0 < normalizedToday })
@@ -196,7 +246,7 @@ enum HistoryScheduleApplicability {
         in editableDays: Set<Date>,
         schedules: [Schedule],
         today: Date = Date(),
-        calendar: Calendar = .current
+        calendar: Calendar = .autoupdatingCurrent
     ) -> Set<Date> {
         let pastEditableDays = pastEditableDays(in: editableDays, today: today, calendar: calendar)
         return Set(pastEditableDays.filter { day in
@@ -212,7 +262,7 @@ enum HistoryScheduleApplicability {
         schedules: [Schedule],
         historyMode: HabitHistoryMode,
         today: Date = Date(),
-        calendar: Calendar = .current
+        calendar: Calendar = .autoupdatingCurrent
     ) -> Set<Date> {
         switch historyMode {
         case .scheduleBased:
@@ -234,7 +284,7 @@ enum HistoryScheduleApplicability {
     static func effectiveWeekdays<Schedule: HistoryScheduleVersionLike>(
         on day: Date,
         from schedules: [Schedule],
-        calendar: Calendar = .current
+        calendar: Calendar = .autoupdatingCurrent
     ) -> WeekdaySet? {
         let normalizedDay = calendar.startOfDay(for: day)
         return schedules
@@ -273,6 +323,220 @@ enum CoreDataScheduleSupport {
                 return lhsCreatedAt > rhsCreatedAt
             }
             .first
+    }
+
+    static func isNewerSchedule<Schedule: HistoryScheduleVersionLike>(_ lhs: Schedule, _ rhs: Schedule) -> Bool {
+        if lhs.effectiveFrom != rhs.effectiveFrom {
+            return lhs.effectiveFrom > rhs.effectiveFrom
+        }
+        if lhs.version != rhs.version {
+            return lhs.version > rhs.version
+        }
+        return lhs.createdAt > rhs.createdAt
+    }
+}
+
+enum CoreDataHistorySupport {
+    static func groupedHistoryObjectsByDay(
+        _ objects: [NSManagedObject],
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> [Date: [NSManagedObject]] {
+        Dictionary(grouping: objects.compactMap { object -> (Date, NSManagedObject)? in
+            guard let localDate = object.dateValue(forKey: "localDate") else { return nil }
+            return (calendar.startOfDay(for: localDate), object)
+        }, by: \.0).mapValues { entries in
+            entries.map(\.1)
+        }
+    }
+
+    static func primaryHistoryObject(in objects: [NSManagedObject]) -> NSManagedObject? {
+        objects.max { lhs, rhs in
+            let lhsCreatedAt = lhs.dateValue(forKey: "createdAt") ?? .distantPast
+            let rhsCreatedAt = rhs.dateValue(forKey: "createdAt") ?? .distantPast
+            if lhsCreatedAt != rhsCreatedAt {
+                return lhsCreatedAt < rhsCreatedAt
+            }
+            return lhs.objectID.uriRepresentation().absoluteString < rhs.objectID.uriRepresentation().absoluteString
+        }
+    }
+}
+
+enum CoreDataFetchSupport {
+    static func fetchObject(
+        entityName: String,
+        id: UUID,
+        in context: NSManagedObjectContext
+    ) throws -> NSManagedObject? {
+        let request = NSFetchRequest<NSManagedObject>(entityName: entityName)
+        request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+        request.fetchLimit = 1
+        return try context.fetch(request).first
+    }
+
+    static func fetchHistoryObject(
+        entityName: String,
+        ownerKey: String,
+        ownerID: UUID,
+        localDate: Date,
+        in context: NSManagedObjectContext
+    ) throws -> NSManagedObject? {
+        try fetchHistoryObjects(
+            entityName: entityName,
+            ownerKey: ownerKey,
+            ownerID: ownerID,
+            localDate: localDate,
+            in: context
+        ).first
+    }
+
+    static func fetchHistoryObjects(
+        entityName: String,
+        ownerKey: String,
+        ownerID: UUID,
+        localDate: Date,
+        in context: NSManagedObjectContext
+    ) throws -> [NSManagedObject] {
+        let request = NSFetchRequest<NSManagedObject>(entityName: entityName)
+        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            NSPredicate(format: "\(ownerKey) == %@", ownerID as CVarArg),
+            NSPredicate(format: "localDate == %@", localDate as CVarArg),
+        ])
+        request.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
+        return try context.fetch(request)
+    }
+}
+
+enum CoreDataRelationshipLoadingSupport {
+    static func compactHistoryModels<Model, Source: RawRepresentable>(
+        from ownerObject: NSManagedObject,
+        relationshipKey: String,
+        makeModel: (UUID, Date, Source, Date) -> Model
+    ) -> [Model] where Source.RawValue == String {
+        let rows = (ownerObject.mutableSetValue(forKey: relationshipKey).allObjects as? [NSManagedObject]) ?? []
+        return rows.compactMap { row in
+            guard
+                let id = row.uuidValue(forKey: "id"),
+                let localDate = row.dateValue(forKey: "localDate"),
+                let sourceRaw = row.stringValue(forKey: "sourceRaw"),
+                let source = Source(rawValue: sourceRaw),
+                let createdAt = row.dateValue(forKey: "createdAt")
+            else {
+                return nil
+            }
+
+            return makeModel(id, localDate, source, createdAt)
+        }
+    }
+
+    static func validatedHistoryModels<Model, Source: RawRepresentable>(
+        from ownerObject: NSManagedObject,
+        relationshipKey: String,
+        area: String,
+        invalidMessage: String,
+        report: inout IntegrityReportBuilder,
+        makeModel: (UUID, Date, Source, Date) -> Model
+    ) -> [Model]? where Source.RawValue == String {
+        let rows = (ownerObject.mutableSetValue(forKey: relationshipKey).allObjects as? [NSManagedObject]) ?? []
+        var models: [Model] = []
+
+        for row in rows {
+            guard
+                let id = row.uuidValue(forKey: "id"),
+                let localDate = row.dateValue(forKey: "localDate"),
+                let sourceRaw = row.stringValue(forKey: "sourceRaw"),
+                let source = Source(rawValue: sourceRaw),
+                let createdAt = row.dateValue(forKey: "createdAt")
+            else {
+                report.append(
+                    area: area,
+                    entityName: row.entityName,
+                    object: row,
+                    message: invalidMessage
+                )
+                return nil
+            }
+
+            models.append(makeModel(id, localDate, source, createdAt))
+        }
+
+        return models
+    }
+
+    static func compactScheduleModels<Model>(
+        from ownerObject: NSManagedObject,
+        relationshipKey: String,
+        makeModel: (UUID, Int, Date, Date, Int) -> Model
+    ) -> [Model] {
+        let rows = (ownerObject.mutableSetValue(forKey: relationshipKey).allObjects as? [NSManagedObject]) ?? []
+        return rows.compactMap { row in
+            guard
+                let id = row.uuidValue(forKey: "id"),
+                let effectiveFrom = row.dateValue(forKey: "effectiveFrom"),
+                let createdAt = row.dateValue(forKey: "createdAt")
+            else {
+                return nil
+            }
+
+            return makeModel(
+                id,
+                row.int16Value(forKey: "weekdayMask"),
+                effectiveFrom,
+                createdAt,
+                Int(row.int32Value(forKey: "version", default: 1))
+            )
+        }
+    }
+
+    static func validatedScheduleModels<Model>(
+        from ownerObject: NSManagedObject,
+        relationshipKey: String,
+        area: String,
+        missingFieldsMessage: String,
+        invalidMaskMessage: String,
+        report: inout IntegrityReportBuilder,
+        makeModel: (UUID, Int, Date, Date, Int) -> Model
+    ) -> [Model]? {
+        let rows = (ownerObject.mutableSetValue(forKey: relationshipKey).allObjects as? [NSManagedObject]) ?? []
+        var models: [Model] = []
+
+        for row in rows {
+            guard
+                let id = row.uuidValue(forKey: "id"),
+                let effectiveFrom = row.dateValue(forKey: "effectiveFrom"),
+                let createdAt = row.dateValue(forKey: "createdAt")
+            else {
+                report.append(
+                    area: area,
+                    entityName: row.entityName,
+                    object: row,
+                    message: missingFieldsMessage
+                )
+                return nil
+            }
+
+            let weekdayMask = row.int16Value(forKey: "weekdayMask")
+            guard WeekdayValidation.isValidMask(weekdayMask) else {
+                report.append(
+                    area: area,
+                    entityName: row.entityName,
+                    object: row,
+                    message: invalidMaskMessage
+                )
+                return nil
+            }
+
+            models.append(
+                makeModel(
+                    id,
+                    weekdayMask,
+                    effectiveFrom,
+                    createdAt,
+                    Int(row.int32Value(forKey: "version", default: 1))
+                )
+            )
+        }
+
+        return models
     }
 }
 

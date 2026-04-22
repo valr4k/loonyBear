@@ -21,13 +21,19 @@ struct LoonyBearApp: App {
                         appState: environment.appState,
                         pillAppState: environment.pillAppState,
                         notificationCoordinator: environment.notificationCoordinator,
-                        badgeService: environment.badgeService
+                        badgeService: environment.badgeService,
+                        lifecycleRefreshCoordinator: environment.lifecycleRefreshCoordinator,
+                        startupHealthCheckCoordinator: environment.startupHealthCheckCoordinator
                     )
                         .environment(\.managedObjectContext, environment.persistenceController.container.viewContext)
                         .onChange(of: scenePhase) { _, newPhase in
                             if newPhase == .active {
-                                environment.appState.handleAppDidBecomeActive()
-                                environment.pillAppState.handleAppDidBecomeActive()
+                                Task {
+                                    await environment.lifecycleRefreshCoordinator.perform {
+                                        await environment.appState.handleAppDidBecomeActive()
+                                        await environment.pillAppState.handleAppDidBecomeActive()
+                                    }
+                                }
                             }
                         }
                 case .persistenceFailure(let error):

@@ -131,17 +131,23 @@ enum ProjectedBadgeCountCalculator {
 final class AppBadgeService {
     private let loadDashboardUseCase: LoadDashboardUseCase
     private let pillRepository: PillRepository
+    private let calendar: Calendar
+    private let clock: AppClock
 
-    private var calendar: Calendar {
-        .autoupdatingCurrent
-    }
-
-    init(loadDashboardUseCase: LoadDashboardUseCase, pillRepository: PillRepository) {
+    init(
+        loadDashboardUseCase: LoadDashboardUseCase,
+        pillRepository: PillRepository,
+        calendar: Calendar = .autoupdatingCurrent,
+        clock: AppClock? = nil
+    ) {
+        let resolvedClock = clock ?? AppClock(calendar: calendar)
         self.loadDashboardUseCase = loadDashboardUseCase
         self.pillRepository = pillRepository
+        self.calendar = resolvedClock.calendar
+        self.clock = resolvedClock
     }
 
-    func refreshBadge(now: Date = Date()) {
+    func refreshBadge(now: Date? = nil) {
         let badgeCount: Int
         do {
             badgeCount = try overdueCount(now: now)
@@ -157,7 +163,8 @@ final class AppBadgeService {
         }
     }
 
-    func overdueCount(now: Date = Date()) throws -> Int {
+    func overdueCount(now: Date? = nil) throws -> Int {
+        let currentDate = now ?? clock.now()
         let habits = try loadDashboardUseCase.execute()
             .sections
             .flatMap(\.habits)
@@ -165,7 +172,7 @@ final class AppBadgeService {
         let pills = try pillRepository.fetchDashboardPills()
 
         return ProjectedBadgeCountCalculator.overdueCount(
-            now: now,
+            now: currentDate,
             habits: habits,
             pills: pills,
             calendar: calendar

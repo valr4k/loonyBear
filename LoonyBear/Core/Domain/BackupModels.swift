@@ -251,13 +251,19 @@ struct BackupStatus: Equatable {
     let folderName: String
     let latestBackupText: String
     let fileSizeText: String
+    let hasLatestBackup: Bool
     let hasSelectedFolder: Bool
     let requiresFolderReselection: Bool
+
+    var hasUsableFolder: Bool {
+        hasSelectedFolder && !requiresFolderReselection
+    }
 
     static let empty = BackupStatus(
         folderName: "Choose folder",
         latestBackupText: "No backups yet",
         fileSizeText: "—",
+        hasLatestBackup: false,
         hasSelectedFolder: false,
         requiresFolderReselection: false
     )

@@ -3,6 +3,17 @@ import Foundation
 import UIKit
 import UserNotifications
 
+private enum PillNotificationMutationError: LocalizedError {
+    case invalidStoredIntakeSource
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidStoredIntakeSource:
+            return "Stored pill intake source is invalid."
+        }
+    }
+}
+
 final class PillNotificationService {
     private let categoryIdentifier = "pill.reminder"
     private let summaryCategoryIdentifier = "pill.reminder.summary"
@@ -15,15 +26,18 @@ final class PillNotificationService {
     private let storeContext: NotificationStoreContext
     private let center = UNUserNotificationCenter.current()
     private let prefix = "pill_"
-
-    private var calendar: Calendar {
-        .autoupdatingCurrent
-    }
+    private let calendar: Calendar
+    private let clock: AppClock
 
     init(
         context: NSManagedObjectContext,
-        makeWriteContext: @escaping () -> NSManagedObjectContext
+        makeWriteContext: @escaping () -> NSManagedObjectContext,
+        calendar: Calendar = .autoupdatingCurrent,
+        clock: AppClock? = nil
     ) {
+        let resolvedClock = clock ?? AppClock(calendar: calendar)
+        self.calendar = resolvedClock.calendar
+        self.clock = resolvedClock
         storeContext = NotificationStoreContext(
             readContext: context,
             makeWriteContext: makeWriteContext
@@ -79,28 +93,20 @@ final class PillNotificationService {
     }
 
     func rescheduleAllNotifications() {
-        ReliabilityLog.info("notification.pill.reschedule started")
-        removeDeliveredAggregatedNotifications(on: Date())
-        storeContext.refreshReadContext()
-        do {
-            let requests = try makePendingNotificationRequests()
-            removePendingRegularPillNotifications {
-                for request in requests {
-                    self.center.add(request) { error in
-                        if let error {
-                            ReliabilityLog.error(
-                                "notification.pill.reschedule request \(request.identifier) failed: \(error.localizedDescription)"
-                            )
-                        }
-                    }
-                }
-                ReliabilityLog.info("notification.pill.reschedule finished with \(requests.count) request(s)")
-            }
-        } catch let error as DataIntegrityError {
-            ReliabilityLog.error("notification.pill.reschedule failed: \(error.localizedDescription)")
-        } catch {
-            ReliabilityLog.error("notification.pill.reschedule failed: \(error.localizedDescription)")
-        }
+        rescheduleAllNotifications(completion: nil)
+    }
+
+    func rescheduleAllNotifications(completion: (() -> Void)?) {
+        NotificationRescheduleSupport.rescheduleAll(
+            center: center,
+            storeContext: storeContext,
+            logName: "notification.pill.reschedule",
+            now: clock.now,
+            removeDeliveredAggregatedNotifications: removeDeliveredAggregatedNotifications(on:),
+            removePendingNotifications: removePendingRegularPillNotifications(completion:),
+            makePendingRequests: makePendingNotificationRequests,
+            completion: completion
+        )
     }
 
     func removeNotifications(forPillID pillID: UUID) {
@@ -111,31 +117,33 @@ final class PillNotificationService {
     }
 
     func removeDeliveredNotifications(forPillID pillID: UUID) {
-        let pillPrefix = notificationIdentifierPrefix(for: pillID)
-        center.getDeliveredNotifications { notifications in
-            let identifiers = notifications
-                .map(\.request.identifier)
-                .filter { $0.hasPrefix(pillPrefix) }
-            self.center.removeDeliveredNotifications(withIdentifiers: identifiers)
-        }
+        NotificationCleanupSupport.removeDeliveredNotifications(
+            center: center,
+            prefix: notificationIdentifierPrefix(for: pillID)
+        )
     }
 
     func removeDeliveredNotifications(forPillID pillID: UUID, on localDate: Date) {
-        let pillPrefix = notificationIdentifierPrefix(for: pillID)
-        let normalizedDay = calendar.startOfDay(for: localDate)
+        NotificationCleanupSupport.removeDeliveredNotifications(
+            center: center,
+            prefix: notificationIdentifierPrefix(for: pillID),
+            on: localDate,
+            calendar: calendar
+        )
+    }
 
-        center.getDeliveredNotifications { notifications in
-            let identifiers = notifications.compactMap { notification -> String? in
-                guard notification.request.identifier.hasPrefix(pillPrefix) else {
-                    return nil
-                }
-
-                let deliveredDay = self.calendar.startOfDay(for: notification.date)
-                return deliveredDay == normalizedDay ? notification.request.identifier : nil
-            }
-
-            self.center.removeDeliveredNotifications(withIdentifiers: identifiers)
-        }
+    func removeDeliveredNotifications(
+        forPillID pillID: UUID,
+        on localDate: Date,
+        completion: @escaping () -> Void
+    ) {
+        NotificationCleanupSupport.removeDeliveredNotifications(
+            center: center,
+            prefix: notificationIdentifierPrefix(for: pillID),
+            on: localDate,
+            calendar: calendar,
+            completion: completion
+        )
     }
 
     func handleAppDidBecomeActive() {
@@ -156,6 +164,26 @@ final class PillNotificationService {
             notificationDate: response.notification.date,
             fallbackTitle: response.notification.request.content.title,
             fallbackBody: response.notification.request.content.body
+        )
+    }
+
+    func handleNotificationResponse(
+        _ response: UNNotificationResponse,
+        completion: @escaping (Bool) -> Void
+    ) {
+        guard let type = response.notification.request.content.userInfo["type"] as? String else {
+            completion(false)
+            return
+        }
+
+        handleNotificationResponse(
+            type: type,
+            userInfo: response.notification.request.content.userInfo,
+            actionIdentifier: response.actionIdentifier,
+            notificationDate: response.notification.date,
+            fallbackTitle: response.notification.request.content.title,
+            fallbackBody: response.notification.request.content.body,
+            completion: completion
         )
     }
 
@@ -182,12 +210,12 @@ final class PillNotificationService {
         }
 
         let deliveryDay = localDate(from: userInfo, fallbackDate: notificationDate)
-        let didMutateStore: Bool
+        let mutationOutcome: NotificationMutationOutcome
         switch actionIdentifier {
         case takeActionIdentifier:
-            didMutateStore = createIntakeIfNeeded(for: pillID, on: deliveryDay, source: .notification)
+            mutationOutcome = createIntakeIfNeeded(for: pillID, on: deliveryDay, source: .notification)
         case skipActionIdentifier:
-            didMutateStore = createSkippedIntakeIfNeeded(for: pillID, on: deliveryDay)
+            mutationOutcome = createSkippedIntakeIfNeeded(for: pillID, on: deliveryDay)
         case remindLaterActionIdentifier:
             removeDeliveredNotifications(forPillID: pillID, on: deliveryDay)
             removeSnoozedNotifications(forPillID: pillID, on: deliveryDay) {
@@ -203,29 +231,100 @@ final class PillNotificationService {
             return true
         }
 
-        removeDeliveredNotifications(forPillID: pillID, on: deliveryDay)
-        if didMutateStore {
+        guard case .failed = mutationOutcome else {
+            removeDeliveredNotifications(forPillID: pillID, on: deliveryDay)
             removeSnoozedNotifications(forPillID: pillID, on: deliveryDay) {
-                self.rescheduleAllNotifications()
+                if case .mutated = mutationOutcome {
+                    self.rescheduleAllNotifications()
+                }
             }
+            return true
         }
+
         return true
+    }
+
+    func handleNotificationResponse(
+        type: String,
+        userInfo: [AnyHashable: Any],
+        actionIdentifier: String,
+        notificationDate: Date,
+        fallbackTitle: String? = nil,
+        fallbackBody: String? = nil,
+        onCleanupFinished: (() -> Void)? = nil,
+        completion: @escaping (Bool) -> Void
+    ) {
+        if handleDefaultTapRouting(type: type, actionIdentifier: actionIdentifier) {
+            completion(true)
+            return
+        }
+
+        guard type == "pill" else {
+            completion(false)
+            return
+        }
+
+        guard
+            let pillIDString = userInfo["pillID"] as? String,
+            let pillID = UUID(uuidString: pillIDString)
+        else {
+            completion(true)
+            return
+        }
+
+        let deliveryDay = localDate(from: userInfo, fallbackDate: notificationDate)
+        if actionIdentifier == remindLaterActionIdentifier {
+            removeDeliveredNotifications(forPillID: pillID, on: deliveryDay) {
+                self.removeSnoozedNotifications(forPillID: pillID, on: deliveryDay) {
+                    onCleanupFinished?()
+                    self.scheduleRemindLaterNotification(
+                        for: pillID,
+                        on: deliveryDay,
+                        fallbackTitle: fallbackTitle,
+                        fallbackBody: fallbackBody
+                    ) {
+                        completion(true)
+                    }
+                }
+            }
+            return
+        }
+
+        let mutationOutcome: NotificationMutationOutcome
+        switch actionIdentifier {
+        case takeActionIdentifier:
+            mutationOutcome = createIntakeIfNeeded(for: pillID, on: deliveryDay, source: .notification)
+        case skipActionIdentifier:
+            mutationOutcome = createSkippedIntakeIfNeeded(for: pillID, on: deliveryDay)
+        default:
+            completion(true)
+            return
+        }
+
+        guard case .failed = mutationOutcome else {
+            removeDeliveredNotifications(forPillID: pillID, on: deliveryDay) {
+                self.removeSnoozedNotifications(forPillID: pillID, on: deliveryDay) {
+                    onCleanupFinished?()
+                    if case .mutated = mutationOutcome {
+                        self.rescheduleAllNotifications()
+                    }
+                    completion(true)
+                }
+            }
+            return
+        }
+
+        completion(true)
     }
 
     @discardableResult
     func handleDefaultTapRouting(type: String, actionIdentifier: String) -> Bool {
-        guard actionIdentifier == UNNotificationDefaultActionIdentifier else { return false }
-        guard type == "pill_aggregated" || type == "pill" else { return false }
-
-        let postSignal = {
-            NotificationCenter.default.post(name: .openMyPillsTab, object: nil)
-        }
-        if Thread.isMainThread {
-            postSignal()
-        } else {
-            DispatchQueue.main.async(execute: postSignal)
-        }
-        return true
+        NotificationResponseSupport.handleDefaultTapRouting(
+            type: type,
+            actionIdentifier: actionIdentifier,
+            acceptedTypes: ["pill_aggregated", "pill"],
+            notificationName: .openMyPillsTab
+        )
     }
 
     private func removeDeliveredAggregatedNotifications(on localDate: Date) {
@@ -238,23 +337,27 @@ final class PillNotificationService {
     }
 
     private func cleanupStaleDeliveredNotifications() {
-        LocalNotificationSupport.cleanupStaleDeliveredNotifications(center: center, calendar: calendar)
+        LocalNotificationSupport.cleanupStaleDeliveredNotifications(
+            center: center,
+            calendar: calendar,
+            today: clock.now()
+        )
     }
 
     private func localDate(from userInfo: [AnyHashable: Any], fallbackDate: Date) -> Date {
-        guard let identifier = userInfo["localDate"] as? String,
-              let parsedDate = LocalNotificationSupport.parseLocalDateIdentifier(identifier, calendar: calendar) else {
-            return calendar.startOfDay(for: fallbackDate)
-        }
-
-        return parsedDate
+        NotificationResponseSupport.localDate(
+            from: userInfo,
+            fallbackDate: fallbackDate,
+            calendar: calendar
+        )
     }
 
     private func scheduleRemindLaterNotification(
         for pillID: UUID,
         on localDate: Date,
         fallbackTitle: String?,
-        fallbackBody: String?
+        fallbackBody: String?,
+        completion: (() -> Void)? = nil
     ) {
         let content = makeRemindLaterContent(
             for: pillID,
@@ -262,7 +365,7 @@ final class PillNotificationService {
             fallbackTitle: fallbackTitle,
             fallbackBody: fallbackBody
         )
-        let remindDate = Date().addingTimeInterval(remindLaterInterval)
+        let remindDate = clock.now().addingTimeInterval(remindLaterInterval)
         let triggerDate = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: remindDate)
         let trigger = UNCalendarNotificationTrigger(dateMatching: triggerDate, repeats: false)
         let request = UNNotificationRequest(
@@ -276,6 +379,7 @@ final class PillNotificationService {
                     "notification.pill.remindLater request \(request.identifier) failed: \(error.localizedDescription)"
                 )
             }
+            completion?()
         }
     }
 
@@ -324,50 +428,39 @@ final class PillNotificationService {
     func makePendingNotificationRequests() throws -> [UNNotificationRequest] {
         let pills = try storeContext.performRead(fetchReminderConfigurations)
         let habits = try storeContext.performRead(fetchHabitReminderConfigurations)
-        let candidates = pills.flatMap(reminderCandidates(for:))
-        let groupedCandidates = Dictionary(grouping: candidates, by: \.scheduledDateTime)
+        let candidates = ReminderPlanningSupport.pillCandidates(
+            reminders: pills,
+            now: clock.now(),
+            schedulingWindowDays: schedulingWindowDays,
+            calendar: calendar
+        )
+        let deliveries = ReminderPlanningSupport.pillDeliveries(
+            candidates: candidates,
+            habits: habits,
+            pills: pills,
+            aggregationThreshold: aggregationThreshold,
+            calendar: calendar
+        )
 
-        return groupedCandidates.values.flatMap { group in
-            notificationRequests(for: group, habits: habits, pills: pills)
-        }
+        return deliveries.map(makeNotificationRequest(for:))
     }
 
     private func fetchReminderConfigurations(context: NSManagedObjectContext) throws -> [PillReminderConfiguration] {
-        let request = NSFetchRequest<NSManagedObject>(entityName: "Pill")
-        let pills = try context.fetch(request)
-        var report = IntegrityReportBuilder()
-        var configurations: [PillReminderConfiguration] = []
-
-        for object in pills {
-            if let configuration = makeReminderConfiguration(from: object, report: &report) {
-                configurations.append(configuration)
-            }
-        }
-
-        if report.hasIssues {
-            throw report.makeError(operation: "notification.fetchPillReminderConfigurations")
-        }
-
-        return configurations
+        try NotificationConfigurationSupport.fetchConfigurations(
+            entityName: "Pill",
+            operation: "notification.fetchPillReminderConfigurations",
+            context: context,
+            build: makeReminderConfiguration(from:report:)
+        )
     }
 
     private func fetchHabitReminderConfigurations(context: NSManagedObjectContext) throws -> [HabitReminderConfiguration] {
-        let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
-        let habits = try context.fetch(request)
-        var report = IntegrityReportBuilder()
-        var configurations: [HabitReminderConfiguration] = []
-
-        for object in habits {
-            if let configuration = makeHabitReminderConfiguration(from: object, report: &report) {
-                configurations.append(configuration)
-            }
-        }
-
-        if report.hasIssues {
-            throw report.makeError(operation: "notification.fetchHabitReminderConfigurations")
-        }
-
-        return configurations
+        try NotificationConfigurationSupport.fetchConfigurations(
+            entityName: "Habit",
+            operation: "notification.fetchHabitReminderConfigurations",
+            context: context,
+            build: makeHabitReminderConfiguration(from:report:)
+        )
     }
 
     private func makeReminderConfiguration(
@@ -439,70 +532,21 @@ final class PillNotificationService {
         )
     }
 
-    private func reminderCandidates(for reminder: PillReminderConfiguration) -> [ScheduledPillReminderCandidate] {
-        guard reminder.reminderEnabled, let reminderTime = reminder.reminderTime else { return [] }
-        let now = Date()
-        let today = calendar.startOfDay(for: now)
-        let normalizedStartDate = calendar.startOfDay(for: reminder.startDate)
-
-        return (0 ..< schedulingWindowDays).compactMap { offset in
-            guard let localDay = calendar.date(byAdding: .day, value: offset, to: today) else {
-                return nil
-            }
-
-            let normalizedDay = calendar.startOfDay(for: localDay)
-            guard normalizedDay >= normalizedStartDate else { return nil }
-            guard reminder.scheduleDays.contains(calendar.weekdaySet(for: normalizedDay)) else { return nil }
-            guard !reminder.takenDays.contains(normalizedDay) else { return nil }
-            guard !reminder.skippedDays.contains(normalizedDay) else { return nil }
-            guard let scheduledDateTime = calendar.date(
-                bySettingHour: reminderTime.hour,
-                minute: reminderTime.minute,
-                second: 0,
-                of: normalizedDay
-            ) else {
-                return nil
-            }
-            guard scheduledDateTime > now else { return nil }
-
-            return ScheduledPillReminderCandidate(
-                pillID: reminder.id,
-                pillName: reminder.name,
-                dosage: reminder.dosage,
-                localDate: normalizedDay,
-                scheduledDateTime: scheduledDateTime
+    private func makeNotificationRequest(for delivery: PillNotificationDeliveryPlan) -> UNNotificationRequest {
+        switch delivery {
+        case .individual(let candidate, let projectedBadgeCount):
+            makeIndividualNotificationRequest(for: candidate, projectedBadgeCount: projectedBadgeCount)
+        case .aggregated(let candidates, let scheduledDateTime, let projectedBadgeCount):
+            makeAggregatedNotificationRequest(
+                for: candidates,
+                scheduledDateTime: scheduledDateTime,
+                projectedBadgeCount: projectedBadgeCount
             )
         }
     }
 
-    private func notificationRequests(
-        for candidates: [ScheduledPillReminderCandidate],
-        habits: [HabitReminderConfiguration],
-        pills: [PillReminderConfiguration]
-    ) -> [UNNotificationRequest] {
-        guard let firstCandidate = candidates.first else { return [] }
-        let projectedBadgeCount = ProjectedBadgeCountCalculator.projectedOverdueCount(
-            at: firstCandidate.scheduledDateTime,
-            habits: habits,
-            pills: pills,
-            calendar: calendar
-        )
-
-        if candidates.count < aggregationThreshold {
-            return candidates.map { makeIndividualNotificationRequest(for: $0, projectedBadgeCount: projectedBadgeCount) }
-        }
-
-        return [
-            makeAggregatedNotificationRequest(
-                for: candidates,
-                scheduledDateTime: firstCandidate.scheduledDateTime,
-                projectedBadgeCount: projectedBadgeCount
-            ),
-        ]
-    }
-
     private func makeIndividualNotificationRequest(
-        for candidate: ScheduledPillReminderCandidate,
+        for candidate: PillNotificationCandidate,
         projectedBadgeCount: Int
     ) -> UNNotificationRequest {
         let content = UNMutableNotificationContent()
@@ -527,7 +571,7 @@ final class PillNotificationService {
     }
 
     private func makeAggregatedNotificationRequest(
-        for candidates: [ScheduledPillReminderCandidate],
+        for candidates: [PillNotificationCandidate],
         scheduledDateTime: Date,
         projectedBadgeCount: Int
     ) -> UNNotificationRequest {
@@ -624,150 +668,52 @@ final class PillNotificationService {
         for object: NSManagedObject,
         report: inout IntegrityReportBuilder
     ) -> WeekdaySet? {
-        let schedules = (object.mutableSetValue(forKey: "scheduleVersions").allObjects as? [NSManagedObject]) ?? []
-        let validatedSchedules = schedules.compactMap { schedule -> (Date, Int32, Date, Int)? in
-            guard
-                let effectiveFrom = schedule.dateValue(forKey: "effectiveFrom"),
-                let createdAt = schedule.dateValue(forKey: "createdAt")
-            else {
-                report.append(
-                    area: "notification",
-                    entityName: schedule.entityName,
-                    object: schedule,
-                    message: "Habit schedule row is missing required fields."
-                )
-                return nil
-            }
-
-            return (
-                effectiveFrom,
-                schedule.int32Value(forKey: "version", default: 1),
-                createdAt,
-                Int(schedule.int16Value(forKey: "weekdayMask"))
-            )
-        }
-
-        guard validatedSchedules.count == schedules.count else { return nil }
-        guard let latest = validatedSchedules.max(by: {
-            if $0.0 != $1.0 { return $0.0 < $1.0 }
-            if $0.1 != $1.1 { return $0.1 < $1.1 }
-            return $0.2 < $1.2
-        }) else {
-            return WeekdaySet(rawValue: 0)
-        }
-        guard WeekdayValidation.isValidMask(latest.3) else {
-            report.append(
-                area: "notification",
-                entityName: object.entityName,
-                object: object,
-                message: "Habit reminder configuration contains invalid weekdayMask."
-            )
-            return nil
-        }
-        return WeekdaySet(rawValue: latest.3)
+        NotificationConfigurationSupport.loadLatestScheduleDays(
+            for: object,
+            relationshipKey: "scheduleVersions",
+            rowLabel: "Habit schedule",
+            invalidMaskMessage: "Habit reminder configuration contains invalid weekdayMask.",
+            report: &report
+        )
     }
 
     private func loadPillScheduleDays(
         for object: NSManagedObject,
         report: inout IntegrityReportBuilder
     ) -> WeekdaySet? {
-        let schedules = (object.mutableSetValue(forKey: "scheduleVersions").allObjects as? [NSManagedObject]) ?? []
-        let validatedSchedules = schedules.compactMap { schedule -> (Date, Int32, Date, Int)? in
-            guard
-                let effectiveFrom = schedule.dateValue(forKey: "effectiveFrom"),
-                let createdAt = schedule.dateValue(forKey: "createdAt")
-            else {
-                report.append(
-                    area: "notification",
-                    entityName: schedule.entityName,
-                    object: schedule,
-                    message: "Pill schedule row is missing required fields."
-                )
-                return nil
-            }
-
-            return (
-                effectiveFrom,
-                schedule.int32Value(forKey: "version", default: 1),
-                createdAt,
-                Int(schedule.int16Value(forKey: "weekdayMask"))
-            )
-        }
-
-        guard validatedSchedules.count == schedules.count else { return nil }
-        guard let latest = validatedSchedules.max(by: {
-            if $0.0 != $1.0 { return $0.0 < $1.0 }
-            if $0.1 != $1.1 { return $0.1 < $1.1 }
-            return $0.2 < $1.2
-        }) else {
-            return WeekdaySet(rawValue: 0)
-        }
-        guard WeekdayValidation.isValidMask(latest.3) else {
-            report.append(
-                area: "notification",
-                entityName: object.entityName,
-                object: object,
-                message: "Pill reminder configuration contains invalid weekdayMask."
-            )
-            return nil
-        }
-        return WeekdaySet(rawValue: latest.3)
+        NotificationConfigurationSupport.loadLatestScheduleDays(
+            for: object,
+            relationshipKey: "scheduleVersions",
+            rowLabel: "Pill schedule",
+            invalidMaskMessage: "Pill reminder configuration contains invalid weekdayMask.",
+            report: &report
+        )
     }
 
     private func loadHabitCompletionEntries(
         for object: NSManagedObject,
         report: inout IntegrityReportBuilder
     ) -> [(Date, CompletionSource)]? {
-        let completions = (object.mutableSetValue(forKey: "completions").allObjects as? [NSManagedObject]) ?? []
-        var entries: [(Date, CompletionSource)] = []
-
-        for completion in completions {
-            guard
-                let localDate = completion.dateValue(forKey: "localDate"),
-                let sourceRaw = completion.stringValue(forKey: "sourceRaw"),
-                let source = CompletionSource(rawValue: sourceRaw)
-            else {
-                report.append(
-                    area: "notification",
-                    entityName: completion.entityName,
-                    object: completion,
-                    message: "Habit completion row is missing required fields or has invalid sourceRaw."
-                )
-                return nil
-            }
-
-            entries.append((calendar.startOfDay(for: localDate), source))
-        }
-
-        return entries
+        NotificationConfigurationSupport.loadHistoryEntries(
+            for: object,
+            relationshipKey: "completions",
+            invalidEntryMessage: "Habit completion row is missing required fields or has invalid sourceRaw.",
+            calendar: calendar,
+            report: &report
+        )
     }
 
     private func loadPillIntakeEntries(
         for object: NSManagedObject,
         report: inout IntegrityReportBuilder
     ) -> [(Date, PillCompletionSource)]? {
-        let intakes = (object.mutableSetValue(forKey: "intakes").allObjects as? [NSManagedObject]) ?? []
-        var entries: [(Date, PillCompletionSource)] = []
-
-        for intake in intakes {
-            guard
-                let localDate = intake.dateValue(forKey: "localDate"),
-                let sourceRaw = intake.stringValue(forKey: "sourceRaw"),
-                let source = PillCompletionSource(rawValue: sourceRaw)
-            else {
-                report.append(
-                    area: "notification",
-                    entityName: intake.entityName,
-                    object: intake,
-                    message: "Pill intake row is missing required fields or has invalid sourceRaw."
-                )
-                return nil
-            }
-
-            entries.append((calendar.startOfDay(for: localDate), source))
-        }
-
-        return entries
+        NotificationConfigurationSupport.loadHistoryEntries(
+            for: object,
+            relationshipKey: "intakes",
+            invalidEntryMessage: "Pill intake row is missing required fields or has invalid sourceRaw.",
+            calendar: calendar,
+            report: &report
+        )
     }
 
     private func notificationIdentifierPrefix(for pillID: UUID) -> String {
@@ -800,10 +746,14 @@ final class PillNotificationService {
     }
 
     @discardableResult
-    private func createIntakeIfNeeded(for pillID: UUID, on localDate: Date, source: PillCompletionSource) -> Bool {
+    private func createIntakeIfNeeded(
+        for pillID: UUID,
+        on localDate: Date,
+        source: PillCompletionSource
+    ) -> NotificationMutationOutcome {
         let normalizedDate = calendar.startOfDay(for: localDate)
 
-        let didCreate = storeContext.performWrite { context in
+        let mutationResult = storeContext.performWrite { context in
             let fetchRequest = NSFetchRequest<NSManagedObject>(entityName: "PillIntake")
             fetchRequest.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
                 NSPredicate(format: "pillID == %@", pillID as CVarArg),
@@ -816,17 +766,17 @@ final class PillNotificationService {
                     let sourceRaw = existing.value(forKey: "sourceRaw") as? String,
                     let existingSource = PillCompletionSource(rawValue: sourceRaw)
                 else {
-                    return false
+                    throw PillNotificationMutationError.invalidStoredIntakeSource
                 }
 
                 if existingSource == .skipped {
                     existing.setValue(source.rawValue, forKey: "sourceRaw")
-                    existing.setValue(Date(), forKey: "createdAt")
+                    existing.setValue(clock.now(), forKey: "createdAt")
                     try context.save()
-                    return true
+                    return NotificationMutationOutcome.mutated
                 }
 
-                return false
+                return NotificationMutationOutcome.noChange
             }
 
             let pillRequest = NSFetchRequest<NSManagedObject>(entityName: "Pill")
@@ -834,7 +784,7 @@ final class PillNotificationService {
             pillRequest.fetchLimit = 1
 
             guard let pill = try context.fetch(pillRequest).first else {
-                return false
+                return NotificationMutationOutcome.noChange
             }
 
             let intake = NSEntityDescription.insertNewObject(forEntityName: "PillIntake", into: context)
@@ -842,29 +792,33 @@ final class PillNotificationService {
             intake.setValue(pillID, forKey: "pillID")
             intake.setValue(normalizedDate, forKey: "localDate")
             intake.setValue(source.rawValue, forKey: "sourceRaw")
-            intake.setValue(Date(), forKey: "createdAt")
+            intake.setValue(clock.now(), forKey: "createdAt")
             intake.setValue(pill, forKey: "pill")
 
             try context.save()
-            return true
+            return .mutated
         }
 
-        if didCreate == true {
-            DispatchQueue.main.async {
-                guard UIApplication.shared.applicationState == .active else { return }
-                NotificationCenter.default.post(name: .pillStoreDidChange, object: nil)
+        switch mutationResult {
+        case .success(let outcome):
+            if case .mutated = outcome {
+                DispatchQueue.main.async {
+                    guard UIApplication.shared.applicationState == .active else { return }
+                    NotificationCenter.default.post(name: .pillStoreDidChange, object: nil)
+                }
             }
-            return true
+            return outcome
+        case .failure(let error):
+            ReliabilityLog.error("notification.pill.action.store write failed: \(error.localizedDescription)")
+            return .failed(error)
         }
-
-        return false
     }
 
     @discardableResult
-    private func createSkippedIntakeIfNeeded(for pillID: UUID, on localDate: Date) -> Bool {
+    private func createSkippedIntakeIfNeeded(for pillID: UUID, on localDate: Date) -> NotificationMutationOutcome {
         let normalizedDate = calendar.startOfDay(for: localDate)
 
-        let didCreate = storeContext.performWrite { context in
+        let mutationResult = storeContext.performWrite { context in
             let fetchRequest = NSFetchRequest<NSManagedObject>(entityName: "PillIntake")
             fetchRequest.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
                 NSPredicate(format: "pillID == %@", pillID as CVarArg),
@@ -875,13 +829,12 @@ final class PillNotificationService {
             if let existing = try context.fetch(fetchRequest).first {
                 guard
                     let sourceRaw = existing.value(forKey: "sourceRaw") as? String,
-                    let existingSource = PillCompletionSource(rawValue: sourceRaw),
-                    existingSource == .skipped
+                    PillCompletionSource(rawValue: sourceRaw) != nil
                 else {
-                    return false
+                    throw PillNotificationMutationError.invalidStoredIntakeSource
                 }
 
-                return false
+                return NotificationMutationOutcome.noChange
             }
 
             let pillRequest = NSFetchRequest<NSManagedObject>(entityName: "Pill")
@@ -889,7 +842,7 @@ final class PillNotificationService {
             pillRequest.fetchLimit = 1
 
             guard let pill = try context.fetch(pillRequest).first else {
-                return false
+                return NotificationMutationOutcome.noChange
             }
 
             let intake = NSEntityDescription.insertNewObject(forEntityName: "PillIntake", into: context)
@@ -897,22 +850,26 @@ final class PillNotificationService {
             intake.setValue(pillID, forKey: "pillID")
             intake.setValue(normalizedDate, forKey: "localDate")
             intake.setValue(PillCompletionSource.skipped.rawValue, forKey: "sourceRaw")
-            intake.setValue(Date(), forKey: "createdAt")
+            intake.setValue(clock.now(), forKey: "createdAt")
             intake.setValue(pill, forKey: "pill")
 
             try context.save()
-            return true
+            return .mutated
         }
 
-        if didCreate == true {
-            DispatchQueue.main.async {
-                guard UIApplication.shared.applicationState == .active else { return }
-                NotificationCenter.default.post(name: .pillStoreDidChange, object: nil)
+        switch mutationResult {
+        case .success(let outcome):
+            if case .mutated = outcome {
+                DispatchQueue.main.async {
+                    guard UIApplication.shared.applicationState == .active else { return }
+                    NotificationCenter.default.post(name: .pillStoreDidChange, object: nil)
+                }
             }
-            return true
+            return outcome
+        case .failure(let error):
+            ReliabilityLog.error("notification.pill.action.store write failed: \(error.localizedDescription)")
+            return .failed(error)
         }
-
-        return false
     }
 
     func removeSnoozedNotifications(
@@ -961,12 +918,4 @@ struct PillReminderConfiguration {
     let reminderTime: ReminderTime?
     let takenDays: Set<Date>
     let skippedDays: Set<Date>
-}
-
-private struct ScheduledPillReminderCandidate {
-    let pillID: UUID
-    let pillName: String
-    let dosage: String
-    let localDate: Date
-    let scheduledDateTime: Date
 }

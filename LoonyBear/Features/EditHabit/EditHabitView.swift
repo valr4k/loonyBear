@@ -18,7 +18,6 @@ struct EditHabitView: View {
             type: details.type,
             startDate: details.startDate,
             name: details.name,
-            historyMode: details.historyMode,
             scheduleDays: details.scheduleDays,
             reminderEnabled: details.reminderEnabled,
             reminderTime: details.reminderTime ?? ReminderTime.default(),
@@ -30,88 +29,17 @@ struct EditHabitView: View {
 
     var body: some View {
         AppScreen(backgroundStyle: .habits, topPadding: 8) {
-            AppCard {
-                VStack(alignment: .leading, spacing: 0) {
-                    HabitNameInputField(text: $draft.name)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 18)
-
-                    if shouldShowNameValidation {
-                        AppSectionDivider()
-
-                        validationText("Habit name is required.")
-                            .padding(.horizontal, 18)
-                            .padding(.vertical, 14)
-                    }
-
-                    AppSectionDivider()
-
-                    AppValueRow(
-                        title: "Start Date",
-                        value: draft.startDate.formatted(date: .abbreviated, time: .omitted)
-                    )
-
-                    AppSectionDivider()
-
-                    HStack(spacing: 16) {
-                        Text("Reminder")
-                            .foregroundStyle(.primary)
-
-                        Spacer()
-
-                        Toggle("", isOn: $draft.reminderEnabled)
-                            .labelsHidden()
-                    }
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 18)
-
-                    if draft.reminderEnabled {
-                        AppSectionDivider()
-
-                        DatePicker("Time", selection: reminderDateBinding, displayedComponents: .hourAndMinute)
-                            .datePickerStyle(.compact)
-                            .padding(.horizontal, 18)
-                            .padding(.vertical, 18)
-                    }
-                }
-            }
-
-            AppCard {
-                VStack(alignment: .leading, spacing: 0) {
-                    InlineDaysSelector(selection: scheduleDaysBinding)
-
-                    AppSectionDivider()
-
-                    HStack(spacing: 16) {
-                        Text("Use schedule for history?")
-                            .foregroundStyle(.primary)
-
-                        Spacer()
-
-                        Toggle("", isOn: useScheduleForHistoryBinding)
-                            .labelsHidden()
-                    }
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 18)
-
-                    if draft.scheduleDays.rawValue == 0 {
-                        HStack {
-                            validationText(AppCopy.chooseAtLeastOneDay)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 18)
-                        .padding(.bottom, 16)
-                    }
-                }
-            }
-
-            AppHelperText(text: historyHelperText)
+            nameSection
+            notificationsSection
+            historySection
 
             VStack(alignment: .leading, spacing: 8) {
+                AppFormSectionHeader(title: "Calendar")
+
                 AppCard {
                     HabitHistoryCalendarView(
                         month: displayedMonth,
-                        editableDays: Set(editableHistoryDays),
+                        editableDays: editableHistoryDays,
                         completedDays: $draft.completedDays,
                         skippedDays: $draft.skippedDays,
                         availableMonths: availableMonths,
@@ -186,26 +114,34 @@ struct EditHabitView: View {
         .animation(.easeInOut(duration: 0.18), value: validationMessage)
     }
 
-    private var editableHistoryDays: [Date] {
-        let today = Calendar.current.startOfDay(for: Date())
-        let earliest = max(
-            Calendar.current.startOfDay(for: draft.startDate),
-            Calendar.current.date(byAdding: .day, value: -29, to: today) ?? today
-        )
+    private var nameSection: some View {
+        AppHabitNameCard(text: $draft.name, showsValidation: shouldShowNameValidation) {
+            validationText("Habit name is required.")
+        }
+    }
 
-        return stride(from: 0, through: 29, by: 1)
-            .compactMap { Calendar.current.date(byAdding: .day, value: -$0, to: today) }
-            .map { Calendar.current.startOfDay(for: $0) }
-            .filter { $0 >= earliest && $0 <= today }
+    private var historySection: some View {
+        AppFormCardSection(title: "History") {
+            AppStartDateValueRow(date: draft.startDate)
+        }
+    }
+
+    private var notificationsSection: some View {
+        AppNotificationSettingsSection(
+            scheduleSummary: draft.scheduleDays.compactSummaryOrPlaceholder,
+            reminderEnabled: $draft.reminderEnabled,
+            reminderDate: $draft.reminderTime.dateBinding(fallback: ReminderTime.default())
+        ) {
+            EditHabitScheduleView(scheduleDays: $draft.scheduleDays)
+        }
+    }
+
+    private var editableHistoryDays: Set<Date> {
+        EditableHistoryWindow.dates(startDate: draft.startDate)
     }
 
     private var availableMonths: [Date] {
-        let months = Set(
-            editableHistoryDays.compactMap {
-                Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: $0))
-            }
-        )
-        return months.sorted()
+        HistoryMonthWindow.months(containing: editableHistoryDays)
     }
 
     private var isFormValid: Bool {
@@ -214,42 +150,6 @@ struct EditHabitView: View {
 
     private var shouldShowNameValidation: Bool {
         draft.name.isEmpty == false && draft.trimmedName.isEmpty
-    }
-
-    private var reminderDateBinding: Binding<Date> {
-        Binding {
-            let components = DateComponents(hour: draft.reminderTime.hour, minute: draft.reminderTime.minute)
-            return Calendar.current.date(from: components) ?? Date()
-        } set: { newValue in
-            let components = Calendar.current.dateComponents([.hour, .minute], from: newValue)
-            let fallback = ReminderTime.default()
-            draft.reminderTime = ReminderTime(
-                hour: components.hour ?? fallback.hour,
-                minute: components.minute ?? fallback.minute
-            )
-        }
-    }
-
-    private var scheduleDaysBinding: Binding<WeekdaySet> {
-        Binding(
-            get: { draft.scheduleDays },
-            set: { newValue in
-                draft.scheduleDays = newValue
-            }
-        )
-    }
-
-    private var useScheduleForHistoryBinding: Binding<Bool> {
-        Binding(
-            get: { draft.historyMode.usesScheduleForHistory },
-            set: { draft.historyMode = $0 ? .scheduleBased : .everyDay }
-        )
-    }
-
-    private var historyHelperText: String {
-        draft.historyMode.usesScheduleForHistory
-            ? AppCopy.habitHistoryFollowsSchedule
-            : AppCopy.habitHistoryCountsEveryDay
     }
 
     private func save() {
@@ -264,7 +164,7 @@ struct EditHabitView: View {
 
         Task {
             do {
-                try appState.updateHabit(from: savedDraft)
+                try await appState.updateHabit(from: savedDraft)
                 isSaving = false
                 onSaveSuccess()
                 dismiss()
@@ -281,15 +181,17 @@ struct EditHabitView: View {
         isSaving = true
         validationMessage = nil
 
-        appState.deleteHabit(id: draft.id)
-        if let errorMessage = appState.actionErrorMessage {
-            validationMessage = errorMessage
-            isSaving = false
-            return
-        }
+        Task {
+            await appState.deleteHabit(id: draft.id)
+            if let errorMessage = appState.actionErrorMessage {
+                validationMessage = errorMessage
+                isSaving = false
+                return
+            }
 
-        isSaving = false
-        dismiss()
+            isSaving = false
+            dismiss()
+        }
     }
 
     private func normalizedDraft() -> EditHabitDraft {
@@ -304,167 +206,49 @@ struct EditHabitView: View {
     }
 }
 
+private struct EditHabitScheduleView: View {
+    @Binding var scheduleDays: WeekdaySet
+
+    var body: some View {
+        AppScheduleEditorScreen(
+            backgroundStyle: .habits,
+            scheduleDays: $scheduleDays
+        )
+    }
+}
+
 private struct HabitHistoryCalendarView: View {
-    private let calendarSpacing: CGFloat = 6
-    private let weekdayRowHeight: CGFloat = 20
     let month: Date
     let editableDays: Set<Date>
     @Binding var completedDays: Set<Date>
     @Binding var skippedDays: Set<Date>
     let availableMonths: [Date]
     let onMonthChange: (Date) -> Void
-    @State private var availableWidth: CGFloat = 0
+
     private var calendar: Calendar {
-        var calendar = Calendar.autoupdatingCurrent
-        calendar.firstWeekday = 2
-        return calendar
+        MonthCalendarSupport.defaultCalendar()
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(month.formatted(.dateTime.month(.wide).year()))
-                    .font(.title3.weight(.semibold))
-
-                Spacer()
-
-                HStack(spacing: 18) {
-                    Button {
-                        changeMonth(step: -1)
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.title3.weight(.semibold))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!canGoBackward)
-                    .foregroundStyle(canGoBackward ? AnyShapeStyle(.primary) : AnyShapeStyle(.tertiary))
-
-                    Button {
-                        changeMonth(step: 1)
-                    } label: {
-                        Image(systemName: "chevron.right")
-                            .font(.title3.weight(.semibold))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!canGoForward)
-                    .foregroundStyle(canGoForward ? AnyShapeStyle(.primary) : AnyShapeStyle(.tertiary))
-                }
+        MonthCalendarView(
+            month: month,
+            availableMonths: availableMonths,
+            calendar: calendar,
+            headerSpacing: 12,
+            onMonthChange: onMonthChange
+        ) { date, cellSize in
+            HabitCalendarDayView(
+                dayNumber: calendar.component(.day, from: date),
+                style: dayStyle(for: date),
+                cellSize: cellSize
+            )
+            .contentShape(Circle())
+            .allowsHitTesting(editableDays.contains(date))
+            .onTapGesture {
+                toggle(date)
             }
-
-            VStack(spacing: calendarSpacing) {
-                HStack(spacing: calendarSpacing) {
-                    ForEach(weekdaySymbols, id: \.self) { symbol in
-                        Text(symbol)
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.secondary)
-                            .frame(width: cellSize, height: weekdayRowHeight)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .center)
-
-                ForEach(dayRows.indices, id: \.self) { rowIndex in
-                    HStack(spacing: calendarSpacing) {
-                        ForEach(dayRows[rowIndex], id: \.id) { day in
-                            Group {
-                                if let date = day.date {
-                                    HabitCalendarDayView(
-                                        dayNumber: calendar.component(.day, from: date),
-                                        style: dayStyle(for: date),
-                                        cellSize: cellSize
-                                    )
-                                    .contentShape(Circle())
-                                    .allowsHitTesting(editableDays.contains(date))
-                                    .onTapGesture {
-                                        toggle(date)
-                                    }
-                                    .disabled(!editableDays.contains(date))
-                                } else {
-                                    Color.clear
-                                        .frame(width: cellSize, height: cellSize)
-                                }
-
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .center)
-                }
-            }
+            .disabled(!editableDays.contains(date))
         }
-        .contentShape(Rectangle())
-        .background(
-            GeometryReader { proxy in
-                Color.clear
-                    .preference(key: HabitEditCalendarWidthPreferenceKey.self, value: proxy.size.width)
-            }
-        )
-        .onPreferenceChange(HabitEditCalendarWidthPreferenceKey.self) { width in
-            availableWidth = width
-        }
-        .gesture(
-            DragGesture(minimumDistance: 24)
-                .onEnded { value in
-                    if value.translation.width < -50 {
-                        changeMonth(step: 1)
-                    } else if value.translation.width > 50 {
-                        changeMonth(step: -1)
-                    }
-                }
-        )
-    }
-
-    private var weekdaySymbols: [String] {
-        let formatter = DateFormatter()
-        formatter.locale = Calendar.autoupdatingCurrent.locale ?? Locale.autoupdatingCurrent
-        let symbols = formatter.shortStandaloneWeekdaySymbols ?? formatter.shortWeekdaySymbols ?? []
-        guard symbols.count == 7 else { return symbols }
-        return (Array(symbols[1...]) + [symbols[0]]).map { $0.uppercased() }
-    }
-
-    private var days: [CalendarDayCell] {
-        guard
-            let monthInterval = calendar.dateInterval(of: .month, for: month),
-            let firstWeekInterval = calendar.dateInterval(of: .weekOfMonth, for: monthInterval.start),
-            let lastDay = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: monthInterval.start),
-            let lastWeekInterval = calendar.dateInterval(of: .weekOfMonth, for: lastDay)
-        else {
-            return []
-        }
-
-        var result: [CalendarDayCell] = []
-        var cursor = calendar.startOfDay(for: firstWeekInterval.start)
-        let end = calendar.startOfDay(for: lastWeekInterval.end)
-
-        while cursor < end {
-            let isInDisplayedMonth = calendar.isDate(cursor, equalTo: month, toGranularity: .month)
-            result.append(CalendarDayCell(id: cursor, date: isInDisplayedMonth ? cursor : nil))
-
-            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else {
-                break
-            }
-            cursor = calendar.startOfDay(for: next)
-        }
-
-        return result
-    }
-
-    private var dayRows: [[CalendarDayCell]] {
-        days.chunked(into: 7)
-    }
-
-    private var cellSize: CGFloat {
-        guard availableWidth > 0 else { return 40 }
-        let raw = floor((availableWidth - calendarSpacing * 6) / 7)
-        return min(max(raw, 35), 40)
-    }
-
-    private var canGoBackward: Bool {
-        guard let first = availableMonths.first else { return false }
-        return month > first
-    }
-
-    private var canGoForward: Bool {
-        guard let last = availableMonths.last else { return false }
-        return month < last
     }
 
     private func toggle(_ date: Date) {
@@ -503,13 +287,6 @@ private struct HabitHistoryCalendarView: View {
         }
     }
 
-    private func changeMonth(step: Int) {
-        guard let currentIndex = availableMonths.firstIndex(of: month) else { return }
-        let nextIndex = currentIndex + step
-        guard availableMonths.indices.contains(nextIndex) else { return }
-        onMonthChange(availableMonths[nextIndex])
-    }
-
     private func dayStyle(for date: Date) -> HabitCalendarDayStyle {
         guard editableDays.contains(date) else {
             return .disabled
@@ -522,11 +299,6 @@ private struct HabitHistoryCalendarView: View {
             return .available
         }
     }
-}
-
-private struct CalendarDayCell: Identifiable {
-    let id: Date
-    let date: Date?
 }
 
 enum HabitCalendarDayStyle {
@@ -586,29 +358,11 @@ struct HabitCalendarDayView: View {
     }
 }
 
-private struct HabitEditCalendarWidthPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
 private struct HabitHistoryLegend: View {
     var body: some View {
         AppLegend(items: [
             (label: "Completed", color: .blue),
             (label: "Skipped", color: .red),
         ])
-    }
-}
-
-extension Array {
-    func chunked(into size: Int) -> [[Element]] {
-        guard size > 0 else { return [] }
-
-        return stride(from: 0, to: count, by: size).map { start in
-            Array(self[start ..< Swift.min(start + size, count)])
-        }
     }
 }

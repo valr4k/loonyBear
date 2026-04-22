@@ -1,6 +1,5 @@
 import Combine
 import Foundation
-import UserNotifications
 
 enum PillDetailsLoadState {
     case found(PillDetailsProjection)
@@ -20,19 +19,22 @@ final class PillAppState: ObservableObject {
     private let repository: PillRepository
     let notificationService: PillNotificationService
     private let sideEffectCoordinator: PillSideEffectCoordinator
+    private let writeCoordinator = AppStateWriteCoordinator(name: "LoonyBear.PillAppState.WriteQueue")
 
     init(
         reconcileHistoryUseCase: ReconcilePillHistoryUseCase,
         repository: PillRepository,
         notificationService: PillNotificationService,
-        badgeService: AppBadgeService
+        badgeService: AppBadgeService,
+        clock: AppClock = .live
     ) {
         self.reconcileHistoryUseCase = reconcileHistoryUseCase
         self.repository = repository
         self.notificationService = notificationService
         sideEffectCoordinator = PillSideEffectCoordinator(
             notificationService: notificationService,
-            badgeService: badgeService
+            badgeService: badgeService,
+            clock: clock
         )
     }
 
@@ -53,24 +55,15 @@ final class PillAppState: ObservableObject {
         }
     }
 
-    func handleAppDidBecomeActive() {
-        var reconciliationErrorMessage: String?
-
-        do {
-            let finalizedDays = try reconcileHistoryUseCase.execute()
-            if finalizedDays > 0 {
-                ReliabilityLog.info("pill.history.reconcile finalized \(finalizedDays) day(s)")
-            }
-        } catch {
-            reconciliationErrorMessage = error.localizedDescription
-            ReliabilityLog.error("pill.history.reconcile failed: \(error.localizedDescription)")
+    func handleAppDidBecomeActive() async {
+        await writeCoordinator.performReconciliation(
+            logPrefix: "pill.history.reconcile",
+            refresh: refreshDashboard,
+            setError: { self.actionErrorMessage = $0 },
+            afterRefresh: notificationService.handleAppDidBecomeActive
+        ) {
+            try self.reconcileHistoryUseCase.execute()
         }
-
-        refreshDashboard()
-        if let reconciliationErrorMessage {
-            actionErrorMessage = reconciliationErrorMessage
-        }
-        notificationService.handleAppDidBecomeActive()
     }
 
     func pillDetails(id: UUID) throws -> PillDetailsProjection? {
@@ -99,85 +92,83 @@ final class PillAppState: ObservableObject {
         return state
     }
 
-    func createPill(from draft: PillDraft) throws -> UUID {
-        do {
-            let pillID = try repository.createPill(from: draft)
-            refreshDashboard()
-            actionErrorMessage = nil
-            return pillID
-        } catch {
-            actionErrorMessage = error.localizedDescription
-            throw error
+    func createPill(from draft: PillDraft) async throws -> UUID {
+        try await writeCoordinator.performThrowingMutation(
+            refresh: refreshDashboard,
+            setError: { self.actionErrorMessage = $0 }
+        ) {
+            try self.repository.createPill(from: draft)
         }
     }
 
-    func updatePill(from draft: EditPillDraft) throws {
-        do {
-            try repository.updatePill(from: draft)
-            refreshDashboard()
-            actionErrorMessage = nil
-        } catch {
-            actionErrorMessage = error.localizedDescription
-            throw error
+    func updatePill(from draft: EditPillDraft) async throws {
+        try await writeCoordinator.performThrowingMutation(
+            refresh: refreshDashboard,
+            setError: { self.actionErrorMessage = $0 }
+        ) {
+            try self.repository.updatePill(from: draft)
         }
     }
 
-    func markTakenToday(id: UUID) {
-        do {
-            try repository.markTakenToday(id: id)
-            sideEffectCoordinator.handleDailyMutation(forPillID: id)
-            refreshDashboard()
-            actionErrorMessage = nil
-        } catch {
-            refreshDashboard()
-            actionErrorMessage = error.localizedDescription
+    func markTakenToday(id: UUID) async {
+        let didMutate = await writeCoordinator.performMutation(
+            refresh: refreshDashboard,
+            setError: { self.actionErrorMessage = $0 },
+            refreshOnFailure: true
+        ) {
+            try self.repository.markTakenToday(id: id)
         }
+        guard didMutate else { return }
+
+        sideEffectCoordinator.handleDailyMutation(forPillID: id)
     }
 
-    func skipPillToday(id: UUID) {
-        do {
-            try repository.skipPillToday(id: id)
-            sideEffectCoordinator.handleDailyMutation(forPillID: id)
-            refreshDashboard()
-            actionErrorMessage = nil
-        } catch {
-            refreshDashboard()
-            actionErrorMessage = error.localizedDescription
+    func skipPillToday(id: UUID) async {
+        let didMutate = await writeCoordinator.performMutation(
+            refresh: refreshDashboard,
+            setError: { self.actionErrorMessage = $0 },
+            refreshOnFailure: true
+        ) {
+            try self.repository.skipPillToday(id: id)
         }
+        guard didMutate else { return }
+
+        sideEffectCoordinator.handleDailyMutation(forPillID: id)
     }
 
-    func clearPillDayStateToday(id: UUID) {
-        do {
-            try repository.clearPillDayStateToday(id: id)
-            sideEffectCoordinator.handleDailyMutation(forPillID: id)
-            refreshDashboard()
-            actionErrorMessage = nil
-        } catch {
-            refreshDashboard()
-            actionErrorMessage = error.localizedDescription
+    func clearPillDayStateToday(id: UUID) async {
+        let didMutate = await writeCoordinator.performMutation(
+            refresh: refreshDashboard,
+            setError: { self.actionErrorMessage = $0 },
+            refreshOnFailure: true
+        ) {
+            try self.repository.clearPillDayStateToday(id: id)
         }
+        guard didMutate else { return }
+
+        sideEffectCoordinator.handleDailyMutation(forPillID: id)
     }
 
-    func deletePill(id: UUID) {
-        do {
-            try repository.deletePill(id: id)
-            sideEffectCoordinator.handleDeletion(forPillID: id)
-            refreshDashboard()
-            actionErrorMessage = nil
-        } catch {
-            refreshDashboard()
-            actionErrorMessage = error.localizedDescription
+    func deletePill(id: UUID) async {
+        let didDelete = await writeCoordinator.performMutation(
+            refresh: refreshDashboard,
+            setError: { self.actionErrorMessage = $0 },
+            refreshOnFailure: true
+        ) {
+            try self.repository.deletePill(id: id)
         }
+        guard didDelete else { return }
+
+        sideEffectCoordinator.handleDeletion(forPillID: id)
     }
 
-    func movePills(from offsets: IndexSet, to destination: Int) {
-        do {
-            try repository.movePills(from: offsets, to: destination)
-            refreshDashboard()
-            actionErrorMessage = nil
-        } catch {
-            refreshDashboard()
-            actionErrorMessage = error.localizedDescription
+    func movePills(from offsets: IndexSet, to destination: Int) async {
+        _ = await writeCoordinator.performMutation(
+            refresh: refreshDashboard,
+            setError: { self.actionErrorMessage = $0 },
+            refreshOnFailure: true
+        ) {
+            try self.repository.movePills(from: offsets, to: destination)
         }
     }
 
@@ -196,4 +187,5 @@ final class PillAppState: ObservableObject {
     func clearActionError() {
         actionErrorMessage = nil
     }
+
 }
