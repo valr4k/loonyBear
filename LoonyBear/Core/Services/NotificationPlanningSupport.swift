@@ -45,7 +45,7 @@ enum ReminderPlanningSupport {
 
                 let normalizedDay = calendar.startOfDay(for: localDay)
                 guard normalizedDay >= normalizedStartDate else { return nil }
-                guard reminder.scheduleDays.contains(calendar.weekdaySet(for: normalizedDay)) else { return nil }
+                guard isScheduled(normalizedDay, for: reminder, calendar: calendar) else { return nil }
                 guard !reminder.completedDays.contains(normalizedDay) else { return nil }
                 guard !reminder.skippedDays.contains(normalizedDay) else { return nil }
                 guard let scheduledDateTime = calendar.date(
@@ -87,7 +87,7 @@ enum ReminderPlanningSupport {
 
                 let normalizedDay = calendar.startOfDay(for: localDay)
                 guard normalizedDay >= normalizedStartDate else { return nil }
-                guard reminder.scheduleDays.contains(calendar.weekdaySet(for: normalizedDay)) else { return nil }
+                guard isScheduled(normalizedDay, for: reminder, calendar: calendar) else { return nil }
                 guard !reminder.takenDays.contains(normalizedDay) else { return nil }
                 guard !reminder.skippedDays.contains(normalizedDay) else { return nil }
                 guard let scheduledDateTime = calendar.date(
@@ -163,5 +163,27 @@ enum ReminderPlanningSupport {
 
             return [.aggregated(group, scheduledDateTime: scheduledDateTime, projectedBadgeCount: projectedBadgeCount)]
         }
+    }
+
+    private static func isScheduled(_ day: Date, for reminder: HabitReminderConfiguration, calendar: Calendar) -> Bool {
+        guard !reminder.scheduleHistory.isEmpty else {
+            return reminder.scheduleDays.contains(calendar.weekdaySet(for: day))
+        }
+        return HistoryScheduleApplicability.effectiveWeekdays(
+            on: day,
+            from: reminder.scheduleHistory,
+            calendar: calendar
+        )?.contains(calendar.weekdaySet(for: day)) ?? false
+    }
+
+    private static func isScheduled(_ day: Date, for reminder: PillReminderConfiguration, calendar: Calendar) -> Bool {
+        guard !reminder.scheduleHistory.isEmpty else {
+            return reminder.scheduleDays.contains(calendar.weekdaySet(for: day))
+        }
+        return HistoryScheduleApplicability.effectiveWeekdays(
+            on: day,
+            from: reminder.scheduleHistory,
+            calendar: calendar
+        )?.contains(calendar.weekdaySet(for: day)) ?? false
     }
 }

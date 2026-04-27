@@ -161,8 +161,7 @@ struct CreatePillView: View {
 
         isSaving = true
         validationMessage = nil
-        var savedDraft = draft
-        savedDraft.takenDays = generatedTakenDays(from: draft)
+        let savedDraft = draft
 
         Task {
             do {
@@ -177,34 +176,6 @@ struct CreatePillView: View {
                 isSaving = false
             }
         }
-    }
-
-    private func generatedTakenDays(from draft: PillDraft) -> Set<Date> {
-        let calendar = Calendar.current
-        let start = calendar.startOfDay(for: draft.startDate)
-        let today = calendar.startOfDay(for: Date())
-        guard let yesterday = calendar.date(byAdding: .day, value: -1, to: today) else { return [] }
-        let end = calendar.startOfDay(for: yesterday)
-        guard start <= end else { return [] }
-
-        var dates: Set<Date> = []
-        var cursor = start
-        while cursor <= end {
-            if draft.useScheduleForHistory {
-                if draft.scheduleDays.contains(calendar.weekdaySet(for: cursor)) {
-                    dates.insert(cursor)
-                }
-            } else {
-                dates.insert(cursor)
-            }
-
-            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else {
-                break
-            }
-            cursor = calendar.startOfDay(for: next)
-        }
-
-        return dates
     }
 
     private var invalidMessage: String {

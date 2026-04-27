@@ -4,21 +4,20 @@ struct HabitDetailsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var appState: HabitAppState
     let habit: HabitCardProjection
-    let onEdit: (UUID) -> Void
     @State private var details: HabitDetailsProjection?
     @State private var detailErrorMessage: String?
     @State private var isIntegrityError = false
     @State private var isLoadingDetails = true
     @State private var needsReloadOnAppear = false
+    @State private var isShowingEdit = false
     @State private var displayedMonth: Date = {
         var calendar = Calendar.autoupdatingCurrent
         calendar.firstWeekday = 2
         return calendar.date(from: calendar.dateComponents([.year, .month], from: Date())) ?? Date()
     }()
 
-    init(habit: HabitCardProjection, onEdit: @escaping (UUID) -> Void = { _ in }) {
+    init(habit: HabitCardProjection) {
         self.habit = habit
-        self.onEdit = onEdit
     }
 
     var body: some View {
@@ -74,6 +73,10 @@ struct HabitDetailsView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     AppFormSectionHeader(title: "Calendar")
 
+                    if let calendarReviewMessage = calendarReviewMessage(for: details) {
+                        AppHistoryReviewRow(message: calendarReviewMessage)
+                    }
+
                     DetailsCard {
                         HabitHeatmapView(
                             startDate: details.startDate,
@@ -123,11 +126,14 @@ struct HabitDetailsView: View {
             if details != nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Edit") {
-                        onEdit(habit.id)
+                        isShowingEdit = true
                     }
                     .accessibilityLabel("Edit Habit")
                 }
             }
+        }
+        .navigationDestination(isPresented: $isShowingEdit) {
+            habitEditDestination
         }
         .onAppear {
             guard needsReloadOnAppear else { return }
@@ -139,6 +145,29 @@ struct HabitDetailsView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .habitStoreDidChange)) { _ in
             reloadDetails()
+        }
+    }
+
+    @ViewBuilder
+    private var habitEditDestination: some View {
+        if let details {
+            EditHabitView(
+                details: details,
+                showsCloseButton: false,
+                onSaveSuccess: {
+                    reloadDetails()
+                },
+                onDeleteSuccess: {
+                    dismiss()
+                }
+            )
+            .environmentObject(appState)
+        } else {
+            ContentUnavailableView(
+                "Habit not found",
+                systemImage: "checklist",
+                description: Text("This habit is no longer available.")
+            )
         }
     }
 
@@ -159,6 +188,30 @@ struct HabitDetailsView: View {
             isIntegrityError = true
         }
         isLoadingDetails = false
+    }
+
+    private func calendarReviewMessage(for details: HabitDetailsProjection) -> String? {
+        let missingPastDays = EditableHistoryValidation.missingPastDays(
+            editableDays: details.requiredPastScheduledDays,
+            positiveDays: details.completedDays,
+            skippedDays: details.skippedDays
+        )
+        guard !missingPastDays.isEmpty else { return nil }
+
+        if isOnlyActiveOverdueMissing(missingPastDays, activeOverdueDay: details.activeOverdueDay) {
+            return AppCopy.overdueScheduledDayDetailsMessage(actionLabel: "Completed", days: missingPastDays)
+        }
+        return AppCopy.missingScheduledDaysDetailsMessage(actionLabel: "Completed", days: missingPastDays)
+    }
+
+    private func isOnlyActiveOverdueMissing(_ missingPastDays: [Date], activeOverdueDay: Date?) -> Bool {
+        guard
+            missingPastDays.count == 1,
+            let activeOverdueDay
+        else {
+            return false
+        }
+        return Calendar.current.isDate(missingPastDays[0], inSameDayAs: activeOverdueDay)
     }
 }
 

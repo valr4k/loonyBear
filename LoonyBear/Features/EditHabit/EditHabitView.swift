@@ -5,14 +5,28 @@ struct EditHabitView: View {
     @EnvironmentObject private var appState: HabitAppState
 
     private let onSaveSuccess: () -> Void
+    private let onDeleteSuccess: () -> Void
+    private let showsCloseButton: Bool
+    private let requiredPastScheduledDays: Set<Date>
+    private let activeOverdueDay: Date?
     @State private var draft: EditHabitDraft
     @State private var validationMessage: String?
+    @State private var historyValidationMessage: String?
     @State private var displayedMonth: Date
     @State private var isSaving = false
     @State private var isShowingDeleteConfirmation = false
 
-    init(details: HabitDetailsProjection, onSaveSuccess: @escaping () -> Void = {}) {
+    init(
+        details: HabitDetailsProjection,
+        showsCloseButton: Bool = true,
+        onSaveSuccess: @escaping () -> Void = {},
+        onDeleteSuccess: @escaping () -> Void = {}
+    ) {
         self.onSaveSuccess = onSaveSuccess
+        self.onDeleteSuccess = onDeleteSuccess
+        self.showsCloseButton = showsCloseButton
+        requiredPastScheduledDays = details.requiredPastScheduledDays
+        activeOverdueDay = details.activeOverdueDay
         _draft = State(initialValue: EditHabitDraft(
             id: details.id,
             type: details.type,
@@ -35,6 +49,12 @@ struct EditHabitView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 AppFormSectionHeader(title: "Calendar")
+
+                if let currentHistoryReviewMessage {
+                    AppHistoryReviewRow(message: currentHistoryReviewMessage)
+                } else if let historyValidationMessage {
+                    AppCompactValidationBanner(message: historyValidationMessage)
+                }
 
                 AppCard {
                     HabitHistoryCalendarView(
@@ -80,13 +100,15 @@ struct EditHabitView: View {
         .navigationTitle(draft.type.sectionTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark")
+            if showsCloseButton {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Close")
                 }
-                .accessibilityLabel("Close")
             }
 
             ToolbarItem(placement: .topBarTrailing) {
@@ -97,7 +119,7 @@ struct EditHabitView: View {
                 }
                 .fontWeight(.semibold)
                 .accessibilityLabel("Save")
-                .disabled(!isFormValid || isSaving)
+                .disabled(!isFormValid || hasMissingPastDays || isSaving)
             }
         }
         .onChange(of: draft.reminderEnabled) { _, isEnabled in
@@ -111,7 +133,14 @@ struct EditHabitView: View {
                 }
             }
         }
+        .onChange(of: draft.completedDays) { _, _ in
+            historyValidationMessage = nil
+        }
+        .onChange(of: draft.skippedDays) { _, _ in
+            historyValidationMessage = nil
+        }
         .animation(.easeInOut(duration: 0.18), value: validationMessage)
+        .animation(.easeInOut(duration: 0.18), value: historyValidationMessage)
     }
 
     private var nameSection: some View {
@@ -148,6 +177,25 @@ struct EditHabitView: View {
         !draft.trimmedName.isEmpty && draft.scheduleDays.rawValue != 0
     }
 
+    private var currentMissingPastDays: [Date] {
+        let normalized = normalizedDraft()
+        return EditableHistoryValidation.missingPastDays(
+            editableDays: requiredPastScheduledDays,
+            positiveDays: normalized.completedDays,
+            skippedDays: normalized.skippedDays
+        )
+    }
+
+    private var hasMissingPastDays: Bool {
+        !currentMissingPastDays.isEmpty
+    }
+
+    private var currentHistoryReviewMessage: String? {
+        let missingPastDays = currentMissingPastDays
+        guard !missingPastDays.isEmpty else { return nil }
+        return historyReviewMessage(for: missingPastDays)
+    }
+
     private var shouldShowNameValidation: Bool {
         draft.name.isEmpty == false && draft.trimmedName.isEmpty
     }
@@ -160,7 +208,15 @@ struct EditHabitView: View {
 
         isSaving = true
         validationMessage = nil
+        historyValidationMessage = nil
         let savedDraft = normalizedDraft()
+        let missingPastDays = currentMissingPastDays
+        guard missingPastDays.isEmpty else {
+            historyValidationMessage = historyReviewMessage(for: missingPastDays)
+            displayedMonth = month(containing: missingPastDays[0])
+            isSaving = false
+            return
+        }
 
         Task {
             do {
@@ -171,7 +227,14 @@ struct EditHabitView: View {
 
                 await appState.syncNotificationsAfterHabitUpdate(from: savedDraft)
             } catch {
-                validationMessage = appState.actionErrorMessage ?? error.localizedDescription
+                if let error = error as? EditableHistoryValidationError {
+                    historyValidationMessage = error.localizedDescription
+                    if case .missingHabitPastDays(let days) = error, let firstDay = days.first {
+                        displayedMonth = month(containing: firstDay)
+                    }
+                } else {
+                    validationMessage = appState.actionErrorMessage ?? error.localizedDescription
+                }
                 isSaving = false
             }
         }
@@ -180,6 +243,7 @@ struct EditHabitView: View {
     private func deleteHabit() {
         isSaving = true
         validationMessage = nil
+        historyValidationMessage = nil
 
         Task {
             await appState.deleteHabit(id: draft.id)
@@ -190,6 +254,7 @@ struct EditHabitView: View {
             }
 
             isSaving = false
+            onDeleteSuccess()
             dismiss()
         }
     }
@@ -198,6 +263,27 @@ struct EditHabitView: View {
         var normalized = draft
         normalized.skippedDays.subtract(normalized.completedDays)
         return normalized
+    }
+
+    private func historyReviewMessage(for missingPastDays: [Date]) -> String {
+        if isOnlyActiveOverdueMissing(missingPastDays) {
+            return AppCopy.overdueScheduledDayEditMessage(actionLabel: "Completed", days: missingPastDays)
+        }
+        return EditableHistoryValidationError.missingHabitPastDays(missingPastDays).localizedDescription
+    }
+
+    private func isOnlyActiveOverdueMissing(_ missingPastDays: [Date]) -> Bool {
+        guard
+            missingPastDays.count == 1,
+            let activeOverdueDay
+        else {
+            return false
+        }
+        return Calendar.current.isDate(missingPastDays[0], inSameDayAs: activeOverdueDay)
+    }
+
+    private func month(containing date: Date) -> Date {
+        Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: date)) ?? date
     }
 
     @ViewBuilder

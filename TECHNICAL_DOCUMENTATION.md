@@ -165,6 +165,14 @@ For past days:
 - fills them with either positive or skipped default state
 - removes any skipped day that is also positive
 
+Current Habit and Pill update flows pass an empty required-day set and `pastDefaultSelection: .none`, so saving an edit does not auto-fill missing editable past days.
+
+`EditableHistoryValidation.missingPastDays(...)`
+- checks editable days before today
+- requires each past editable day to have either a positive state or a skipped state
+- allows today to stay empty
+- returns missing past editable days so the UI and repositories can block save with a clear validation error
+
 ### 4.4 HistoryScheduleApplicability
 Functions:
 - `pastEditableDays(...)`
@@ -204,25 +212,24 @@ Create flow writes:
 - `historyModeRaw`
 - optional reminder values
 
-After that, `autoFillMissingCompletedCompletions(...)` is executed.
+After that, the repository generates initial completed days from `startDate` through yesterday and inserts one `HabitCompletion` per generated day.
 
 ### 5.5 Habit Auto Fill
-`autoFillMissingCompletedCompletions(...)` inserts `HabitCompletion` rows with source:
+Initial Habit history generation inserts `HabitCompletion` rows with source:
 - `auto fill`
 
 Rules:
+- if `useScheduleForHistory == true`, only scheduled days are generated
+- if `useScheduleForHistory == false`, every day in the range is generated
 - does not overwrite existing positive completion rows
 - does not overwrite existing skipped rows
 - does not insert a row if history objects already exist for that day
 
 ### 5.6 Habit Reconciliation
 `reconcilePastDays(today:)`:
-- loads all habits
-- validates required fields
-- loads schedule history and completion history
-- computes required past days from `HabitHistoryMode`
-- inserts missing completed rows through the same auto-fill helper
-- saves only if inserted count is greater than `0`
+- is a no-op for stored history rows
+- does not insert `skipped` rows for overdue catch-up
+- leaves missing scheduled days empty so the projection layer can classify them as active overdue or history gaps
 
 ### 5.7 Habit Today Mutations
 `completeHabitToday(id:)`
@@ -237,18 +244,26 @@ Rules:
 `clearHabitDayStateToday(id:)`
 - deletes today's row if present
 
+Card swipe actions call the day-specific variants for `activeOverdueDay` when it is set. Otherwise they target today. History gaps cannot be repaired from the card; they must be fixed in Edit.
+
 ### 5.8 Habit Update
 `updateHabit(from:)`:
 - updates name
 - updates reminder flags and time
 - inserts a new `HabitScheduleVersion` if the weekday mask changed
-- reads the persisted `historyModeRaw` already stored on the Habit
+- if today's state is already explicit, the new schedule version starts tomorrow; otherwise it starts today
+- preserves the persisted `historyModeRaw` already stored on the Habit
 - builds editable day set from `EditableHistoryWindow.dates(startDate:)`
 - normalizes selected days with `EditableHistoryContract.normalizedSelection(...)`
-- uses `pastDefaultSelection: .positive`
+- uses `pastDefaultSelection: .none`
+- validates that every past editable scheduled day is either `manual edit`/completed or `skipped`
+- throws `EditableHistoryValidationError.missingHabitPastDays` if a past editable scheduled day is empty
+- Edit Habit includes a past active overdue day in save validation and disables Save until it is resolved
+- Edit Habit surfaces missing past-day review as a persistent warning row above the calendar; if only the active overdue day is missing, the row uses overdue-specific copy
+- Habit Details computes missing past days from `requiredPastScheduledDays`; it shows active-overdue-specific copy when the only missing day is the active overdue day, otherwise it asks the user to open Edit and resolve the missing scheduled days
 - rewrites rows day by day using `manual edit` or `skipped`
 - removes duplicate history rows for the same day except the primary latest row
-- deletes today's row if the normalized selection for today is none
+- deletes any editable-day row whose normalized selection is none
 
 ### 5.9 Habit Dashboard Projection
 `fetchDashboardHabits()` builds `HabitCardProjection` values.
@@ -263,7 +278,11 @@ Projection fields include:
 - `isReminderScheduledToday`
 - `isCompletedToday`
 - `isSkippedToday`
+- `needsHistoryReview`
+- `activeOverdueDay`
 - sort order
+
+If `activeOverdueDay` is set, Habit cards show a red `Today`, `Yesterday`, or date label. `activeOverdueDay` is derived from the latest due scheduled day: if that latest due day is empty, it is active overdue; if it already has completed/skipped state, there is no active overdue even if older due days are empty. `needsHistoryReview` excludes the active overdue day, so Habit cards show the amber history warning icon alongside overdue only when another required past scheduled day is empty. `HabitDetailsProjection.requiredPastScheduledDays` still includes the active overdue day for Details and Edit validation. If neither applies, the card shows today's completed/skipped status.
 
 ## 6. Pill Pipeline
 
@@ -285,7 +304,7 @@ Create form validation rules:
 There is no repository-level max-count rule for pills.
 
 ### 6.4 Pill Create Generation
-Before repository create is called, `CreatePillView` generates `takenDays` from `startDate` through yesterday.
+Repository create generates `takenDays` from `startDate` through yesterday.
 
 Rules:
 - if `useScheduleForHistory == true`, only scheduled days are included
@@ -297,17 +316,13 @@ Create flow writes:
 - one initial `PillScheduleVersion`
 - `historyModeRaw`
 - one `PillIntake` row per generated `takenDay` with source `manual edit`
-
-After that, `autoFinalizeMissingSkippedIntakes(...)` is executed.
+- today is not prefilled
 
 ### 6.6 Pill Reconciliation
 `reconcilePastDays(today:)`:
-- loads all pills
-- validates required fields
-- loads schedules and intakes
-- computes required past days from `PillHistoryMode`
-- inserts missing skipped rows
-- saves only if inserted count is greater than `0`
+- is a no-op for stored history rows
+- does not insert `skipped` rows for overdue catch-up
+- leaves missing scheduled days empty so the projection layer can classify them as active overdue or history gaps
 
 ### 6.7 Pill Today Mutations
 `markTakenToday(id:)`
@@ -322,20 +337,26 @@ After that, `autoFinalizeMissingSkippedIntakes(...)` is executed.
 `clearPillDayStateToday(id:)`
 - deletes today's row if present
 
+Card swipe actions call the day-specific variants for `activeOverdueDay` when it is set. Otherwise they target today. History gaps cannot be repaired from the card; they must be fixed in Edit.
+
 ### 6.8 Pill Update
 `updatePill(from:)`:
 - updates name, dosage, details
 - updates reminder flags and time
 - inserts a new `PillScheduleVersion` if weekday mask changed
-- reads the persisted `historyModeRaw` already stored on the Pill
+- if today's state is already explicit, the new schedule version starts tomorrow; otherwise it starts today
+- preserves the persisted `historyModeRaw` already stored on the Pill
 - builds editable day set from `EditableHistoryWindow.dates(startDate:)`
-- computes required finalized days:
-  - `scheduleBased -> pastScheduledEditableDays`
-  - `everyDay -> pastEditableDays`
 - normalizes selected days with `EditableHistoryContract.normalizedSelection(...)`
+- uses `pastDefaultSelection: .none`
+- validates that every past editable scheduled day is either `manual edit`/taken or `skipped`
+- throws `EditableHistoryValidationError.missingPillPastDays` if a past editable scheduled day is empty
+- Edit Pill includes a past active overdue day in save validation and disables Save until it is resolved
+- Edit Pill surfaces missing past-day review as a persistent warning row above the calendar; if only the active overdue day is missing, the row uses overdue-specific copy
+- Pill Details computes missing past days from `requiredPastScheduledDays`; it shows active-overdue-specific copy when the only missing day is the active overdue day, otherwise it asks the user to open Edit and resolve the missing scheduled days
 - rewrites rows day by day using `manual edit` or `skipped`
 - removes duplicate history rows for the same day except the primary latest row
-- deletes today's row if the normalized selection for today is none
+- deletes any editable-day row whose normalized selection is none
 
 ### 6.9 Pill Dashboard Projection
 `fetchDashboardPills()` builds `PillCardProjection` values.
@@ -351,7 +372,11 @@ Projection fields include:
 - `isScheduledToday`
 - `isTakenToday`
 - `isSkippedToday`
+- `needsHistoryReview`
+- `activeOverdueDay`
 - sort order
+
+If `activeOverdueDay` is set, Pill cards show a red `Today`, `Yesterday`, or date label. `activeOverdueDay` is derived from the latest due scheduled day: if that latest due day is empty, it is active overdue; if it already has taken/skipped state, there is no active overdue even if older due days are empty. `needsHistoryReview` excludes the active overdue day, so Pill cards show the amber history warning icon alongside overdue only when another required past scheduled day is empty. `PillDetailsProjection.requiredPastScheduledDays` still includes the active overdue day for Details and Edit validation. If neither applies, the card shows today's taken/skipped status.
 
 ## 7. Streak Engine
 
@@ -474,19 +499,27 @@ Badge count is:
 
 ### 9.2 Overdue Habit Rule
 A Habit is overdue when:
-- `isReminderScheduledToday == true`
-- it is not completed today
-- it is not skipped today
-- reminder hour and minute exist
-- reminder time for today is less than or equal to `now`
+- `activeOverdueDay != nil`
+- the active overdue day is the latest due scheduled day
+- the latest due scheduled day has reminder time passed, or 00:00 has passed when reminders are disabled
+- the latest due scheduled day is neither completed nor skipped
+- the active overdue day is excluded from Dashboard card missing-history review while it remains the latest due scheduled day
+- Details and Edit still require a past active overdue day to be completed or skipped
+- older empty due scheduled days remain missing history and require manual review
 
 ### 9.3 Overdue Pill Rule
 A Pill is overdue when:
-- `isReminderScheduledToday == true`
-- it is not taken today
-- it is not skipped today
-- reminder hour and minute exist
-- reminder time for today is less than or equal to `now`
+- `activeOverdueDay != nil`
+- the active overdue day is the latest due scheduled day
+- the latest due scheduled day has reminder time passed, or 00:00 has passed when reminders are disabled
+- the latest due scheduled day is neither taken nor skipped
+- the active overdue day is excluded from Dashboard card missing-history review while it remains the latest due scheduled day
+- Details and Edit still require a past active overdue day to be taken or skipped
+- older empty due scheduled days remain missing history and require manual review
+
+Badge and overdue calculation do not use overdue anchors as source of truth.
+Repository reconciliation does not auto-skip missing overdue/history days.
+The active overdue label shown on cards is `Today`, `Yesterday`, or a date like `26.04.2026`.
 
 ### 9.4 Badge API
 - on iOS 17+: `UNUserNotificationCenter.setBadgeCount`
@@ -626,7 +659,6 @@ Contains:
 - Appearance segmented picker
 - Backup navigation
 - Rules & Logic navigation
-- informational rows for Apple Watch notifications and iPhone widgets
 - app version and build footer
 
 ### 13.2 Rules & Logic Screen
@@ -637,7 +669,22 @@ Behavior:
 - shows loading state first
 - shows unavailable state if content cannot be loaded or decoded
 
-## 14. Demo Data
+## 14. Startup Health Check
+
+Defined in `LoonyBear/Core/Services/ReliabilitySupport.swift`.
+
+After the first initial dashboard load, `ContentView` runs `AppStartupHealthCheckCoordinator.runIfNeeded()` in a background task.
+
+The startup health check validates:
+- Habit and Pill required fields
+- enum-backed stored values such as habit type, history mode, and history source
+- reminder hour/minute fields when reminders are enabled
+- latest schedule weekday masks
+- duplicate HabitCompletion and PillIntake rows for the same owner/day
+
+It logs success or a `DataIntegrityError`; it does not block the initial dashboard load.
+
+## 15. Demo Data
 
 Defined in `LoonyBear/Core/Data/DemoDataWriter.swift`.
 

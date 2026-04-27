@@ -24,6 +24,7 @@ final class HabitAppState: ObservableObject {
     let notificationService: NotificationService
     private let sideEffectCoordinator: HabitSideEffectCoordinator
     private let writeCoordinator = AppStateWriteCoordinator(name: "LoonyBear.HabitAppState.WriteQueue")
+    private let clock: AppClock
 
     init(
         loadDashboardUseCase: LoadDashboardUseCase,
@@ -34,19 +35,20 @@ final class HabitAppState: ObservableObject {
         notificationService: NotificationService,
         widgetSyncService: WidgetSyncService,
         badgeService: AppBadgeService,
-        clock: AppClock = .live
+        clock: AppClock? = nil
     ) {
+        let resolvedClock = clock ?? .live
         self.loadDashboardUseCase = loadDashboardUseCase
         self.createHabitUseCase = createHabitUseCase
         self.updateHabitUseCase = updateHabitUseCase
         self.reconcileHistoryUseCase = reconcileHistoryUseCase
         self.repository = repository
         self.notificationService = notificationService
+        self.clock = resolvedClock
         sideEffectCoordinator = HabitSideEffectCoordinator(
             notificationService: notificationService,
             widgetSyncService: widgetSyncService,
-            badgeService: badgeService,
-            clock: clock
+            clock: resolvedClock
         )
     }
 
@@ -71,39 +73,51 @@ final class HabitAppState: ObservableObject {
     }
 
     func completeHabitToday(id: UUID) async {
+        await completeHabitDay(id: id, on: clock.now())
+    }
+
+    func completeHabitDay(id: UUID, on day: Date) async {
         let didComplete = await writeCoordinator.performMutation(
             refresh: refreshDashboard,
             setError: { self.actionErrorMessage = $0 }
         ) {
-            try self.repository.completeHabitToday(id: id)
+            try self.repository.completeHabitDay(id: id, on: day)
         }
         guard didComplete else { return }
 
-        sideEffectCoordinator.handleDailyMutation(forHabitID: id)
+        sideEffectCoordinator.handleDailyMutation(forHabitID: id, on: day)
     }
 
     func skipHabitToday(id: UUID) async {
+        await skipHabitDay(id: id, on: clock.now())
+    }
+
+    func skipHabitDay(id: UUID, on day: Date) async {
         let didSkip = await writeCoordinator.performMutation(
             refresh: refreshDashboard,
             setError: { self.actionErrorMessage = $0 }
         ) {
-            try self.repository.skipHabitToday(id: id)
+            try self.repository.skipHabitDay(id: id, on: day)
         }
         guard didSkip else { return }
 
-        sideEffectCoordinator.handleDailyMutation(forHabitID: id)
+        sideEffectCoordinator.handleDailyMutation(forHabitID: id, on: day)
     }
 
     func clearHabitDayStateToday(id: UUID) async {
+        await clearHabitDayState(id: id, on: clock.now())
+    }
+
+    func clearHabitDayState(id: UUID, on day: Date) async {
         let didClearDayState = await writeCoordinator.performMutation(
             refresh: refreshDashboard,
             setError: { self.actionErrorMessage = $0 }
         ) {
-            try self.repository.clearHabitDayStateToday(id: id)
+            try self.repository.clearHabitDayState(id: id, on: day)
         }
         guard didClearDayState else { return }
 
-        sideEffectCoordinator.handleDailyMutation(forHabitID: id)
+        sideEffectCoordinator.handleDailyMutation(forHabitID: id, on: day)
     }
 
     func deleteHabit(id: UUID) async {
@@ -172,6 +186,11 @@ final class HabitAppState: ObservableObject {
     }
 
     func handleAppDidBecomeActive() async {
+        let shouldMarkInitialLoad = !hasLoadedOnce
+        if shouldMarkInitialLoad {
+            isLoading = true
+        }
+
         await writeCoordinator.performReconciliation(
             logPrefix: "habit.history.reconcile",
             refresh: refreshDashboard,
@@ -179,6 +198,11 @@ final class HabitAppState: ObservableObject {
             afterRefresh: notificationService.handleAppDidBecomeActive
         ) {
             try self.reconcileHistoryUseCase.execute()
+        }
+
+        if shouldMarkInitialLoad {
+            hasLoadedOnce = true
+            isLoading = false
         }
     }
 

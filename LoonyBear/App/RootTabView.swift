@@ -2,20 +2,22 @@ import Combine
 import SwiftUI
 
 struct RootTabView: View {
-    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var appState: HabitAppState
     @EnvironmentObject private var pillAppState: PillAppState
     @State private var selectedTab: AppTab = .myPills
     @State private var presentedHabitSheet: HabitSheet?
     @State private var presentedPillSheet: PillSheet?
-    @State private var badgeNow = Date()
+    let currentTime: Date
 
-    private let badgeRefreshTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+    init(currentTime: Date = Date()) {
+        self.currentTime = currentTime
+    }
 
     var body: some View {
         TabView(selection: $selectedTab) {
             NavigationStack {
                 MyPillsView(
+                    currentTime: currentTime,
                     onCreatePill: {
                         presentedPillSheet = .create
                     },
@@ -42,6 +44,7 @@ struct RootTabView: View {
 
             NavigationStack {
                 MyHabitsView(
+                    currentTime: currentTime,
                     onCreateHabit: {
                         presentedHabitSheet = .create
                     },
@@ -84,13 +87,6 @@ struct RootTabView: View {
             presentedPillSheet = nil
             selectedTab = .myPills
         }
-        .onReceive(badgeRefreshTimer) { now in
-            badgeNow = now
-        }
-        .onChange(of: scenePhase) { _, newPhase in
-            guard newPhase == .active else { return }
-            badgeNow = Date()
-        }
     }
 
     @ViewBuilder
@@ -101,9 +97,7 @@ struct RootTabView: View {
                 .environmentObject(appState)
         case .details(let habitID):
             if let habit = habitProjection(for: habitID) {
-                HabitDetailsView(habit: habit) { id in
-                    presentedHabitSheet = .edit(id)
-                }
+                HabitDetailsView(habit: habit)
                     .environmentObject(appState)
             } else {
                 ContentUnavailableView(
@@ -113,7 +107,70 @@ struct RootTabView: View {
                 )
             }
         case .edit(let habitID):
-            switch appState.inspectHabitDetailsState(id: habitID) {
+            HabitEditSheetLoader(habitID: habitID)
+                .environmentObject(appState)
+        }
+    }
+
+    @ViewBuilder
+    private func pillSheetContent(for sheet: PillSheet) -> some View {
+        switch sheet {
+        case .create:
+            CreatePillView()
+                .environmentObject(pillAppState)
+        case .details(let pillID):
+            if let pill = pillProjection(for: pillID) {
+                PillDetailsView(pill: pill)
+                    .environmentObject(pillAppState)
+            } else {
+                ContentUnavailableView(
+                    "Pill not found",
+                    systemImage: "pills",
+                    description: Text("This pill is no longer available.")
+                )
+            }
+        case .edit(let pillID):
+            PillEditSheetLoader(pillID: pillID)
+                .environmentObject(pillAppState)
+        }
+    }
+
+    private func habitProjection(for id: UUID) -> HabitCardProjection? {
+        appState.dashboard.sections
+            .flatMap(\.habits)
+            .first { $0.id == id }
+    }
+
+    private func pillProjection(for id: UUID) -> PillCardProjection? {
+        pillAppState.dashboard.pills
+            .first { $0.id == id }
+    }
+
+    private var overdueHabitCount: Int {
+        ProjectedBadgeCountCalculator.overdueHabitCount(
+            now: currentTime,
+            habits: appState.dashboard.sections.flatMap(\.habits)
+        )
+    }
+
+    private var overduePillCount: Int {
+        ProjectedBadgeCountCalculator.overduePillCount(
+            now: currentTime,
+            pills: pillAppState.dashboard.pills
+        )
+    }
+}
+
+private struct HabitEditSheetLoader: View {
+    @EnvironmentObject private var appState: HabitAppState
+    let habitID: UUID
+    @State private var state: HabitEditSheetLoadState = .loading
+
+    var body: some View {
+        Group {
+            switch state {
+            case .loading:
+                ProgressView()
             case .found(let details):
                 EditHabitView(details: details)
                     .environmentObject(appState)
@@ -131,29 +188,37 @@ struct RootTabView: View {
                 )
             }
         }
-    }
-
-    @ViewBuilder
-    private func pillSheetContent(for sheet: PillSheet) -> some View {
-        switch sheet {
-        case .create:
-            CreatePillView()
-                .environmentObject(pillAppState)
-        case .details(let pillID):
-            if let pill = pillProjection(for: pillID) {
-                PillDetailsView(pill: pill) { id in
-                    presentedPillSheet = .edit(id)
-                }
-                    .environmentObject(pillAppState)
-            } else {
-                ContentUnavailableView(
-                    "Pill not found",
-                    systemImage: "pills",
-                    description: Text("This pill is no longer available.")
-                )
+        .task(id: habitID) {
+            state = .loading
+            switch appState.inspectHabitDetailsState(id: habitID) {
+            case .found(let details):
+                state = .found(details)
+            case .notFound:
+                state = .notFound
+            case .integrityError(let message):
+                state = .integrityError(message)
             }
-        case .edit(let pillID):
-            switch pillAppState.inspectPillDetailsState(id: pillID) {
+        }
+    }
+}
+
+private enum HabitEditSheetLoadState {
+    case loading
+    case found(HabitDetailsProjection)
+    case notFound
+    case integrityError(String)
+}
+
+private struct PillEditSheetLoader: View {
+    @EnvironmentObject private var pillAppState: PillAppState
+    let pillID: UUID
+    @State private var state: PillEditSheetLoadState = .loading
+
+    var body: some View {
+        Group {
+            switch state {
+            case .loading:
+                ProgressView()
             case .found(let details):
                 EditPillView(details: details)
                     .environmentObject(pillAppState)
@@ -171,32 +236,25 @@ struct RootTabView: View {
                 )
             }
         }
+        .task(id: pillID) {
+            state = .loading
+            switch pillAppState.inspectPillDetailsState(id: pillID) {
+            case .found(let details):
+                state = .found(details)
+            case .notFound:
+                state = .notFound
+            case .integrityError(let message):
+                state = .integrityError(message)
+            }
+        }
     }
+}
 
-    private func habitProjection(for id: UUID) -> HabitCardProjection? {
-        appState.dashboard.sections
-            .flatMap(\.habits)
-            .first { $0.id == id }
-    }
-
-    private func pillProjection(for id: UUID) -> PillCardProjection? {
-        pillAppState.dashboard.pills
-            .first { $0.id == id }
-    }
-
-    private var overdueHabitCount: Int {
-        ProjectedBadgeCountCalculator.overdueHabitCount(
-            now: badgeNow,
-            habits: appState.dashboard.sections.flatMap(\.habits)
-        )
-    }
-
-    private var overduePillCount: Int {
-        ProjectedBadgeCountCalculator.overduePillCount(
-            now: badgeNow,
-            pills: pillAppState.dashboard.pills
-        )
-    }
+private enum PillEditSheetLoadState {
+    case loading
+    case found(PillDetailsProjection)
+    case notFound
+    case integrityError(String)
 }
 
 #Preview {

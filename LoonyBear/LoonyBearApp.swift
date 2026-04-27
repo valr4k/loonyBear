@@ -6,7 +6,6 @@ import UIKit
 struct LoonyBearApp: App {
     private let bootstrapState = AppEnvironment.live()
     @AppStorage("appearance_mode") private var appearanceModeRawValue = AppearanceMode.system.rawValue
-    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         configureTabBarAppearance()
@@ -26,16 +25,6 @@ struct LoonyBearApp: App {
                         startupHealthCheckCoordinator: environment.startupHealthCheckCoordinator
                     )
                         .environment(\.managedObjectContext, environment.persistenceController.container.viewContext)
-                        .onChange(of: scenePhase) { _, newPhase in
-                            if newPhase == .active {
-                                Task {
-                                    await environment.lifecycleRefreshCoordinator.perform {
-                                        await environment.appState.handleAppDidBecomeActive()
-                                        await environment.pillAppState.handleAppDidBecomeActive()
-                                    }
-                                }
-                            }
-                        }
                 case .persistenceFailure(let error):
                     PersistenceErrorView(error: error)
                 }

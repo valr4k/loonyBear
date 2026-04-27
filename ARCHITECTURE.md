@@ -161,6 +161,7 @@ On first `ContentView` task:
 - Habit dashboard loads
 - Pill dashboard loads
 - badge refresh runs
+- startup health check runs once in the background after initial load
 
 On every `.active` scene phase:
 - Habit reconciliation runs

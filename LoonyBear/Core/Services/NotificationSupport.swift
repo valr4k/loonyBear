@@ -13,6 +13,19 @@ enum NotificationMutationOutcome {
     case mutated
     case noChange
     case failed(Error)
+
+    func merging(_ other: NotificationMutationOutcome) -> NotificationMutationOutcome {
+        switch (self, other) {
+        case (.failed, _):
+            return self
+        case (_, .failed):
+            return other
+        case (.mutated, _), (_, .mutated):
+            return .mutated
+        case (.noChange, .noChange):
+            return .noChange
+        }
+    }
 }
 
 private final class NotificationRescheduleCoordinator {
@@ -355,6 +368,12 @@ enum NotificationResponseSupport {
 }
 
 enum NotificationCleanupSupport {
+    struct DeliveredNotificationInfo {
+        let identifier: String
+        let userInfo: [AnyHashable: Any]
+        let deliveryDate: Date
+    }
+
     static func removeDeliveredNotifications(
         center: UNUserNotificationCenter,
         prefix: String
@@ -372,27 +391,56 @@ enum NotificationCleanupSupport {
         prefix: String,
         on localDate: Date,
         calendar: Calendar,
+        including notificationIdentifier: String? = nil,
         completion: (() -> Void)? = nil
     ) {
-        let normalizedDay = calendar.startOfDay(for: localDate)
-
         center.getDeliveredNotifications { notifications in
-            let identifiers = notifications.compactMap { notification -> String? in
-                guard notification.request.identifier.hasPrefix(prefix) else {
-                    return nil
-                }
-
-                let deliveredDay = LocalNotificationSupport.deliveredNotificationLogicalDay(
-                    userInfo: notification.request.content.userInfo,
-                    deliveryDate: notification.date,
-                    calendar: calendar
+            let deliveredNotifications = notifications.map {
+                DeliveredNotificationInfo(
+                    identifier: $0.request.identifier,
+                    userInfo: $0.request.content.userInfo,
+                    deliveryDate: $0.date
                 )
-                return deliveredDay == normalizedDay ? notification.request.identifier : nil
             }
+            let identifiers = deliveredNotificationIdentifiersToRemove(
+                from: deliveredNotifications,
+                prefix: prefix,
+                on: localDate,
+                calendar: calendar,
+                including: notificationIdentifier
+            )
 
             center.removeDeliveredNotifications(withIdentifiers: identifiers)
             completion?()
         }
+    }
+
+    static func deliveredNotificationIdentifiersToRemove(
+        from notifications: [DeliveredNotificationInfo],
+        prefix: String,
+        on localDate: Date,
+        calendar: Calendar,
+        including notificationIdentifier: String? = nil
+    ) -> [String] {
+        let normalizedDay = calendar.startOfDay(for: localDate)
+        var identifiers = Set<String>()
+
+        for notification in notifications where notification.identifier.hasPrefix(prefix) {
+            let deliveredDay = LocalNotificationSupport.deliveredNotificationLogicalDay(
+                userInfo: notification.userInfo,
+                deliveryDate: notification.deliveryDate,
+                calendar: calendar
+            )
+            if deliveredDay == normalizedDay {
+                identifiers.insert(notification.identifier)
+            }
+        }
+
+        if let notificationIdentifier, notificationIdentifier.hasPrefix(prefix) {
+            identifiers.insert(notificationIdentifier)
+        }
+
+        return Array(identifiers)
     }
 
     static func removePendingNotifications(
@@ -542,11 +590,22 @@ enum NotificationConfigurationSupport {
                 return nil
             }
 
+            let weekdayMask = Int(schedule.int16Value(forKey: "weekdayMask"))
+            guard WeekdayValidation.isValidMask(weekdayMask) else {
+                report.append(
+                    area: "notification",
+                    entityName: schedule.entityName,
+                    object: schedule,
+                    message: invalidMaskMessage
+                )
+                return nil
+            }
+
             return (
                 effectiveFrom,
                 schedule.int32Value(forKey: "version", default: 1),
                 createdAt,
-                Int(schedule.int16Value(forKey: "weekdayMask"))
+                weekdayMask
             )
         }
 
@@ -557,16 +616,6 @@ enum NotificationConfigurationSupport {
             return $0.2 < $1.2
         }) else {
             return WeekdaySet(rawValue: 0)
-        }
-
-        guard WeekdayValidation.isValidMask(latest.3) else {
-            report.append(
-                area: "notification",
-                entityName: object.entityName,
-                object: object,
-                message: invalidMaskMessage
-            )
-            return nil
         }
 
         return WeekdaySet(rawValue: latest.3)

@@ -20,7 +20,10 @@ protocol PillRepository {
     func updatePill(from draft: EditPillDraft) throws
     func deletePill(id: UUID) throws
     func markTakenToday(id: UUID) throws
+    func markPillTaken(id: UUID, on day: Date) throws
     func skipPillToday(id: UUID) throws
+    func skipPillDay(id: UUID, on day: Date) throws
     func clearPillDayStateToday(id: UUID) throws
+    func clearPillDayState(id: UUID, on day: Date) throws
     func movePills(from offsets: IndexSet, to destination: Int) throws
 }

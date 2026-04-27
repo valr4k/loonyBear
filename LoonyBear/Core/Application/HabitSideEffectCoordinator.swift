@@ -4,36 +4,32 @@ import Foundation
 struct HabitSideEffectCoordinator {
     let notificationService: NotificationService
     let widgetSyncService: WidgetSyncService
-    let badgeService: AppBadgeService
     let clock: AppClock
 
     init(
         notificationService: NotificationService,
         widgetSyncService: WidgetSyncService,
-        badgeService: AppBadgeService,
-        clock: AppClock = .live
+        clock: AppClock? = nil
     ) {
         self.notificationService = notificationService
         self.widgetSyncService = widgetSyncService
-        self.badgeService = badgeService
-        self.clock = clock
+        self.clock = clock ?? .live
     }
 
     func refreshDerivedState(with dashboard: DashboardProjection) {
         widgetSyncService.syncSnapshot(from: dashboard)
-        badgeService.refreshBadge()
     }
 
     func handleDailyMutation(forHabitID habitID: UUID, on day: Date? = nil) {
         let logicalDay = day ?? clock.now()
-        notificationService.rescheduleAllNotifications()
+        notificationService.removePendingNotification(forHabitID: habitID, on: logicalDay)
         notificationService.removeDeliveredNotifications(forHabitID: habitID, on: logicalDay)
+        notificationService.rescheduleNotifications(forHabitID: habitID)
     }
 
     func handleDeletion(forHabitID habitID: UUID, dashboard: DashboardProjection) {
         widgetSyncService.syncSnapshot(from: dashboard)
         notificationService.removeNotifications(forHabitID: habitID)
-        badgeService.refreshBadge()
     }
 
     func syncNotificationsAfterUpdate(from draft: EditHabitDraft) async {

@@ -48,15 +48,16 @@ struct AppEnvironment {
             calendar: calendar,
             clock: clock
         )
+        let loadDashboardUseCase = LoadDashboardUseCase(repository: repository)
         let widgetSyncService = WidgetSyncService(clock: clock)
         let badgeService = AppBadgeService(
-            loadDashboardUseCase: LoadDashboardUseCase(repository: repository),
+            loadDashboardUseCase: loadDashboardUseCase,
             pillRepository: pillRepository,
             calendar: calendar,
             clock: clock
         )
         let appState = HabitAppState(
-            loadDashboardUseCase: LoadDashboardUseCase(repository: repository),
+            loadDashboardUseCase: loadDashboardUseCase,
             createHabitUseCase: CreateHabitUseCase(repository: repository),
             updateHabitUseCase: UpdateHabitUseCase(repository: repository),
             reconcileHistoryUseCase: ReconcileHabitHistoryUseCase(repository: repository, clock: clock),
@@ -76,16 +77,15 @@ struct AppEnvironment {
         let notificationCoordinator = AppNotificationCoordinator(
             habitNotificationService: notificationService,
             pillNotificationService: pillNotificationService,
-            badgeService: badgeService
+            badgeService: badgeService,
+            loadDashboardUseCase: loadDashboardUseCase,
+            pillRepository: pillRepository,
+            widgetSyncService: widgetSyncService
         )
         let lifecycleRefreshCoordinator = AppLifecycleRefreshCoordinator()
         let startupHealthCheckCoordinator = AppStartupHealthCheckCoordinator {
             try AppStartupHealthCheck.run(
-                context: persistenceController.container.viewContext,
-                habitRepository: repository,
-                pillRepository: pillRepository,
-                habitNotificationService: notificationService,
-                pillNotificationService: pillNotificationService,
+                makeContext: persistenceController.makeBackgroundContext,
                 calendar: calendar
             )
         }
@@ -130,15 +130,16 @@ struct AppEnvironment {
             calendar: calendar,
             clock: clock
         )
+        let loadDashboardUseCase = LoadDashboardUseCase(repository: repository)
         let widgetSyncService = WidgetSyncService(clock: clock)
         let badgeService = AppBadgeService(
-            loadDashboardUseCase: LoadDashboardUseCase(repository: repository),
+            loadDashboardUseCase: loadDashboardUseCase,
             pillRepository: pillRepository,
             calendar: calendar,
             clock: clock
         )
         let appState = HabitAppState(
-            loadDashboardUseCase: LoadDashboardUseCase(repository: repository),
+            loadDashboardUseCase: loadDashboardUseCase,
             createHabitUseCase: CreateHabitUseCase(repository: repository),
             updateHabitUseCase: UpdateHabitUseCase(repository: repository),
             reconcileHistoryUseCase: ReconcileHabitHistoryUseCase(repository: repository, clock: clock),
@@ -158,16 +159,15 @@ struct AppEnvironment {
         let notificationCoordinator = AppNotificationCoordinator(
             habitNotificationService: notificationService,
             pillNotificationService: pillNotificationService,
-            badgeService: badgeService
+            badgeService: badgeService,
+            loadDashboardUseCase: loadDashboardUseCase,
+            pillRepository: pillRepository,
+            widgetSyncService: widgetSyncService
         )
         let lifecycleRefreshCoordinator = AppLifecycleRefreshCoordinator()
         let startupHealthCheckCoordinator = AppStartupHealthCheckCoordinator {
             try AppStartupHealthCheck.run(
-                context: persistenceController.container.viewContext,
-                habitRepository: repository,
-                pillRepository: pillRepository,
-                habitNotificationService: notificationService,
-                pillNotificationService: pillNotificationService,
+                makeContext: persistenceController.makeBackgroundContext,
                 calendar: calendar
             )
         }

@@ -242,7 +242,7 @@ struct LoonyBearTests {
     }
 
     @Test
-    func habitUpdateViaAppStateAutoFinalizesPastHistoryAndRefreshesDashboard() async throws {
+    func habitUpdateViaAppStateBlocksMissingPastHistoryAndLeavesDashboardUnchanged() async throws {
         let persistence = PersistenceController(inMemory: true)
         let repository = CoreDataHabitRepository(
             context: persistence.container.viewContext,
@@ -279,48 +279,55 @@ struct LoonyBearTests {
         var createDraft = CreateHabitDraft()
         createDraft.name = "Read"
         createDraft.startDate = twoDaysAgo
-        createDraft.scheduleDays = [.monday]
-        createDraft.useScheduleForHistory = false
+        createDraft.scheduleDays = .daily
         let habitID = try await appState.createHabit(from: createDraft)
 
         let createdDetails = try #require(try appState.habitDetails(id: habitID))
-        #expect(createdDetails.skippedDays.contains(yesterday))
+        #expect(createdDetails.completedDays.contains(yesterday))
+        #expect(createdDetails.completedDays.contains(twoDaysAgo))
 
         var completedDays = createdDetails.completedDays
         completedDays.remove(yesterday)
-        var skippedDays = createdDetails.skippedDays
-        skippedDays.remove(yesterday)
         let editDraft = EditHabitDraft(
             id: habitID,
             type: createdDetails.type,
             startDate: createdDetails.startDate,
             name: "Read Updated",
-            scheduleDays: [.monday],
+            scheduleDays: .daily,
             reminderEnabled: false,
             reminderTime: ReminderTime(hour: 9, minute: 0),
             completedDays: completedDays,
-            skippedDays: skippedDays
+            skippedDays: createdDetails.skippedDays
         )
 
-        try await appState.updateHabit(from: editDraft)
+        do {
+            try await appState.updateHabit(from: editDraft)
+            Issue.record("Expected missing past history validation error.")
+        } catch let error as EditableHistoryValidationError {
+            guard case .missingHabitPastDays(let days) = error else {
+                Issue.record("Expected missing habit days error.")
+                return
+            }
+            #expect(days == [yesterday])
+        }
 
         let updatedDetails = try #require(try appState.habitDetails(id: habitID))
-        #expect(updatedDetails.name == "Read Updated")
-        #expect(updatedDetails.skippedDays.contains(yesterday))
-        #expect(updatedDetails.skippedDays.contains(twoDaysAgo))
-        #expect(!updatedDetails.completedDays.contains(yesterday))
-        #expect(appState.actionErrorMessage == nil)
+        #expect(updatedDetails.name == "Read")
+        #expect(updatedDetails.completedDays.contains(yesterday))
+        #expect(updatedDetails.completedDays.contains(twoDaysAgo))
+        #expect(updatedDetails.skippedDays.isEmpty)
+        #expect(appState.actionErrorMessage?.contains("Choose Completed or Skipped") == true)
 
         let dashboardHabit = try #require(
             appState.dashboard.sections
                 .flatMap { $0.habits }
                 .first { $0.id == habitID }
         )
-        #expect(dashboardHabit.name == "Read Updated")
+        #expect(dashboardHabit.name == "Read")
     }
 
     @Test
-    func pillUpdateViaAppStateAutoFinalizesPastHistoryAndRefreshesDashboard() async throws {
+    func pillUpdateViaAppStateBlocksMissingPastHistoryAndLeavesDashboardUnchanged() async throws {
         let persistence = PersistenceController(inMemory: true)
         let habitRepository = CoreDataHabitRepository(
             context: persistence.container.viewContext,
@@ -354,49 +361,56 @@ struct LoonyBearTests {
         createDraft.name = "Vitamin D"
         createDraft.dosage = "1 tablet"
         createDraft.startDate = twoDaysAgo
-        createDraft.scheduleDays = [.monday]
-        createDraft.useScheduleForHistory = false
+        createDraft.scheduleDays = .daily
         createDraft.takenDays = [twoDaysAgo, yesterday]
         let pillID = try await appState.createPill(from: createDraft)
 
         let createdDetails = try #require(try appState.pillDetails(id: pillID))
         #expect(createdDetails.takenDays.contains(yesterday))
+        #expect(createdDetails.takenDays.contains(twoDaysAgo))
 
         var takenDays = createdDetails.takenDays
         takenDays.remove(yesterday)
-        var skippedDays = createdDetails.skippedDays
-        skippedDays.remove(yesterday)
         let editDraft = EditPillDraft(
             id: pillID,
             name: "Vitamin D Updated",
             dosage: "2 tablets",
             details: createdDetails.details ?? "",
             startDate: createdDetails.startDate,
-            scheduleDays: [.monday],
+            scheduleDays: .daily,
             reminderEnabled: false,
             reminderTime: ReminderTime(hour: 9, minute: 0),
             takenDays: takenDays,
-            skippedDays: skippedDays
+            skippedDays: createdDetails.skippedDays
         )
 
-        try await appState.updatePill(from: editDraft)
+        do {
+            try await appState.updatePill(from: editDraft)
+            Issue.record("Expected missing past history validation error.")
+        } catch let error as EditableHistoryValidationError {
+            guard case .missingPillPastDays(let days) = error else {
+                Issue.record("Expected missing pill days error.")
+                return
+            }
+            #expect(days == [yesterday])
+        }
 
         let updatedDetails = try #require(try appState.pillDetails(id: pillID))
-        #expect(updatedDetails.name == "Vitamin D Updated")
-        #expect(updatedDetails.dosage == "2 tablets")
+        #expect(updatedDetails.name == "Vitamin D")
+        #expect(updatedDetails.dosage == "1 tablet")
+        #expect(updatedDetails.takenDays.contains(yesterday))
         #expect(updatedDetails.takenDays.contains(twoDaysAgo))
-        #expect(!updatedDetails.takenDays.contains(yesterday))
-        #expect(updatedDetails.skippedDays.contains(yesterday))
-        #expect(appState.actionErrorMessage == nil)
+        #expect(updatedDetails.skippedDays.isEmpty)
+        #expect(appState.actionErrorMessage?.contains("Choose Taken or Skipped") == true)
 
         let dashboardPill = try #require(appState.dashboard.pills.first { $0.id == pillID })
-        #expect(dashboardPill.name == "Vitamin D Updated")
-        #expect(dashboardPill.dosage == "2 tablets")
-        #expect(dashboardPill.totalTakenDays == 1)
+        #expect(dashboardPill.name == "Vitamin D")
+        #expect(dashboardPill.dosage == "1 tablet")
+        #expect(dashboardPill.totalTakenDays == 2)
     }
 
     @Test
-    func habitAppDidBecomeActiveReconcilesPastHistory() async throws {
+    func habitAppDidBecomeActiveLeavesManualHistoryGapForReview() async throws {
         let persistence = PersistenceController(inMemory: true)
         let repository = CoreDataHabitRepository(
             context: persistence.container.viewContext,
@@ -455,11 +469,19 @@ struct LoonyBearTests {
 
         let details = try #require(try repository.fetchHabitDetails(id: habitID))
         #expect(!details.completedDays.contains(yesterday))
-        #expect(details.skippedDays.contains(yesterday))
+        #expect(!details.skippedDays.contains(yesterday))
+        #expect(details.needsHistoryReview)
+
+        let dashboardHabit = try #require(
+            appState.dashboard.sections
+                .flatMap { $0.habits }
+                .first { $0.id == habitID }
+        )
+        #expect(dashboardHabit.needsHistoryReview)
     }
 
     @Test
-    func pillAppDidBecomeActiveReconcilesPastHistory() async throws {
+    func pillAppDidBecomeActiveLeavesManualHistoryGapForReview() async throws {
         let persistence = PersistenceController(inMemory: true)
         let habitRepository = CoreDataHabitRepository(
             context: persistence.container.viewContext,
@@ -514,6 +536,11 @@ struct LoonyBearTests {
         await appState.handleAppDidBecomeActive()
 
         let details = try #require(try repository.fetchPillDetails(id: pillID))
-        #expect(details.skippedDays.contains(yesterday))
+        #expect(!details.skippedDays.contains(yesterday))
+        #expect(!details.takenDays.contains(yesterday))
+        #expect(details.needsHistoryReview)
+
+        let dashboardPill = try #require(appState.dashboard.pills.first { $0.id == pillID })
+        #expect(dashboardPill.needsHistoryReview)
     }
 }

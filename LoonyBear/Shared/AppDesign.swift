@@ -24,6 +24,30 @@ enum AppCopy {
     static let pillDescriptionPlaceholder = "Notes (optional)"
     static let habitHistoryHint = "Today: None, Completed, or Skipped.\nPast days: Completed or Skipped only.\nYou can edit the last 30 days.\nDays before the start date can’t be edited"
     static let pillHistoryHint = "Today: None, Taken, or Skipped.\nPast days: Taken or Skipped only.\nYou can edit the last 30 days.\nDays before the start date can’t be edited"
+
+    static func overdueScheduledDayEditMessage(actionLabel: String, days: [Date]) -> String {
+        "Choose \(actionLabel) or Skipped for the overdue scheduled day before saving. Missing: \(formattedDays(days))."
+    }
+
+    static func overdueScheduledDayDetailsMessage(actionLabel: String, days: [Date]) -> String {
+        "Open Edit and choose \(actionLabel) or Skipped for the overdue scheduled day. Missing: \(formattedDays(days))."
+    }
+
+    static func missingScheduledDaysDetailsMessage(actionLabel: String, days: [Date]) -> String {
+        "Open Edit and choose \(actionLabel) or Skipped for every past scheduled day. Missing: \(formattedDays(days))."
+    }
+
+    private static func formattedDays(_ days: [Date]) -> String {
+        let sortedDays = days.sorted()
+        let visibleDays = sortedDays.prefix(3).map {
+            $0.formatted(date: .abbreviated, time: .omitted)
+        }
+        let remainingCount = sortedDays.count - visibleDays.count
+        guard remainingCount > 0 else {
+            return visibleDays.joined(separator: ", ")
+        }
+        return "\(visibleDays.joined(separator: ", ")), and \(remainingCount) more"
+    }
 }
 
 enum AppBackgroundStyle {
@@ -514,7 +538,7 @@ struct AppScheduleEditorScreen: View {
 
     var body: some View {
         AppScreen(backgroundStyle: backgroundStyle, topPadding: 8) {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 8) {
                 AppCard {
                     VStack(alignment: .leading, spacing: 0) {
                         InlineDaysSelector(selection: $scheduleDays)
@@ -656,6 +680,87 @@ struct AppValidationBanner: View {
                 .stroke(Color.red.opacity(0.12), lineWidth: 1)
         )
         .transition(.move(edge: .top).combined(with: .opacity))
+    }
+}
+
+struct AppCompactValidationBanner: View {
+    let message: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.red)
+
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.primary)
+                .lineSpacing(1)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.red.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.red.opacity(0.12), lineWidth: 1)
+        )
+        .transition(.move(edge: .top).combined(with: .opacity))
+    }
+}
+
+struct AppHistoryReviewRow: View {
+    let message: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.orange)
+
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.orange.opacity(0.10))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.orange.opacity(0.16), lineWidth: 1)
+        )
+    }
+}
+
+enum OverdueDayLabel {
+    static func text(for overdueDay: Date, now: Date, calendar: Calendar = .autoupdatingCurrent) -> String {
+        let normalizedOverdueDay = calendar.startOfDay(for: overdueDay)
+        let today = calendar.startOfDay(for: now)
+        if normalizedOverdueDay == today {
+            return "Today"
+        }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: today),
+           normalizedOverdueDay == calendar.startOfDay(for: yesterday) {
+            return "Yesterday"
+        }
+        let components = calendar.dateComponents([.day, .month, .year], from: normalizedOverdueDay)
+        guard
+            let day = components.day,
+            let month = components.month,
+            let year = components.year
+        else {
+            return normalizedOverdueDay.formatted(date: .abbreviated, time: .omitted)
+        }
+        return String(format: "%02d.%02d.%04d", day, month, year)
     }
 }
 

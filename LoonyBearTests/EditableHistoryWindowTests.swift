@@ -101,6 +101,24 @@ struct EditableHistoryWindowTests {
     }
 
     @Test
+    func normalizationCanLeavePastEditableNoneUnfinalized() {
+        let today = TestSupport.makeDate(2026, 4, 30)
+        let yesterday = TestSupport.makeDate(2026, 4, 29)
+        let requiredFinalizedDays: Set<Date> = [yesterday]
+
+        let normalized = EditableHistoryContract.normalizedSelection(
+            positiveDays: [],
+            skippedDays: [],
+            requiredFinalizedDays: requiredFinalizedDays,
+            pastDefaultSelection: .none,
+            today: today
+        )
+
+        #expect(normalized.positiveDays.isEmpty)
+        #expect(normalized.skippedDays.isEmpty)
+    }
+
+    @Test
     func monthWindowBuildsSortedMonthListFromDates() {
         let dates: Set<Date> = [
             TestSupport.makeDate(2026, 4, 30),

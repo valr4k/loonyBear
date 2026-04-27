@@ -2,17 +2,18 @@ import Combine
 import SwiftUI
 struct MyHabitsView: View {
     @EnvironmentObject private var appState: HabitAppState
-    @State private var currentTime = Date()
-    private let reminderStateTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+    let currentTime: Date
     let onCreateHabit: () -> Void
     let onShowHabitInfo: (HabitCardProjection) -> Void
     let onEditHabit: (HabitCardProjection) -> Void
 
     init(
+        currentTime: Date = Date(),
         onCreateHabit: @escaping () -> Void = {},
         onShowHabitInfo: @escaping (HabitCardProjection) -> Void = { _ in },
         onEditHabit: @escaping (HabitCardProjection) -> Void = { _ in }
     ) {
+        self.currentTime = currentTime
         self.onCreateHabit = onCreateHabit
         self.onShowHabitInfo = onShowHabitInfo
         self.onEditHabit = onEditHabit
@@ -46,7 +47,25 @@ struct MyHabitsView: View {
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
                                 .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                    if habit.isCompletedToday {
+                                    if let overdueDay = habit.activeOverdueDay {
+                                        Button {
+                                            Task {
+                                                await appState.completeHabitDay(id: habit.id, on: overdueDay)
+                                            }
+                                        } label: {
+                                            Image(systemName: "checkmark")
+                                        }
+                                        .tint(.green)
+
+                                        Button {
+                                            Task {
+                                                await appState.skipHabitDay(id: habit.id, on: overdueDay)
+                                            }
+                                        } label: {
+                                            Image(systemName: "xmark")
+                                        }
+                                        .tint(.red)
+                                    } else if habit.isCompletedToday {
                                         Button {
                                             Task {
                                                 await appState.clearHabitDayStateToday(id: habit.id)
@@ -127,9 +146,6 @@ struct MyHabitsView: View {
         } message: {
             Text(appState.actionErrorMessage ?? "")
         }
-        .onReceive(reminderStateTimer) { now in
-            currentTime = now
-        }
     }
 
     private var actionErrorAlertBinding: Binding<Bool> {
@@ -186,24 +202,39 @@ private struct HabitCardView: View {
 
             Color.clear
                 .overlay(alignment: .topTrailing) {
-                    if let reminderText = habit.reminderText {
-                        Text(reminderText)
-                            .font(.caption)
-                            .foregroundStyle(isReminderOverdueToday ? .red : .secondary)
-                            .fixedSize(horizontal: true, vertical: false)
+                    if habit.reminderText != nil || activeOverdueLabel != nil {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            if let reminderText = habit.reminderText {
+                                Text(reminderText)
+                            }
+                            if let activeOverdueLabel {
+                                Text(activeOverdueLabel)
+                            }
+                        }
+                        .font(.caption)
+                        .foregroundStyle(isReminderOverdue ? .red : .secondary)
+                        .fixedSize(horizontal: true, vertical: false)
                     }
                 }
                 .overlay(alignment: .trailing) {
-                    if habit.isCompletedToday {
+                    if !habit.needsHistoryReview, habit.isCompletedToday {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.title3)
                             .symbolRenderingMode(.palette)
                             .foregroundStyle(.white, .green)
-                    } else if habit.isSkippedToday {
+                    } else if !habit.needsHistoryReview, habit.isSkippedToday {
                         Image(systemName: "xmark.circle.fill")
                             .font(.title3)
                             .symbolRenderingMode(.palette)
                             .foregroundStyle(.white, .red)
+                    }
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    if habit.needsHistoryReview {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.title3)
+                            .foregroundStyle(.orange)
+                            .accessibilityLabel("History needs review")
                     }
                 }
             .frame(width: 40)
@@ -219,29 +250,13 @@ private struct HabitCardView: View {
         )
     }
 
-    private var isReminderOverdueToday: Bool {
-        guard habit.isReminderScheduledToday else { return false }
-        guard !habit.isCompletedToday else { return false }
-        guard !habit.isSkippedToday else { return false }
-        guard
-            let reminderHour = habit.reminderHour,
-            let reminderMinute = habit.reminderMinute
-        else {
-            return false
-        }
+    private var isReminderOverdue: Bool {
+        habit.activeOverdueDay != nil
+    }
 
-        let calendar = Calendar.current
-        let normalizedDay = calendar.startOfDay(for: currentTime)
-        guard let scheduledDateTime = calendar.date(
-            bySettingHour: reminderHour,
-            minute: reminderMinute,
-            second: 0,
-            of: normalizedDay
-        ) else {
-            return false
-        }
-
-        return scheduledDateTime < currentTime
+    private var activeOverdueLabel: String? {
+        guard let overdueDay = habit.activeOverdueDay else { return nil }
+        return OverdueDayLabel.text(for: overdueDay, now: currentTime)
     }
 }
 

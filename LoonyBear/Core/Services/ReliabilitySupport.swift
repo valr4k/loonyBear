@@ -109,28 +109,34 @@ struct IntegrityReportBuilder {
 }
 
 enum AppStartupHealthCheck {
-    @MainActor
     static func run(
-        context: NSManagedObjectContext,
-        habitRepository: HabitRepository,
-        pillRepository: PillRepository,
-        habitNotificationService: NotificationService,
-        pillNotificationService: PillNotificationService,
+        makeContext: @escaping () -> NSManagedObjectContext,
         calendar: Calendar = .autoupdatingCurrent
+    ) throws {
+        let context = makeContext()
+        var thrownError: Error?
+
+        context.performAndWait {
+            do {
+                try run(on: context, calendar: calendar)
+            } catch {
+                thrownError = error
+            }
+        }
+
+        if let thrownError {
+            throw thrownError
+        }
+    }
+
+    private static func run(
+        on context: NSManagedObjectContext,
+        calendar: Calendar
     ) throws {
         var report = IntegrityReportBuilder()
 
-        do {
-            _ = try habitRepository.fetchDashboardHabits()
-            _ = try pillRepository.fetchDashboardPills()
-            _ = try habitNotificationService.makePendingNotificationRequests()
-            _ = try pillNotificationService.makePendingNotificationRequests()
-        } catch let error as DataIntegrityError {
-            report.append(report: error.report)
-        } catch {
-            ReliabilityLog.error("app.startup.healthCheck failed: \(error.localizedDescription)")
-            throw error
-        }
+        validateHabitRows(context: context, calendar: calendar, report: &report)
+        validatePillRows(context: context, calendar: calendar, report: &report)
 
         scanDuplicateHistoryRows(
             entityName: "HabitCompletion",
@@ -156,6 +162,137 @@ enum AppStartupHealthCheck {
         }
 
         ReliabilityLog.info("app.startup.healthCheck passed")
+    }
+
+    private static func validateHabitRows(
+        context: NSManagedObjectContext,
+        calendar: Calendar,
+        report: inout IntegrityReportBuilder
+    ) {
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
+
+        do {
+            for object in try context.fetch(request) {
+                guard
+                    object.uuidValue(forKey: "id") != nil,
+                    let typeRaw = object.stringValue(forKey: "typeRaw"),
+                    HabitType(rawValue: typeRaw) != nil,
+                    object.stringValue(forKey: "name") != nil,
+                    object.dateValue(forKey: "startDate") != nil,
+                    let historyModeRaw = object.stringValue(forKey: "historyModeRaw"),
+                    HabitHistoryMode(rawValue: historyModeRaw) != nil
+                else {
+                    report.append(
+                        area: "startup.habits",
+                        entityName: object.entityName,
+                        object: object,
+                        message: "Habit row is missing required fields or contains invalid enum values."
+                    )
+                    continue
+                }
+
+                let reminderEnabled = object.boolValue(forKey: "reminderEnabled")
+                let reminderTime = ReminderValidation.validatedReminderTime(
+                    from: object,
+                    reminderEnabled: reminderEnabled,
+                    area: "startup.habits",
+                    report: &report
+                )
+                guard !reminderEnabled || reminderTime != nil else {
+                    continue
+                }
+
+                guard NotificationConfigurationSupport.loadLatestScheduleDays(
+                    for: object,
+                    relationshipKey: "scheduleVersions",
+                    rowLabel: "Habit schedule",
+                    invalidMaskMessage: "Habit reminder configuration contains invalid weekdayMask.",
+                    report: &report
+                ) != nil else {
+                    continue
+                }
+
+                _ = NotificationConfigurationSupport.loadHistoryEntries(
+                    for: object,
+                    relationshipKey: "completions",
+                    invalidEntryMessage: "Habit completion row is missing required fields or has invalid sourceRaw.",
+                    calendar: calendar,
+                    report: &report
+                ) as [(Date, CompletionSource)]?
+            }
+        } catch {
+            report.append(
+                area: "startup.habits",
+                entityName: "Habit",
+                objectIdentifier: "Habit",
+                message: "Failed to scan habit rows: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private static func validatePillRows(
+        context: NSManagedObjectContext,
+        calendar: Calendar,
+        report: inout IntegrityReportBuilder
+    ) {
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Pill")
+
+        do {
+            for object in try context.fetch(request) {
+                guard
+                    object.uuidValue(forKey: "id") != nil,
+                    object.stringValue(forKey: "name") != nil,
+                    object.stringValue(forKey: "dosage") != nil,
+                    object.dateValue(forKey: "startDate") != nil,
+                    let historyModeRaw = object.stringValue(forKey: "historyModeRaw"),
+                    PillHistoryMode(rawValue: historyModeRaw) != nil
+                else {
+                    report.append(
+                        area: "startup.pills",
+                        entityName: object.entityName,
+                        object: object,
+                        message: "Pill row is missing required fields or contains invalid enum values."
+                    )
+                    continue
+                }
+
+                let reminderEnabled = object.boolValue(forKey: "reminderEnabled")
+                let reminderTime = ReminderValidation.validatedReminderTime(
+                    from: object,
+                    reminderEnabled: reminderEnabled,
+                    area: "startup.pills",
+                    report: &report
+                )
+                guard !reminderEnabled || reminderTime != nil else {
+                    continue
+                }
+
+                guard NotificationConfigurationSupport.loadLatestScheduleDays(
+                    for: object,
+                    relationshipKey: "scheduleVersions",
+                    rowLabel: "Pill schedule",
+                    invalidMaskMessage: "Pill reminder configuration contains invalid weekdayMask.",
+                    report: &report
+                ) != nil else {
+                    continue
+                }
+
+                _ = NotificationConfigurationSupport.loadHistoryEntries(
+                    for: object,
+                    relationshipKey: "intakes",
+                    invalidEntryMessage: "Pill intake row is missing required fields or has invalid sourceRaw.",
+                    calendar: calendar,
+                    report: &report
+                ) as [(Date, PillCompletionSource)]?
+            }
+        } catch {
+            report.append(
+                area: "startup.pills",
+                entityName: "Pill",
+                objectIdentifier: "Pill",
+                message: "Failed to scan pill rows: \(error.localizedDescription)"
+            )
+        }
     }
 
     private static func scanDuplicateHistoryRows(
@@ -222,7 +359,17 @@ final class AppStartupHealthCheckCoordinator {
         }
 
         do {
-            try operation()
+            let operation = self.operation
+            try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .utility).async {
+                    do {
+                        try operation()
+                        continuation.resume()
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
+            }
         } catch let error as DataIntegrityError {
             ReliabilityLog.error(
                 "app.startup.healthCheck reported integrity issues and launch will continue: \(error.localizedDescription)"

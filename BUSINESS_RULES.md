@@ -20,16 +20,29 @@ This file describes the behavioral rules that are currently implemented in code.
 ## Habit History Modes
 
 - Every Habit stores a `historyMode`.
-- `scheduleBased` means required past history follows the schedule.
-- `everyDay` means required past history counts every past editable day.
-- Habit create, details, reconciliation, backup, and restore read the stored history mode. Habit update normalization also reads the persisted history mode, but the Edit screen no longer exposes a history mode toggle.
+- `scheduleBased` means generated past history follows the schedule.
+- `everyDay` means generated past history counts every day from `startDate` through yesterday.
+- Missing-history review and Edit save validation require only past editable days that were scheduled by the effective schedule history.
+- Dashboard cards exclude the active overdue day from missing-history review while it remains actionable overdue.
+- Details and Edit include an active overdue day when that day is in the past, because past scheduled days should be resolved from the calendar surfaces.
+- Edit save validation includes an active overdue day when that day is in the past, because past scheduled days cannot be saved empty.
+- Habit create, details loading, backup, and restore read the stored history mode. The current Habit Details UI does not display a dedicated history mode row, and the Edit screen does not expose a history mode toggle.
+- Saving Edit Habit preserves the stored history mode. Missing scheduled editable past days are not auto-filled; they block saving until the user chooses a state.
 
 ## Habit Create and Reconciliation
 
 - Habit create inserts the root Habit row and an initial schedule version.
-- After create, missing required past days are auto-filled as completed.
+- After create, the repository generates completed history from `startDate` through yesterday.
+- In `scheduleBased` mode, only scheduled days are generated.
+- In `everyDay` mode, every day in that range is generated.
 - The auto-filled completion source is `auto fill`.
-- Habit reconciliation also inserts missing completed rows for required past days.
+- Habit reconciliation does not backfill missing past history.
+- Habit reconciliation does not auto-skip overdue days.
+- A scheduled day becomes due at its reminder time. If reminders are disabled, it becomes due at 00:00.
+- The active overdue day is the latest due scheduled day only when that latest due day has no completed or skipped state.
+- Empty due scheduled days before the active overdue day are history gaps, not skipped rows.
+- Stale notification actions for days that have already become history gaps are ignored and only dismiss the notification.
+- Restore clears stale overdue anchors, but overdue and history gaps are derived from the restored schedule/history data.
 - Existing completed rows are preserved.
 - Existing skipped rows are preserved.
 
@@ -37,8 +50,14 @@ This file describes the behavioral rules that are currently implemented in code.
 
 - Habit history editing is limited to the last 30 days and never earlier than `startDate`.
 - Today can be empty, completed, or skipped.
-- Past required editable Habit days are not allowed to stay empty after normalization.
-- Habit past default normalization is positive, not skipped.
+- Past editable scheduled Habit days must be explicitly completed or skipped before saving.
+- Save is disabled while any past editable scheduled Habit day is empty.
+- Missing past-day review is shown as a persistent warning row above the editable calendar. If the only missing day is the active overdue day, the warning asks the user to choose `Completed` or `Skipped` for the overdue scheduled day.
+- Habit cards show a warning status instead of today's completed/skipped status while recent history needs review.
+- Habit cards do not show the history warning only because of the active overdue day; they show it alongside overdue only when some other required past scheduled day is empty.
+- Habit Details shows a warning row above the calendar while any past scheduled day is missing. If the only missing day is the active overdue day, the warning asks the user to open Edit and choose `Completed` or `Skipped` for the overdue scheduled day.
+- Saving Edit Habit does not auto-fill missing past days; the user must choose the state.
+- If today's state is already finalized and the schedule is changed, the new schedule takes effect from tomorrow instead of rewriting today's schedule meaning.
 
 ## Habit Streak Rules
 
@@ -63,18 +82,29 @@ This file describes the behavioral rules that are currently implemented in code.
 ## Pill History Modes
 
 - Every Pill stores a `historyMode`.
-- `scheduleBased` means required past history follows the schedule.
-- `everyDay` means required past history counts every past editable day.
-- Pill create, details, reconciliation, backup, and restore read the stored history mode. Pill update normalization also reads the persisted history mode, but the Edit screen no longer exposes a history mode toggle.
+- `scheduleBased` means generated past history follows the schedule.
+- `everyDay` means generated past history counts every day from `startDate` through yesterday.
+- Missing-history review and Edit save validation require only past editable days that were scheduled by the effective schedule history.
+- Dashboard cards exclude the active overdue day from missing-history review while it remains actionable overdue.
+- Details and Edit include an active overdue day when that day is in the past, because past scheduled days should be resolved from the calendar surfaces.
+- Edit save validation includes an active overdue day when that day is in the past, because past scheduled days cannot be saved empty.
+- Pill create, details loading, backup, and restore read the stored history mode. The current Pill Details UI does not display a dedicated history mode row, and the Edit screen does not expose a history mode toggle.
+- Saving Edit Pill preserves the stored history mode. Missing scheduled editable past days are not auto-filled; they block saving until the user chooses a state.
 
 ## Pill Create and Reconciliation
 
-- Before repository create, the create screen generates `takenDays` from `startDate` through yesterday.
+- Repository create generates taken history from `startDate` through yesterday.
 - In `scheduleBased` mode, generated `takenDays` include only scheduled days.
 - In `everyDay` mode, generated `takenDays` include all days in that range.
 - Repository create inserts `manual edit` intake rows for all generated `takenDays`.
-- After create, remaining required past days are finalized as skipped.
-- Pill reconciliation inserts missing skipped rows for required past days.
+- Today is not prefilled.
+- Pill reconciliation does not backfill missing past history.
+- Pill reconciliation does not auto-skip overdue days.
+- A scheduled day becomes due at its reminder time. If reminders are disabled, it becomes due at 00:00.
+- The active overdue day is the latest due scheduled day only when that latest due day has no taken or skipped state.
+- Empty due scheduled days before the active overdue day are history gaps, not skipped rows.
+- Stale notification actions for days that have already become history gaps are ignored and only dismiss the notification.
+- Restore clears stale overdue anchors, but overdue and history gaps are derived from the restored schedule/history data.
 - Existing taken rows are preserved.
 - Existing skipped rows are preserved.
 
@@ -82,15 +112,21 @@ This file describes the behavioral rules that are currently implemented in code.
 
 - Pill history editing is limited to the last 30 days and never earlier than `startDate`.
 - Today can be empty, taken, or skipped.
-- Past required editable Pill days are not allowed to stay empty after normalization.
-- In `scheduleBased` mode, only required scheduled past editable days are finalized.
-- In `everyDay` mode, all past editable days are finalized.
+- Past editable scheduled Pill days must be explicitly taken or skipped before saving.
+- Save is disabled while any past editable scheduled Pill day is empty.
+- Missing past-day review is shown as a persistent warning row above the editable calendar. If the only missing day is the active overdue day, the warning asks the user to choose `Taken` or `Skipped` for the overdue scheduled day.
+- Pill cards show a warning status instead of today's taken/skipped status while recent history needs review.
+- Pill cards do not show the history warning only because of the active overdue day; they show it alongside overdue only when some other required past scheduled day is empty.
+- Pill Details shows a warning row above the calendar while any past scheduled day is missing. If the only missing day is the active overdue day, the warning asks the user to open Edit and choose `Taken` or `Skipped` for the overdue scheduled day.
+- Saving Edit Pill does not auto-fill missing past days; the user must choose the state.
+- If today's state is already finalized and the schedule is changed, the new schedule takes effect from tomorrow instead of rewriting today's schedule meaning.
 
 ## Schedule Rules
 
 - Schedules are represented by `WeekdaySet` bitmasks.
 - Editing schedule days appends a new schedule version row instead of rewriting older versions.
 - The current schedule is the latest schedule version whose `effectiveFrom` is not later than the relevant day.
+- If a schedule change is saved after today already has an explicit state, the new schedule version starts tomorrow.
 - Schedule ordering uses:
   - `effectiveFrom`
   - then `version`
@@ -125,7 +161,11 @@ This file describes the behavioral rules that are currently implemented in code.
 ## Badge Rules
 
 - Badge count equals overdue Habits plus overdue Pills.
-- An item is overdue only if it is scheduled today, its reminder time has passed, and today is neither positive nor skipped.
+- An item is overdue when the latest due scheduled day has no positive or skipped state.
+- Overdue labels are `Today`, `Yesterday`, or a date like `26.04.2026`.
+- Badge calculation is derived state only. Reconciliation does not persist skipped rows for overdue catch-up.
+- Restore/history gaps are not badge-counted overdue unless they are also the latest due scheduled day.
+- Dashboard cards do not count an active overdue day as a missing-history gap while it remains the latest due scheduled day; Details and Edit still surface a past active overdue day as requiring review.
 
 ## Backup Rules
 

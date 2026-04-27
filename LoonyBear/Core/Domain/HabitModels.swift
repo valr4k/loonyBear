@@ -166,6 +166,8 @@ struct HabitCardProjection: Identifiable, Equatable, Hashable {
     let isReminderScheduledToday: Bool
     let isCompletedToday: Bool
     let isSkippedToday: Bool
+    var needsHistoryReview = false
+    var activeOverdueDay: Date?
     let sortOrder: Int
 }
 
@@ -248,6 +250,9 @@ struct HabitDetailsProjection: Equatable {
     let totalCompletedDays: Int
     let completedDays: Set<Date>
     let skippedDays: Set<Date>
+    var needsHistoryReview = false
+    var requiredPastScheduledDays: Set<Date> = []
+    var activeOverdueDay: Date?
 
     var heatmapDays: [Date] {
         completedDays.sorted()

@@ -207,6 +207,7 @@ final class BackupService {
         }
 
         try replaceStore(with: archive)
+        UserDefaultsOverdueAnchorStore.shared.clearAllAnchors()
         ReliabilityLog.info("backup.restore store replacement succeeded")
     }
 

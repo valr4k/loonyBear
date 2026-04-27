@@ -16,9 +16,11 @@ struct NotificationServiceTests {
             context: persistence.container.viewContext,
             makeWriteContext: persistence.makeBackgroundContext
         )
+        let overdueAnchorStore = TestOverdueAnchorStore()
         let service = NotificationService(
             context: persistence.container.viewContext,
-            makeWriteContext: persistence.makeBackgroundContext
+            makeWriteContext: persistence.makeBackgroundContext,
+            overdueAnchorStore: overdueAnchorStore
         )
 
         try await clearNotifications()
@@ -48,6 +50,8 @@ struct NotificationServiceTests {
         #expect(identifiers.count == expectedCount)
         #expect(requests.allSatisfy { ($0.trigger as? UNCalendarNotificationTrigger)?.repeats == false })
         #expect(requests.allSatisfy { $0.identifier.hasPrefix("habit_\(habitID.uuidString.lowercased())_") })
+        let expectedAnchorDay = try #require(earliestLocalDate(from: requests))
+        #expect(overdueAnchorStore.anchorDay(for: .habit, id: habitID, calendar: .current) == expectedAnchorDay)
 
         try await clearNotifications()
     }
@@ -59,9 +63,11 @@ struct NotificationServiceTests {
             context: persistence.container.viewContext,
             makeWriteContext: persistence.makeBackgroundContext
         )
+        let overdueAnchorStore = TestOverdueAnchorStore()
         let service = PillNotificationService(
             context: persistence.container.viewContext,
-            makeWriteContext: persistence.makeBackgroundContext
+            makeWriteContext: persistence.makeBackgroundContext,
+            overdueAnchorStore: overdueAnchorStore
         )
 
         try await clearNotifications()
@@ -92,6 +98,8 @@ struct NotificationServiceTests {
         #expect(identifiers.count == expectedCount)
         #expect(requests.allSatisfy { ($0.trigger as? UNCalendarNotificationTrigger)?.repeats == false })
         #expect(requests.allSatisfy { $0.identifier.hasPrefix("pill_\(pillID.uuidString.lowercased())_") })
+        let expectedAnchorDay = try #require(earliestLocalDate(from: requests))
+        #expect(overdueAnchorStore.anchorDay(for: .pill, id: pillID, calendar: .current) == expectedAnchorDay)
 
         try await clearNotifications()
     }
@@ -266,6 +274,146 @@ struct NotificationServiceTests {
 
         #expect(candidates.count == 4)
         #expect(Set(candidates.map(\.pillName)) == ["Future pill", "Taken today", "Eligible"])
+    }
+
+    @Test
+    func habitPendingRequestPlanningRecordsUpcomingOverdueAnchor() throws {
+        let calendar = Calendar.current
+        let now = calendar.date(from: DateComponents(year: 2026, month: 4, day: 24, hour: 9))!
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+        let overdueAnchorStore = TestOverdueAnchorStore()
+        let service = NotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now }),
+            overdueAnchorStore: overdueAnchorStore
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Walk"
+        draft.startDate = calendar.startOfDay(for: now)
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = ReminderTime(hour: 18, minute: 0)
+        let habitID = try repository.createHabit(from: draft)
+
+        let requests = try service.makePendingNotificationRequests()
+        let expectedAnchorDay = try #require(earliestLocalDate(from: requests))
+
+        #expect(overdueAnchorStore.anchorDay(for: .habit, id: habitID, calendar: calendar) == expectedAnchorDay)
+    }
+
+    @Test
+    func habitPendingRequestPlanningPreservesTodayOverdueAnchor() throws {
+        let calendar = Calendar.current
+        let now = calendar.date(from: DateComponents(year: 2026, month: 4, day: 24, hour: 9))!
+        let today = calendar.startOfDay(for: now)
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+        let overdueAnchorStore = TestOverdueAnchorStore()
+        let service = NotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now }),
+            overdueAnchorStore: overdueAnchorStore
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Walk"
+        draft.startDate = today
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = ReminderTime(hour: 8, minute: 0)
+        let habitID = try repository.createHabit(from: draft)
+        overdueAnchorStore.setAnchorDay(today, for: .habit, id: habitID, calendar: calendar)
+
+        _ = try service.makePendingNotificationRequests()
+
+        #expect(overdueAnchorStore.anchorDay(for: .habit, id: habitID, calendar: calendar) == today)
+    }
+
+    @Test
+    func pillPendingRequestPlanningRecordsUpcomingOverdueAnchor() throws {
+        let calendar = Calendar.current
+        let now = calendar.date(from: DateComponents(year: 2026, month: 4, day: 24, hour: 9))!
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+        let overdueAnchorStore = TestOverdueAnchorStore()
+        let service = PillNotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now }),
+            overdueAnchorStore: overdueAnchorStore
+        )
+
+        var draft = PillDraft()
+        draft.name = "Vitamin D"
+        draft.dosage = "1 tablet"
+        draft.startDate = calendar.startOfDay(for: now)
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = ReminderTime(hour: 18, minute: 0)
+        let pillID = try repository.createPill(from: draft)
+
+        let requests = try service.makePendingNotificationRequests()
+        let expectedAnchorDay = try #require(earliestLocalDate(from: requests))
+
+        #expect(overdueAnchorStore.anchorDay(for: .pill, id: pillID, calendar: calendar) == expectedAnchorDay)
+    }
+
+    @Test
+    func pillPendingRequestPlanningPreservesTodayOverdueAnchor() throws {
+        let calendar = Calendar.current
+        let now = calendar.date(from: DateComponents(year: 2026, month: 4, day: 24, hour: 9))!
+        let today = calendar.startOfDay(for: now)
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+        let overdueAnchorStore = TestOverdueAnchorStore()
+        let service = PillNotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now }),
+            overdueAnchorStore: overdueAnchorStore
+        )
+
+        var draft = PillDraft()
+        draft.name = "Vitamin D"
+        draft.dosage = "1 tablet"
+        draft.startDate = today
+        draft.scheduleDays = .daily
+        draft.reminderEnabled = true
+        draft.reminderTime = ReminderTime(hour: 8, minute: 0)
+        let pillID = try repository.createPill(from: draft)
+        overdueAnchorStore.setAnchorDay(today, for: .pill, id: pillID, calendar: calendar)
+
+        _ = try service.makePendingNotificationRequests()
+
+        #expect(overdueAnchorStore.anchorDay(for: .pill, id: pillID, calendar: calendar) == today)
     }
 
     @Test
@@ -721,6 +869,62 @@ struct NotificationServiceTests {
     }
 
     @Test
+    func deliveredCleanupIncludesRespondedNotificationIdentifierWhenLogicalDayDiffers() {
+        let calendar = Calendar.current
+        let habitID = UUID()
+        let prefix = "habit_\(habitID.uuidString.lowercased())_"
+        let today = calendar.startOfDay(for: Date())
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
+        let respondedIdentifier = "\(prefix)responded"
+        let otherIdentifier = "\(prefix)other"
+
+        let identifiers = NotificationCleanupSupport.deliveredNotificationIdentifiersToRemove(
+            from: [
+                .init(
+                    identifier: respondedIdentifier,
+                    userInfo: [
+                        "type": "individual",
+                        "localDate": LocalNotificationSupport.localDateIdentifier(for: yesterday, calendar: calendar),
+                    ],
+                    deliveryDate: yesterday
+                ),
+                .init(
+                    identifier: otherIdentifier,
+                    userInfo: [
+                        "type": "individual",
+                        "localDate": LocalNotificationSupport.localDateIdentifier(for: yesterday, calendar: calendar),
+                    ],
+                    deliveryDate: yesterday
+                ),
+            ],
+            prefix: prefix,
+            on: today,
+            calendar: calendar,
+            including: respondedIdentifier
+        )
+
+        #expect(Set(identifiers) == Set([respondedIdentifier]))
+    }
+
+    @Test
+    func deliveredCleanupIgnoresExplicitIdentifierOutsidePrefix() {
+        let calendar = Calendar.current
+        let pillID = UUID()
+        let prefix = "pill_\(pillID.uuidString.lowercased())_"
+        let today = calendar.startOfDay(for: Date())
+
+        let identifiers = NotificationCleanupSupport.deliveredNotificationIdentifiersToRemove(
+            from: [],
+            prefix: prefix,
+            on: today,
+            calendar: calendar,
+            including: "habit_\(UUID().uuidString.lowercased())_responded"
+        )
+
+        #expect(identifiers.isEmpty)
+    }
+
+    @Test
     func pillRemindLaterCompletionStillSchedulesNotification() async throws {
         let persistence = PersistenceController(inMemory: true)
         let repository = CoreDataPillRepository(
@@ -771,30 +975,36 @@ struct NotificationServiceTests {
 
     @Test
     func habitCompleteActionUsesPayloadLocalDateAfterMidnight() throws {
+        let calendar = Calendar.current
+        let yesterday = calendar.startOfDay(for: calendar.date(byAdding: .day, value: -1, to: Date()) ?? Date())
+        let today = calendar.startOfDay(for: Date())
+        let notificationDate = calendar.date(byAdding: .hour, value: 1, to: today) ?? today
+        let clock = AppClock(calendar: calendar, now: { notificationDate })
         let persistence = PersistenceController(inMemory: true)
         let repository = CoreDataHabitRepository(
             context: persistence.container.viewContext,
-            makeWriteContext: persistence.makeBackgroundContext
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: clock
         )
         let service = NotificationService(
             context: persistence.container.viewContext,
-            makeWriteContext: persistence.makeBackgroundContext
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: clock
         )
-
-        let yesterday = Calendar.current.startOfDay(for: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date())
-        let today = Calendar.current.startOfDay(for: Date())
-        let notificationDate = Calendar.current.date(byAdding: .hour, value: 1, to: today) ?? today
-
-        var draft = CreateHabitDraft()
-        draft.name = "Walk"
-        draft.startDate = yesterday
-        draft.scheduleDays = Calendar.current.weekdaySet(for: today)
-        let habitID = try repository.createHabit(from: draft)
+        let habitID = try insertRawHabitReminder(
+            in: persistence.container.viewContext,
+            calendar: calendar,
+            startDate: yesterday,
+            scheduleDays: .daily,
+            reminderTime: ReminderTime(hour: 9, minute: 0)
+        )
 
         let userInfo: [AnyHashable: Any] = [
             "type": "individual",
             "habitID": habitID.uuidString,
-            "localDate": LocalNotificationSupport.localDateIdentifier(for: yesterday, calendar: .current),
+            "localDate": LocalNotificationSupport.localDateIdentifier(for: yesterday, calendar: calendar),
         ]
 
         #expect(service.handleNotificationResponse(
@@ -812,30 +1022,36 @@ struct NotificationServiceTests {
 
     @Test
     func habitSkipActionUsesPayloadLocalDateAfterMidnight() throws {
+        let calendar = Calendar.current
+        let yesterday = calendar.startOfDay(for: calendar.date(byAdding: .day, value: -1, to: Date()) ?? Date())
+        let today = calendar.startOfDay(for: Date())
+        let notificationDate = calendar.date(byAdding: .hour, value: 1, to: today) ?? today
+        let clock = AppClock(calendar: calendar, now: { notificationDate })
         let persistence = PersistenceController(inMemory: true)
         let repository = CoreDataHabitRepository(
             context: persistence.container.viewContext,
-            makeWriteContext: persistence.makeBackgroundContext
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: clock
         )
         let service = NotificationService(
             context: persistence.container.viewContext,
-            makeWriteContext: persistence.makeBackgroundContext
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: clock
         )
-
-        let yesterday = Calendar.current.startOfDay(for: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date())
-        let today = Calendar.current.startOfDay(for: Date())
-        let notificationDate = Calendar.current.date(byAdding: .hour, value: 1, to: today) ?? today
-
-        var draft = CreateHabitDraft()
-        draft.name = "Read"
-        draft.startDate = yesterday
-        draft.scheduleDays = Calendar.current.weekdaySet(for: today)
-        let habitID = try repository.createHabit(from: draft)
+        let habitID = try insertRawHabitReminder(
+            in: persistence.container.viewContext,
+            calendar: calendar,
+            startDate: yesterday,
+            scheduleDays: .daily,
+            reminderTime: ReminderTime(hour: 9, minute: 0)
+        )
 
         let userInfo: [AnyHashable: Any] = [
             "type": "individual",
             "habitID": habitID.uuidString,
-            "localDate": LocalNotificationSupport.localDateIdentifier(for: yesterday, calendar: .current),
+            "localDate": LocalNotificationSupport.localDateIdentifier(for: yesterday, calendar: calendar),
         ]
 
         #expect(service.handleNotificationResponse(
@@ -930,9 +1146,214 @@ struct NotificationServiceTests {
         ))
 
         let details = try #require(try repository.fetchPillDetails(id: pillID))
-        #expect(details.skippedDays.contains(yesterday))
+        #expect(details.takenDays.contains(yesterday))
+        #expect(!details.skippedDays.contains(yesterday))
         #expect(!details.skippedDays.contains(today))
         #expect(!details.takenDays.contains(today))
+    }
+
+    @Test
+    func habitNotificationActionKeepsPreviousDueDaysAsHistoryGaps() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let monday = makeUTCDate(year: 2026, month: 4, day: 20, hour: 0, minute: 0)
+        let tuesday = makeUTCDate(year: 2026, month: 4, day: 21, hour: 0, minute: 0)
+        let wednesday = makeUTCDate(year: 2026, month: 4, day: 22, hour: 0, minute: 0)
+        let now = makeUTCDate(year: 2026, month: 4, day: 22, hour: 10, minute: 0)
+        let clock = AppClock(calendar: calendar, now: { now })
+        let overdueAnchorStore = TestOverdueAnchorStore()
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: clock,
+            overdueAnchorStore: overdueAnchorStore
+        )
+        let service = NotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: clock,
+            overdueAnchorStore: overdueAnchorStore
+        )
+        let habitID = try insertRawHabitReminder(
+            in: persistence.container.viewContext,
+            calendar: calendar,
+            startDate: monday,
+            scheduleDays: .daily,
+            reminderTime: ReminderTime(hour: 9, minute: 0)
+        )
+        overdueAnchorStore.setAnchorDay(monday, for: .habit, id: habitID, calendar: calendar)
+
+        #expect(service.handleNotificationResponse(
+            type: "individual",
+            userInfo: [
+                "type": "individual",
+                "habitID": habitID.uuidString,
+                "localDate": LocalNotificationSupport.localDateIdentifier(for: wednesday, calendar: calendar),
+            ],
+            actionIdentifier: "habit.complete",
+            notificationDate: now
+        ))
+
+        persistence.container.viewContext.refreshAllObjects()
+        let details = try #require(try repository.fetchHabitDetails(id: habitID))
+        #expect(!details.skippedDays.contains(monday))
+        #expect(!details.skippedDays.contains(tuesday))
+        #expect(details.completedDays.contains(wednesday))
+        #expect(details.needsHistoryReview)
+        #expect(details.activeOverdueDay == nil)
+    }
+
+    @Test
+    func pillNotificationActionKeepsPreviousDueDaysAsHistoryGaps() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let monday = makeUTCDate(year: 2026, month: 4, day: 20, hour: 0, minute: 0)
+        let tuesday = makeUTCDate(year: 2026, month: 4, day: 21, hour: 0, minute: 0)
+        let wednesday = makeUTCDate(year: 2026, month: 4, day: 22, hour: 0, minute: 0)
+        let now = makeUTCDate(year: 2026, month: 4, day: 22, hour: 10, minute: 0)
+        let clock = AppClock(calendar: calendar, now: { now })
+        let overdueAnchorStore = TestOverdueAnchorStore()
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: clock,
+            overdueAnchorStore: overdueAnchorStore
+        )
+        let service = PillNotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: clock,
+            overdueAnchorStore: overdueAnchorStore
+        )
+        let pillID = try insertRawPillReminder(
+            in: persistence.container.viewContext,
+            calendar: calendar,
+            startDate: monday,
+            scheduleDays: .daily,
+            reminderTime: ReminderTime(hour: 9, minute: 0)
+        )
+        overdueAnchorStore.setAnchorDay(monday, for: .pill, id: pillID, calendar: calendar)
+
+        #expect(service.handleNotificationResponse(
+            type: "pill",
+            userInfo: [
+                "type": "pill",
+                "pillID": pillID.uuidString,
+                "localDate": LocalNotificationSupport.localDateIdentifier(for: wednesday, calendar: calendar),
+            ],
+            actionIdentifier: "pill.take",
+            notificationDate: now
+        ))
+
+        persistence.container.viewContext.refreshAllObjects()
+        let details = try #require(try repository.fetchPillDetails(id: pillID))
+        #expect(!details.skippedDays.contains(monday))
+        #expect(!details.skippedDays.contains(tuesday))
+        #expect(details.takenDays.contains(wednesday))
+        #expect(details.needsHistoryReview)
+        #expect(details.activeOverdueDay == nil)
+    }
+
+    @Test
+    func staleHabitNotificationActionDoesNotRepairHistoryGap() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let monday = makeUTCDate(year: 2026, month: 4, day: 20, hour: 0, minute: 0)
+        let wednesday = makeUTCDate(year: 2026, month: 4, day: 22, hour: 0, minute: 0)
+        let now = makeUTCDate(year: 2026, month: 4, day: 22, hour: 10, minute: 0)
+        let clock = AppClock(calendar: calendar, now: { now })
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: clock
+        )
+        let service = NotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: clock
+        )
+        let habitID = try insertRawHabitReminder(
+            in: persistence.container.viewContext,
+            calendar: calendar,
+            startDate: monday,
+            scheduleDays: .daily,
+            reminderTime: ReminderTime(hour: 9, minute: 0)
+        )
+
+        #expect(service.handleNotificationResponse(
+            type: "individual",
+            userInfo: [
+                "type": "individual",
+                "habitID": habitID.uuidString,
+                "localDate": LocalNotificationSupport.localDateIdentifier(for: monday, calendar: calendar),
+            ],
+            actionIdentifier: "habit.complete",
+            notificationDate: now
+        ))
+
+        persistence.container.viewContext.refreshAllObjects()
+        let details = try #require(try repository.fetchHabitDetails(id: habitID))
+        #expect(details.completedDays.isEmpty)
+        #expect(details.skippedDays.isEmpty)
+        #expect(details.activeOverdueDay == wednesday)
+        #expect(details.needsHistoryReview)
+    }
+
+    @Test
+    func stalePillNotificationActionDoesNotRepairHistoryGap() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let monday = makeUTCDate(year: 2026, month: 4, day: 20, hour: 0, minute: 0)
+        let wednesday = makeUTCDate(year: 2026, month: 4, day: 22, hour: 0, minute: 0)
+        let now = makeUTCDate(year: 2026, month: 4, day: 22, hour: 10, minute: 0)
+        let clock = AppClock(calendar: calendar, now: { now })
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: clock
+        )
+        let service = PillNotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: clock
+        )
+        let pillID = try insertRawPillReminder(
+            in: persistence.container.viewContext,
+            calendar: calendar,
+            startDate: monday,
+            scheduleDays: .daily,
+            reminderTime: ReminderTime(hour: 9, minute: 0)
+        )
+
+        #expect(service.handleNotificationResponse(
+            type: "pill",
+            userInfo: [
+                "type": "pill",
+                "pillID": pillID.uuidString,
+                "localDate": LocalNotificationSupport.localDateIdentifier(for: monday, calendar: calendar),
+            ],
+            actionIdentifier: "pill.take",
+            notificationDate: now
+        ))
+
+        persistence.container.viewContext.refreshAllObjects()
+        let details = try #require(try repository.fetchPillDetails(id: pillID))
+        #expect(details.takenDays.isEmpty)
+        #expect(details.skippedDays.isEmpty)
+        #expect(details.activeOverdueDay == wednesday)
+        #expect(details.needsHistoryReview)
     }
 
     @Test
@@ -1008,7 +1429,7 @@ struct NotificationServiceTests {
         draft.startDate = today
         draft.scheduleDays = .daily
         draft.reminderEnabled = true
-        draft.reminderTime = reminderTimeHoursFromNow(2)
+        draft.reminderTime = reminderTimeHoursFromNow(-1)
         let pillID = try repository.createPill(from: draft)
         let expectedRegularCount = expectedRequestCount(reminderTime: draft.reminderTime, schedulingWindowDays: 2)
 
@@ -1072,7 +1493,7 @@ struct NotificationServiceTests {
         draft.startDate = today
         draft.scheduleDays = .daily
         draft.reminderEnabled = true
-        draft.reminderTime = reminderTimeHoursFromNow(2)
+        draft.reminderTime = reminderTimeHoursFromNow(-1)
         let pillID = try repository.createPill(from: draft)
         let expectedRegularCount = expectedRequestCount(reminderTime: draft.reminderTime, schedulingWindowDays: 2)
 
@@ -1129,7 +1550,7 @@ struct NotificationServiceTests {
         firstDraft.startDate = today
         firstDraft.scheduleDays = .daily
         firstDraft.reminderEnabled = true
-        firstDraft.reminderTime = reminderTimeHoursFromNow(2)
+        firstDraft.reminderTime = reminderTimeHoursFromNow(-1)
         let firstPillID = try repository.createPill(from: firstDraft)
 
         var secondDraft = PillDraft()
@@ -1371,7 +1792,7 @@ struct NotificationServiceTests {
         draft.startDate = today
         draft.scheduleDays = .daily
         draft.reminderEnabled = true
-        draft.reminderTime = reminderTimeHoursFromNow(2)
+        draft.reminderTime = reminderTimeHoursFromNow(-1)
         let pillID = try repository.createPill(from: draft)
 
         let initialRegularCount = expectedRequestCount(reminderTime: draft.reminderTime, schedulingWindowDays: 2)
@@ -1511,7 +1932,7 @@ struct NotificationServiceTests {
 
         let details = try #require(try repository.fetchPillDetails(id: pillID))
         #expect(details.takenDays.contains(today))
-        #expect(!details.takenDays.contains(yesterday))
+        #expect(details.takenDays.contains(yesterday))
     }
 
     @Test
@@ -1995,6 +2416,74 @@ struct NotificationServiceTests {
         }
     }
 
+    private func insertRawHabitReminder(
+        in context: NSManagedObjectContext,
+        calendar: Calendar,
+        startDate: Date,
+        scheduleDays: WeekdaySet,
+        reminderTime: ReminderTime
+    ) throws -> UUID {
+        let habitID = UUID()
+        let habit = NSEntityDescription.insertNewObject(forEntityName: "Habit", into: context)
+        habit.setValue(habitID, forKey: "id")
+        habit.setValue(HabitType.build.rawValue, forKey: "typeRaw")
+        habit.setValue("Walk", forKey: "name")
+        habit.setValue(Int32(0), forKey: "sortOrder")
+        habit.setValue(calendar.startOfDay(for: startDate), forKey: "startDate")
+        habit.setValue(HabitHistoryMode.scheduleBased.rawValue, forKey: "historyModeRaw")
+        habit.setValue(true, forKey: "reminderEnabled")
+        habit.setValue(Int16(reminderTime.hour), forKey: "reminderHour")
+        habit.setValue(Int16(reminderTime.minute), forKey: "reminderMinute")
+        habit.setValue(startDate, forKey: "createdAt")
+        habit.setValue(startDate, forKey: "updatedAt")
+        habit.setValue(Int32(1), forKey: "version")
+
+        let schedule = NSEntityDescription.insertNewObject(forEntityName: "HabitScheduleVersion", into: context)
+        schedule.setValue(UUID(), forKey: "id")
+        schedule.setValue(habitID, forKey: "habitID")
+        schedule.setValue(Int16(scheduleDays.rawValue), forKey: "weekdayMask")
+        schedule.setValue(calendar.startOfDay(for: startDate), forKey: "effectiveFrom")
+        schedule.setValue(startDate, forKey: "createdAt")
+        schedule.setValue(Int32(1), forKey: "version")
+        schedule.setValue(habit, forKey: "habit")
+        try context.save()
+        return habitID
+    }
+
+    private func insertRawPillReminder(
+        in context: NSManagedObjectContext,
+        calendar: Calendar,
+        startDate: Date,
+        scheduleDays: WeekdaySet,
+        reminderTime: ReminderTime
+    ) throws -> UUID {
+        let pillID = UUID()
+        let pill = NSEntityDescription.insertNewObject(forEntityName: "Pill", into: context)
+        pill.setValue(pillID, forKey: "id")
+        pill.setValue("Vitamin D", forKey: "name")
+        pill.setValue("1 tablet", forKey: "dosage")
+        pill.setValue(Int32(0), forKey: "sortOrder")
+        pill.setValue(calendar.startOfDay(for: startDate), forKey: "startDate")
+        pill.setValue(PillHistoryMode.scheduleBased.rawValue, forKey: "historyModeRaw")
+        pill.setValue(true, forKey: "reminderEnabled")
+        pill.setValue(Int16(reminderTime.hour), forKey: "reminderHour")
+        pill.setValue(Int16(reminderTime.minute), forKey: "reminderMinute")
+        pill.setValue(startDate, forKey: "createdAt")
+        pill.setValue(startDate, forKey: "updatedAt")
+        pill.setValue(Int32(1), forKey: "version")
+
+        let schedule = NSEntityDescription.insertNewObject(forEntityName: "PillScheduleVersion", into: context)
+        schedule.setValue(UUID(), forKey: "id")
+        schedule.setValue(pillID, forKey: "pillID")
+        schedule.setValue(Int16(scheduleDays.rawValue), forKey: "weekdayMask")
+        schedule.setValue(calendar.startOfDay(for: startDate), forKey: "effectiveFrom")
+        schedule.setValue(startDate, forKey: "createdAt")
+        schedule.setValue(Int32(1), forKey: "version")
+        schedule.setValue(pill, forKey: "pill")
+        try context.save()
+        return pillID
+    }
+
     private func makeUTCClock() -> AppClock {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
@@ -2076,6 +2565,21 @@ struct NotificationServiceTests {
                 continuation.resume(returning: notifications)
             }
         }
+    }
+
+    private func earliestLocalDate(from requests: [UNNotificationRequest]) -> Date? {
+        requests.compactMap { request -> Date? in
+            guard let localDateIdentifier = request.content.userInfo["localDate"] as? String else {
+                return nil
+            }
+            return LocalNotificationSupport.parseLocalDateIdentifier(
+                localDateIdentifier,
+                calendar: .current
+            )
+        }
+        .map { Calendar.current.startOfDay(for: $0) }
+        .sorted()
+        .first
     }
 
     private func rescheduleAllNotifications(_ service: NotificationService) async {

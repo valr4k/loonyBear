@@ -3,28 +3,24 @@ import Foundation
 @MainActor
 struct PillSideEffectCoordinator {
     let notificationService: PillNotificationService
-    let badgeService: AppBadgeService
     let clock: AppClock
 
     init(
         notificationService: PillNotificationService,
-        badgeService: AppBadgeService,
-        clock: AppClock = .live
+        clock: AppClock? = nil
     ) {
         self.notificationService = notificationService
-        self.badgeService = badgeService
-        self.clock = clock
+        self.clock = clock ?? .live
     }
 
-    func refreshDerivedState() {
-        badgeService.refreshBadge()
-    }
+    func refreshDerivedState() {}
 
     func handleDailyMutation(forPillID pillID: UUID, on day: Date? = nil) {
         let logicalDay = day ?? clock.now()
         notificationService.removeSnoozedNotifications(forPillID: pillID, on: logicalDay) {
-            self.notificationService.rescheduleAllNotifications()
+            self.notificationService.removePendingNotification(forPillID: pillID, on: logicalDay)
             self.notificationService.removeDeliveredNotifications(forPillID: pillID, on: logicalDay)
+            self.notificationService.rescheduleNotifications(forPillID: pillID)
         }
     }
 

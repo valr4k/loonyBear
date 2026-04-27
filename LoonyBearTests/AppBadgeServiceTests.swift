@@ -24,6 +24,7 @@ struct AppBadgeServiceTests {
                 isReminderScheduledToday: true,
                 isCompletedToday: false,
                 isSkippedToday: false,
+                activeOverdueDay: Calendar.current.startOfDay(for: now),
                 sortOrder: 0
             ),
             HabitCardProjection(
@@ -70,6 +71,7 @@ struct AppBadgeServiceTests {
                 isScheduledToday: true,
                 isTakenToday: false,
                 isSkippedToday: false,
+                activeOverdueDay: Calendar.current.startOfDay(for: now),
                 sortOrder: 0
             ),
             PillCardProjection(
@@ -175,7 +177,7 @@ struct AppBadgeServiceTests {
             ),
             PillReminderConfiguration(
                 id: UUID(),
-                name: "Disabled Pill",
+                name: "No Reminder Pill",
                 dosage: "1 pill",
                 startDate: timestamp,
                 scheduleDays: .wednesday,
@@ -193,7 +195,36 @@ struct AppBadgeServiceTests {
             calendar: calendar
         )
 
-        #expect(count == 2)
+        #expect(count == 3)
+    }
+
+    @Test
+    func projectedOverdueCountIncludesPreviousScheduledOverdueDay() {
+        let calendar = Calendar(identifier: .gregorian)
+        let sunday = calendar.date(from: DateComponents(year: 2025, month: 1, day: 19, hour: 18, minute: 0))!
+        let mondayNotification = calendar.date(from: DateComponents(year: 2025, month: 1, day: 20, hour: 10, minute: 0))!
+
+        let habits = [
+            HabitReminderConfiguration(
+                id: UUID(),
+                name: "Weekly Habit",
+                startDate: sunday,
+                scheduleDays: .sunday,
+                reminderEnabled: true,
+                reminderTime: ReminderTime(hour: 18, minute: 0),
+                completedDays: [],
+                skippedDays: []
+            ),
+        ]
+
+        let count = ProjectedBadgeCountCalculator.projectedOverdueCount(
+            at: mondayNotification,
+            habits: habits,
+            pills: [],
+            calendar: calendar
+        )
+
+        #expect(count == 1)
     }
 
     @Test
@@ -253,17 +284,24 @@ struct AppBadgeServiceTests {
             second: 0,
             of: Date()
         ) ?? Date()
+        let overdueAnchorStore = TestOverdueAnchorStore()
         let habitRepository = CoreDataHabitRepository(
             context: persistence.container.viewContext,
-            makeWriteContext: persistence.makeBackgroundContext
+            makeWriteContext: persistence.makeBackgroundContext,
+            clock: AppClock(calendar: calendar, now: { now }),
+            overdueAnchorStore: overdueAnchorStore
         )
         let pillRepository = CoreDataPillRepository(
             context: persistence.container.viewContext,
-            makeWriteContext: persistence.makeBackgroundContext
+            makeWriteContext: persistence.makeBackgroundContext,
+            clock: AppClock(calendar: calendar, now: { now }),
+            overdueAnchorStore: overdueAnchorStore
         )
         let service = AppBadgeService(
             loadDashboardUseCase: LoadDashboardUseCase(repository: habitRepository),
-            pillRepository: pillRepository
+            pillRepository: pillRepository,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
         )
 
         var habitDraft = CreateHabitDraft()
@@ -273,6 +311,7 @@ struct AppBadgeServiceTests {
         habitDraft.reminderEnabled = true
         habitDraft.reminderTime = ReminderTime(hour: 0, minute: 1)
         let habitID = try habitRepository.createHabit(from: habitDraft)
+        overdueAnchorStore.setAnchorDay(calendar.startOfDay(for: now), for: .habit, id: habitID, calendar: calendar)
 
         var pillDraft = PillDraft()
         pillDraft.name = "Magnesium"
@@ -282,6 +321,7 @@ struct AppBadgeServiceTests {
         pillDraft.reminderEnabled = true
         pillDraft.reminderTime = ReminderTime(hour: 0, minute: 1)
         let pillID = try pillRepository.createPill(from: pillDraft)
+        overdueAnchorStore.setAnchorDay(calendar.startOfDay(for: now), for: .pill, id: pillID, calendar: calendar)
 
         #expect(try service.overdueCount(now: now) == 2)
 
@@ -502,8 +542,11 @@ private struct FakeHabitRepository: HabitRepository {
     func reconcilePastDays(today: Date) throws -> Int { 0 }
     func createHabit(from draft: CreateHabitDraft) throws -> UUID { fatalError("Unused in tests") }
     func completeHabitToday(id: UUID) throws { fatalError("Unused in tests") }
+    func completeHabitDay(id: UUID, on day: Date) throws { fatalError("Unused in tests") }
     func skipHabitToday(id: UUID) throws { fatalError("Unused in tests") }
+    func skipHabitDay(id: UUID, on day: Date) throws { fatalError("Unused in tests") }
     func clearHabitDayStateToday(id: UUID) throws { fatalError("Unused in tests") }
+    func clearHabitDayState(id: UUID, on day: Date) throws { fatalError("Unused in tests") }
     func deleteHabit(id: UUID) throws { fatalError("Unused in tests") }
     func updateHabit(from draft: EditHabitDraft) throws { fatalError("Unused in tests") }
 }
@@ -519,7 +562,10 @@ private struct FakePillRepository: PillRepository {
     func updatePill(from draft: EditPillDraft) throws { fatalError("Unused in tests") }
     func deletePill(id: UUID) throws { fatalError("Unused in tests") }
     func markTakenToday(id: UUID) throws { fatalError("Unused in tests") }
+    func markPillTaken(id: UUID, on day: Date) throws { fatalError("Unused in tests") }
     func skipPillToday(id: UUID) throws { fatalError("Unused in tests") }
+    func skipPillDay(id: UUID, on day: Date) throws { fatalError("Unused in tests") }
     func clearPillDayStateToday(id: UUID) throws { fatalError("Unused in tests") }
+    func clearPillDayState(id: UUID, on day: Date) throws { fatalError("Unused in tests") }
     func movePills(from offsets: IndexSet, to destination: Int) throws { fatalError("Unused in tests") }
 }

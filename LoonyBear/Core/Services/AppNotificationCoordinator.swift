@@ -6,15 +6,24 @@ final class AppNotificationCoordinator: NSObject, UNUserNotificationCenterDelega
     private let habitNotificationService: NotificationService
     private let pillNotificationService: PillNotificationService
     private let badgeService: AppBadgeService
+    private let loadDashboardUseCase: LoadDashboardUseCase?
+    private let pillRepository: PillRepository?
+    private let widgetSyncService: WidgetSyncService?
 
     init(
         habitNotificationService: NotificationService,
         pillNotificationService: PillNotificationService,
-        badgeService: AppBadgeService
+        badgeService: AppBadgeService,
+        loadDashboardUseCase: LoadDashboardUseCase? = nil,
+        pillRepository: PillRepository? = nil,
+        widgetSyncService: WidgetSyncService? = nil
     ) {
         self.habitNotificationService = habitNotificationService
         self.pillNotificationService = pillNotificationService
         self.badgeService = badgeService
+        self.loadDashboardUseCase = loadDashboardUseCase
+        self.pillRepository = pillRepository
+        self.widgetSyncService = widgetSyncService
         super.init()
         center.delegate = self
     }
@@ -22,9 +31,6 @@ final class AppNotificationCoordinator: NSObject, UNUserNotificationCenterDelega
     func configure() async {
         registerCategories()
         _ = await habitNotificationService.ensureAuthorizationIfNeeded()
-        await MainActor.run {
-            badgeService.refreshBadge()
-        }
     }
 
     func userNotificationCenter(
@@ -39,7 +45,29 @@ final class AppNotificationCoordinator: NSObject, UNUserNotificationCenterDelega
 
         let finishResponse = {
             _ = Task { @MainActor in
-                self.badgeService.refreshBadge()
+                let habitDashboard = try? self.loadDashboardUseCase?.execute()
+                let pillDashboard: PillDashboardProjection?
+                if let pillRepository = self.pillRepository,
+                   let pills = try? pillRepository.fetchDashboardPills() {
+                    pillDashboard = PillDashboardProjection(pills: pills)
+                } else {
+                    pillDashboard = nil
+                }
+                if
+                    !type.hasPrefix("pill"),
+                    let widgetSyncService = self.widgetSyncService,
+                    let habitDashboard
+                {
+                    widgetSyncService.syncSnapshot(from: habitDashboard)
+                }
+                if let habitDashboard, let pillDashboard {
+                    self.badgeService.refreshBadge(
+                        habitDashboard: habitDashboard,
+                        pillDashboard: pillDashboard
+                    )
+                } else {
+                    self.badgeService.refreshBadge()
+                }
                 completionHandler()
             }
         }

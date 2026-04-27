@@ -18,6 +18,12 @@ private enum NotificationServiceError: LocalizedError {
 }
 
 final class NotificationService {
+    private enum NotificationActionDayState {
+        case current
+        case inactive
+        case failed
+    }
+
     private let categoryIdentifier = "habit.reminder"
     private let summaryCategoryIdentifier = "habit.reminder.summary"
     private let completeActionIdentifier = "habit.complete"
@@ -28,16 +34,19 @@ final class NotificationService {
     private let center = UNUserNotificationCenter.current()
     private let calendar: Calendar
     private let clock: AppClock
+    private let overdueAnchorStore: OverdueAnchorStore
 
     init(
         context: NSManagedObjectContext,
         makeWriteContext: @escaping () -> NSManagedObjectContext,
         calendar: Calendar = .autoupdatingCurrent,
-        clock: AppClock? = nil
+        clock: AppClock? = nil,
+        overdueAnchorStore: OverdueAnchorStore? = nil
     ) {
         let resolvedClock = clock ?? AppClock(calendar: calendar)
         self.calendar = resolvedClock.calendar
         self.clock = resolvedClock
+        self.overdueAnchorStore = overdueAnchorStore ?? UserDefaultsOverdueAnchorStore.shared
         storeContext = NotificationStoreContext(
             readContext: context,
             makeWriteContext: makeWriteContext
@@ -84,7 +93,27 @@ final class NotificationService {
     }
 
     func rescheduleNotifications(forHabitID habitID: UUID) {
-        rescheduleAllNotifications()
+        center.getPendingNotificationRequests { requests in
+            guard !requests.contains(where: { $0.identifier.hasPrefix("habit_summary_") }) else {
+                self.rescheduleAllNotifications()
+                return
+            }
+
+            let requestsToAdd: [UNNotificationRequest]
+            do {
+                requestsToAdd = try self.makePendingNotificationRequests(forHabitID: habitID)
+            } catch {
+                ReliabilityLog.error("notification.habit.reschedule.item failed: \(error.localizedDescription)")
+                return
+            }
+
+            self.removePendingNotifications(forHabitID: habitID) {
+                self.addPendingNotificationRequests(
+                    requestsToAdd,
+                    logName: "notification.habit.reschedule.item"
+                )
+            }
+        }
     }
 
     func rescheduleAllNotifications() {
@@ -114,6 +143,7 @@ final class NotificationService {
     }
 
     func removeNotifications(forHabitID habitID: UUID) {
+        overdueAnchorStore.clearAnchorDay(for: .habit, id: habitID)
         rescheduleAllNotifications()
         removeDeliveredNotifications(forHabitID: habitID)
     }
@@ -125,18 +155,24 @@ final class NotificationService {
         )
     }
 
-    func removeDeliveredNotifications(forHabitID habitID: UUID, on localDate: Date) {
+    func removeDeliveredNotifications(
+        forHabitID habitID: UUID,
+        on localDate: Date,
+        notificationIdentifier: String? = nil
+    ) {
         NotificationCleanupSupport.removeDeliveredNotifications(
             center: center,
             prefix: notificationIdentifierPrefix(for: habitID),
             on: localDate,
-            calendar: calendar
+            calendar: calendar,
+            including: notificationIdentifier
         )
     }
 
     func removeDeliveredNotifications(
         forHabitID habitID: UUID,
         on localDate: Date,
+        notificationIdentifier: String? = nil,
         completion: @escaping () -> Void
     ) {
         NotificationCleanupSupport.removeDeliveredNotifications(
@@ -144,6 +180,7 @@ final class NotificationService {
             prefix: notificationIdentifierPrefix(for: habitID),
             on: localDate,
             calendar: calendar,
+            including: notificationIdentifier,
             completion: completion
         )
     }
@@ -174,7 +211,8 @@ final class NotificationService {
             type: type,
             userInfo: response.notification.request.content.userInfo,
             actionIdentifier: response.actionIdentifier,
-            notificationDate: response.notification.date
+            notificationDate: response.notification.date,
+            notificationIdentifier: response.notification.request.identifier
         )
     }
 
@@ -194,6 +232,7 @@ final class NotificationService {
             userInfo: response.notification.request.content.userInfo,
             actionIdentifier: response.actionIdentifier,
             notificationDate: response.notification.date,
+            notificationIdentifier: response.notification.request.identifier,
             completion: completion
         )
     }
@@ -203,7 +242,8 @@ final class NotificationService {
         type: String,
         userInfo: [AnyHashable: Any],
         actionIdentifier: String,
-        notificationDate: Date
+        notificationDate: Date,
+        notificationIdentifier: String? = nil
     ) -> Bool {
         if handleDefaultTapRouting(type: type, actionIdentifier: actionIdentifier) {
             return true
@@ -217,19 +257,38 @@ final class NotificationService {
         }
 
         let deliveryDay = localDate(from: userInfo, fallbackDate: notificationDate)
-        let mutationOutcome: NotificationMutationOutcome
+        switch notificationActionDayState(for: habitID, deliveryDay: deliveryDay) {
+        case .current:
+            break
+        case .inactive:
+            removeDeliveredNotifications(
+                forHabitID: habitID,
+                on: deliveryDay,
+                notificationIdentifier: notificationIdentifier
+            )
+            return true
+        case .failed:
+            return true
+        }
+
+        let actionOutcome: NotificationMutationOutcome
         switch actionIdentifier {
         case completeActionIdentifier:
-            mutationOutcome = createCompletionIfNeeded(for: habitID, on: deliveryDay, source: .notification)
+            actionOutcome = createCompletionIfNeeded(for: habitID, on: deliveryDay, source: .notification)
         case skipActionIdentifier:
-            mutationOutcome = createSkippedCompletionIfNeeded(for: habitID, on: deliveryDay)
+            actionOutcome = createSkippedCompletionIfNeeded(for: habitID, on: deliveryDay)
         default:
             return true
         }
 
-        guard case .failed = mutationOutcome else {
-            removeDeliveredNotifications(forHabitID: habitID, on: deliveryDay)
-            if case .mutated = mutationOutcome {
+        guard case .failed = actionOutcome else {
+            clearOverdueAnchorIfNeeded(for: habitID, on: deliveryDay)
+            removeDeliveredNotifications(
+                forHabitID: habitID,
+                on: deliveryDay,
+                notificationIdentifier: notificationIdentifier
+            )
+            if case .mutated = actionOutcome {
                 rescheduleAllNotifications()
             }
             return true
@@ -243,6 +302,7 @@ final class NotificationService {
         userInfo: [AnyHashable: Any],
         actionIdentifier: String,
         notificationDate: Date,
+        notificationIdentifier: String? = nil,
         onCleanupFinished: (() -> Void)? = nil,
         completion: @escaping (Bool) -> Void
     ) {
@@ -260,21 +320,44 @@ final class NotificationService {
         }
 
         let deliveryDay = localDate(from: userInfo, fallbackDate: notificationDate)
-        let mutationOutcome: NotificationMutationOutcome
+        switch notificationActionDayState(for: habitID, deliveryDay: deliveryDay) {
+        case .current:
+            break
+        case .inactive:
+            removeDeliveredNotifications(
+                forHabitID: habitID,
+                on: deliveryDay,
+                notificationIdentifier: notificationIdentifier
+            ) {
+                onCleanupFinished?()
+                completion(true)
+            }
+            return
+        case .failed:
+            completion(true)
+            return
+        }
+
+        let actionOutcome: NotificationMutationOutcome
         switch actionIdentifier {
         case completeActionIdentifier:
-            mutationOutcome = createCompletionIfNeeded(for: habitID, on: deliveryDay, source: .notification)
+            actionOutcome = createCompletionIfNeeded(for: habitID, on: deliveryDay, source: .notification)
         case skipActionIdentifier:
-            mutationOutcome = createSkippedCompletionIfNeeded(for: habitID, on: deliveryDay)
+            actionOutcome = createSkippedCompletionIfNeeded(for: habitID, on: deliveryDay)
         default:
             completion(true)
             return
         }
 
-        guard case .failed = mutationOutcome else {
-            removeDeliveredNotifications(forHabitID: habitID, on: deliveryDay) {
+        guard case .failed = actionOutcome else {
+            clearOverdueAnchorIfNeeded(for: habitID, on: deliveryDay)
+            removeDeliveredNotifications(
+                forHabitID: habitID,
+                on: deliveryDay,
+                notificationIdentifier: notificationIdentifier
+            ) {
                 onCleanupFinished?()
-                if case .mutated = mutationOutcome {
+                if case .mutated = actionOutcome {
                     self.rescheduleAllNotifications()
                 }
                 completion(true)
@@ -283,6 +366,119 @@ final class NotificationService {
         }
 
         completion(true)
+    }
+
+    private func notificationActionDayState(for habitID: UUID, deliveryDay: Date) -> NotificationActionDayState {
+        let normalizedDeliveryDay = calendar.startOfDay(for: deliveryDay)
+
+        do {
+            let isCurrent = try storeContext.performRead { context in
+                let habitRequest = NSFetchRequest<NSManagedObject>(entityName: "Habit")
+                habitRequest.predicate = NSPredicate(format: "id == %@", habitID as CVarArg)
+                habitRequest.fetchLimit = 1
+
+                guard let habit = try context.fetch(habitRequest).first else {
+                    return false
+                }
+
+                var report = IntegrityReportBuilder()
+                guard
+                    let startDate = habit.dateValue(forKey: "startDate"),
+                    let schedules = loadHabitSchedules(for: habit, habitID: habitID, report: &report),
+                    let completionEntries = loadHabitCompletionEntries(for: habit, report: &report)
+                else {
+                    throw report.makeError(operation: "notification.habit.action.currentDay")
+                }
+
+                let reminderEnabled = habit.boolValue(forKey: "reminderEnabled")
+                let reminderTime = ReminderValidation.validatedReminderTime(
+                    from: habit,
+                    reminderEnabled: reminderEnabled,
+                    area: "notification.action.currentDay",
+                    report: &report
+                )
+                guard !reminderEnabled || reminderTime != nil else {
+                    throw report.makeError(operation: "notification.habit.action.currentDay")
+                }
+
+                let completedDays = Set(completionEntries.compactMap { $0.1.countsAsCompletion ? $0.0 : nil })
+                let skippedDays = Set(completionEntries.compactMap { !$0.1.countsAsCompletion ? $0.0 : nil })
+                let activeOverdueDay = ScheduledOverdueState.activeOverdueDay(
+                    startDate: startDate,
+                    schedules: schedules,
+                    reminderTime: reminderTime,
+                    positiveDays: completedDays,
+                    skippedDays: skippedDays,
+                    now: clock.now(),
+                    calendar: calendar
+                )
+
+                return activeOverdueDay.map { calendar.startOfDay(for: $0) == normalizedDeliveryDay } ?? false
+            }
+            return isCurrent ? .current : .inactive
+        } catch {
+            ReliabilityLog.error("notification.habit.action.currentDay failed: \(error.localizedDescription)")
+            return .failed
+        }
+    }
+
+    private func insertSkippedCompletionIfNeeded(
+        for habit: NSManagedObject,
+        habitID: UUID,
+        on localDate: Date,
+        context: NSManagedObjectContext
+    ) throws -> Bool {
+        let normalizedDate = calendar.startOfDay(for: localDate)
+        let fetchRequest = NSFetchRequest<NSManagedObject>(entityName: "HabitCompletion")
+        fetchRequest.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            NSPredicate(format: "habitID == %@", habitID as CVarArg),
+            NSPredicate(format: "localDate == %@", normalizedDate as CVarArg),
+        ])
+        fetchRequest.fetchLimit = 1
+
+        if try context.fetch(fetchRequest).first != nil {
+            return false
+        }
+
+        let completion = NSEntityDescription.insertNewObject(forEntityName: "HabitCompletion", into: context)
+        completion.setValue(UUID(), forKey: "id")
+        completion.setValue(habitID, forKey: "habitID")
+        completion.setValue(normalizedDate, forKey: "localDate")
+        completion.setValue(CompletionSource.skipped.rawValue, forKey: "sourceRaw")
+        completion.setValue(clock.now(), forKey: "createdAt")
+        completion.setValue(habit, forKey: "habit")
+        return true
+    }
+
+    private func loadHabitSchedules(
+        for habitObject: NSManagedObject,
+        habitID: UUID,
+        report: inout IntegrityReportBuilder
+    ) -> [HabitScheduleVersion]? {
+        CoreDataRelationshipLoadingSupport.validatedScheduleModels(
+            from: habitObject,
+            relationshipKey: "scheduleVersions",
+            area: "notification.action.catchUp",
+            missingFieldsMessage: "Habit schedule row is missing required fields.",
+            invalidMaskMessage: "Habit schedule row contains invalid weekdayMask.",
+            report: &report
+        ) { scheduleID, weekdayMask, effectiveFrom, createdAt, version in
+            HabitScheduleVersion(
+                id: scheduleID,
+                habitID: habitID,
+                weekdays: WeekdaySet(rawValue: weekdayMask),
+                effectiveFrom: effectiveFrom,
+                createdAt: createdAt,
+                version: version
+            )
+        }
+    }
+
+    private func postHabitStoreDidChangeIfActive() {
+        DispatchQueue.main.async {
+            guard UIApplication.shared.applicationState == .active else { return }
+            NotificationCenter.default.post(name: .habitStoreDidChange, object: nil)
+        }
     }
 
     @discardableResult
@@ -320,6 +516,7 @@ final class NotificationService {
             schedulingWindowDays: schedulingWindowDays,
             calendar: calendar
         )
+        recordPendingOverdueAnchors(from: candidates)
         let deliveries = ReminderPlanningSupport.habitDeliveries(
             candidates: candidates,
             habits: habits,
@@ -329,6 +526,37 @@ final class NotificationService {
         )
 
         return deliveries.map(makeNotificationRequest(for:))
+    }
+
+    private func recordPendingOverdueAnchors(from candidates: [HabitNotificationCandidate]) {
+        let candidateDaysByHabitID = Dictionary(grouping: candidates, by: \.habitID)
+            .mapValues { candidates in
+                Set(candidates.map { calendar.startOfDay(for: $0.localDate) })
+            }
+        let today = calendar.startOfDay(for: clock.now())
+
+        for (habitID, candidateDays) in candidateDaysByHabitID {
+            guard let earliestCandidateDay = candidateDays.sorted().first else { continue }
+            if let currentAnchor = overdueAnchorStore.anchorDay(for: .habit, id: habitID, calendar: calendar) {
+                if currentAnchor <= today {
+                    continue
+                }
+                if candidateDays.contains(currentAnchor), currentAnchor <= earliestCandidateDay {
+                    continue
+                }
+            }
+            overdueAnchorStore.setAnchorDay(earliestCandidateDay, for: .habit, id: habitID, calendar: calendar)
+        }
+    }
+
+    private func clearOverdueAnchorIfNeeded(for habitID: UUID, on day: Date) {
+        guard
+            let anchorDay = overdueAnchorStore.anchorDay(for: .habit, id: habitID, calendar: calendar),
+            anchorDay == calendar.startOfDay(for: day)
+        else {
+            return
+        }
+        overdueAnchorStore.clearAnchorDay(for: .habit, id: habitID)
     }
 
     private func loadHabit(id: UUID) throws -> HabitReminderConfiguration {
@@ -390,7 +618,7 @@ final class NotificationService {
             return nil
         }
 
-        guard let scheduleDays = loadHabitScheduleDays(for: object, report: &report) else {
+        guard let scheduleHistory = loadHabitSchedules(for: object, habitID: id, report: &report) else {
             report.append(
                 area: "notification",
                 entityName: object.entityName,
@@ -399,6 +627,7 @@ final class NotificationService {
             )
             return nil
         }
+        let scheduleDays = latestScheduleDays(from: scheduleHistory)
 
         let reminderEnabled = object.boolValue(forKey: "reminderEnabled")
         let reminderTime = ReminderValidation.validatedReminderTime(
@@ -433,6 +662,7 @@ final class NotificationService {
             name: name,
             startDate: startDate,
             scheduleDays: scheduleDays,
+            scheduleHistory: scheduleHistory,
             reminderEnabled: reminderEnabled,
             reminderTime: reminderTime,
             completedDays: completedDays,
@@ -475,7 +705,7 @@ final class NotificationService {
             )
             return nil
         }
-        guard let scheduleDays = loadPillScheduleDays(for: object, report: &report) else {
+        guard let scheduleHistory = loadPillSchedules(for: object, pillID: id, report: &report) else {
             report.append(
                 area: "notification",
                 entityName: object.entityName,
@@ -484,6 +714,7 @@ final class NotificationService {
             )
             return nil
         }
+        let scheduleDays = latestScheduleDays(from: scheduleHistory)
         guard let intakeEntries = loadPillIntakeEntries(for: object, report: &report) else {
             report.append(
                 area: "notification",
@@ -502,6 +733,7 @@ final class NotificationService {
             dosage: dosage,
             startDate: startDate,
             scheduleDays: scheduleDays,
+            scheduleHistory: scheduleHistory,
             reminderEnabled: reminderEnabled,
             reminderTime: reminderTime,
             takenDays: takenDays,
@@ -509,30 +741,40 @@ final class NotificationService {
         )
     }
 
-    private func loadHabitScheduleDays(
-        for object: NSManagedObject,
-        report: inout IntegrityReportBuilder
-    ) -> WeekdaySet? {
-        NotificationConfigurationSupport.loadLatestScheduleDays(
-            for: object,
-            relationshipKey: "scheduleVersions",
-            rowLabel: "Habit schedule",
-            invalidMaskMessage: "Habit reminder configuration contains invalid weekdayMask.",
-            report: &report
-        )
+    private func latestScheduleDays<Schedule: HistoryScheduleVersionLike>(from schedules: [Schedule]) -> WeekdaySet {
+        schedules.sorted { lhs, rhs in
+            if lhs.effectiveFrom != rhs.effectiveFrom {
+                return lhs.effectiveFrom > rhs.effectiveFrom
+            }
+            if lhs.version != rhs.version {
+                return lhs.version > rhs.version
+            }
+            return lhs.createdAt > rhs.createdAt
+        }.first?.weekdays ?? WeekdaySet(rawValue: 0)
     }
 
-    private func loadPillScheduleDays(
+    private func loadPillSchedules(
         for object: NSManagedObject,
+        pillID: UUID,
         report: inout IntegrityReportBuilder
-    ) -> WeekdaySet? {
-        NotificationConfigurationSupport.loadLatestScheduleDays(
-            for: object,
+    ) -> [PillScheduleVersion]? {
+        CoreDataRelationshipLoadingSupport.validatedScheduleModels(
+            from: object,
             relationshipKey: "scheduleVersions",
-            rowLabel: "Pill schedule",
-            invalidMaskMessage: "Pill reminder configuration contains invalid weekdayMask.",
+            area: "notification",
+            missingFieldsMessage: "Pill schedule row is missing required fields.",
+            invalidMaskMessage: "Pill schedule row contains invalid weekdayMask.",
             report: &report
-        )
+        ) { scheduleID, weekdayMask, effectiveFrom, createdAt, version in
+            PillScheduleVersion(
+                id: scheduleID,
+                pillID: pillID,
+                weekdays: WeekdaySet(rawValue: weekdayMask),
+                effectiveFrom: effectiveFrom,
+                createdAt: createdAt,
+                version: version
+            )
+        }
     }
 
     private func loadHabitCompletionEntries(
@@ -613,7 +855,7 @@ final class NotificationService {
 
             try context.save()
             return .mutated
-        }, refreshReadContext: false)
+        })
 
         switch mutationResult {
         case .success(let outcome):
@@ -671,7 +913,7 @@ final class NotificationService {
 
             try context.save()
             return .mutated
-        }, refreshReadContext: false)
+        })
 
         switch mutationResult {
         case .success(let outcome):
@@ -690,6 +932,58 @@ final class NotificationService {
 
     private func removePendingHabitNotifications(completion: @escaping () -> Void) {
         LocalNotificationSupport.removePendingNotifications(center: center, prefix: "habit_", completion: completion)
+    }
+
+    private func removePendingNotifications(forHabitID habitID: UUID, completion: @escaping () -> Void) {
+        LocalNotificationSupport.removePendingNotifications(
+            center: center,
+            prefix: notificationIdentifierPrefix(for: habitID),
+            completion: completion
+        )
+    }
+
+    private func makePendingNotificationRequests(forHabitID habitID: UUID) throws -> [UNNotificationRequest] {
+        let habits = try storeContext.performRead(fetchHabitReminderConfigurations)
+        let pills = try storeContext.performRead(fetchPillReminderConfigurations)
+        guard let habit = habits.first(where: { $0.id == habitID }) else {
+            return []
+        }
+
+        let candidates = ReminderPlanningSupport.habitCandidates(
+            reminders: [habit],
+            now: clock.now(),
+            schedulingWindowDays: schedulingWindowDays,
+            calendar: calendar
+        )
+        recordPendingOverdueAnchors(from: candidates)
+
+        return candidates.map { candidate in
+            makeIndividualNotificationRequest(
+                for: candidate,
+                projectedBadgeCount: ProjectedBadgeCountCalculator.projectedOverdueCount(
+                    at: candidate.scheduledDateTime,
+                    habits: habits,
+                    pills: pills,
+                    calendar: calendar
+                )
+            )
+        }
+    }
+
+    private func addPendingNotificationRequests(_ requests: [UNNotificationRequest], logName: String) {
+        guard !requests.isEmpty else {
+            ReliabilityLog.info("\(logName) finished with 0 request(s)")
+            return
+        }
+
+        for request in requests {
+            center.add(request) { error in
+                if let error {
+                    ReliabilityLog.error("\(logName) request \(request.identifier) failed: \(error.localizedDescription)")
+                }
+            }
+        }
+        ReliabilityLog.info("\(logName) finished with \(requests.count) request(s)")
     }
 
     private func notificationIdentifierPrefix(for habitID: UUID) -> String {
@@ -798,8 +1092,31 @@ struct HabitReminderConfiguration {
     let name: String
     let startDate: Date
     let scheduleDays: WeekdaySet
+    let scheduleHistory: [HabitScheduleVersion]
     let reminderEnabled: Bool
     let reminderTime: ReminderTime?
     let completedDays: Set<Date>
     let skippedDays: Set<Date>
+
+    init(
+        id: UUID,
+        name: String,
+        startDate: Date,
+        scheduleDays: WeekdaySet,
+        scheduleHistory: [HabitScheduleVersion] = [],
+        reminderEnabled: Bool,
+        reminderTime: ReminderTime?,
+        completedDays: Set<Date>,
+        skippedDays: Set<Date>
+    ) {
+        self.id = id
+        self.name = name
+        self.startDate = startDate
+        self.scheduleDays = scheduleDays
+        self.scheduleHistory = scheduleHistory
+        self.reminderEnabled = reminderEnabled
+        self.reminderTime = reminderTime
+        self.completedDays = completedDays
+        self.skippedDays = skippedDays
+    }
 }

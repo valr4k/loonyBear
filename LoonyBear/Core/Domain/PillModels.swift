@@ -66,6 +66,8 @@ struct PillCardProjection: Identifiable, Equatable, Hashable {
     let isScheduledToday: Bool
     let isTakenToday: Bool
     let isSkippedToday: Bool
+    var needsHistoryReview = false
+    var activeOverdueDay: Date?
     let sortOrder: Int
 }
 
@@ -83,6 +85,9 @@ struct PillDetailsProjection: Equatable {
     let totalTakenDays: Int
     let takenDays: Set<Date>
     let skippedDays: Set<Date>
+    var needsHistoryReview = false
+    var requiredPastScheduledDays: Set<Date> = []
+    var activeOverdueDay: Date?
 }
 
 struct PillDashboardProjection: Equatable {

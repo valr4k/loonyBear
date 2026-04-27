@@ -54,24 +54,39 @@ struct PillCardView: View {
 
             Color.clear
                 .overlay(alignment: .topTrailing) {
-                    if let reminderText = pill.reminderText {
-                        Text(reminderText)
-                            .font(.caption)
-                            .foregroundStyle(isReminderOverdueToday ? .red : .secondary)
-                            .fixedSize(horizontal: true, vertical: false)
+                    if pill.reminderText != nil || activeOverdueLabel != nil {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            if let reminderText = pill.reminderText {
+                                Text(reminderText)
+                            }
+                            if let activeOverdueLabel {
+                                Text(activeOverdueLabel)
+                            }
+                        }
+                        .font(.caption)
+                        .foregroundStyle(isReminderOverdue ? .red : .secondary)
+                        .fixedSize(horizontal: true, vertical: false)
                     }
                 }
                 .overlay(alignment: .trailing) {
-                    if pill.isTakenToday {
+                    if !pill.needsHistoryReview, pill.isTakenToday {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.title3)
                             .symbolRenderingMode(.palette)
                             .foregroundStyle(.white, .green)
-                    } else if pill.isSkippedToday {
+                    } else if !pill.needsHistoryReview, pill.isSkippedToday {
                         Image(systemName: "xmark.circle.fill")
                             .font(.title3)
                             .symbolRenderingMode(.palette)
                             .foregroundStyle(.white, .red)
+                    }
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    if pill.needsHistoryReview {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.title3)
+                            .foregroundStyle(.orange)
+                            .accessibilityLabel("History needs review")
                     }
                 }
             .frame(width: 44)
@@ -87,26 +102,13 @@ struct PillCardView: View {
         )
     }
 
-    private var isReminderOverdueToday: Bool {
-        guard pill.isReminderScheduledToday else { return false }
-        guard !pill.isTakenToday else { return false }
-        guard !pill.isSkippedToday else { return false }
-        guard let reminderHour = pill.reminderHour, let reminderMinute = pill.reminderMinute else {
-            return false
-        }
+    private var isReminderOverdue: Bool {
+        pill.activeOverdueDay != nil
+    }
 
-        let calendar = Calendar.current
-        let normalizedDay = calendar.startOfDay(for: currentTime)
-        guard let scheduledDateTime = calendar.date(
-            bySettingHour: reminderHour,
-            minute: reminderMinute,
-            second: 0,
-            of: normalizedDay
-        ) else {
-            return false
-        }
-
-        return scheduledDateTime < currentTime
+    private var activeOverdueLabel: String? {
+        guard let overdueDay = pill.activeOverdueDay else { return nil }
+        return OverdueDayLabel.text(for: overdueDay, now: currentTime)
     }
 }
 

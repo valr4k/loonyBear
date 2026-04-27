@@ -42,87 +42,63 @@ enum ProjectedBadgeCountCalculator {
     }
 
     private static func isOverdue(_ habit: HabitCardProjection, now: Date, calendar: Calendar) -> Bool {
-        guard habit.isReminderScheduledToday else { return false }
-        guard !habit.isCompletedToday else { return false }
-        guard !habit.isSkippedToday else { return false }
-        guard
-            let reminderHour = habit.reminderHour,
-            let reminderMinute = habit.reminderMinute
-        else {
-            return false
-        }
-
-        return reminderDate(
-            hour: reminderHour,
-            minute: reminderMinute,
-            on: now,
-            calendar: calendar
-        ).map { $0 <= now } ?? false
+        habit.activeOverdueDay != nil
     }
 
     private static func isOverdue(_ pill: PillCardProjection, now: Date, calendar: Calendar) -> Bool {
-        guard pill.isReminderScheduledToday else { return false }
-        guard !pill.isTakenToday else { return false }
-        guard !pill.isSkippedToday else { return false }
-        guard
-            let reminderHour = pill.reminderHour,
-            let reminderMinute = pill.reminderMinute
-        else {
-            return false
-        }
-
-        return reminderDate(
-            hour: reminderHour,
-            minute: reminderMinute,
-            on: now,
-            calendar: calendar
-        ).map { $0 <= now } ?? false
+        pill.activeOverdueDay != nil
     }
 
     private static func isOverdue(_ habit: HabitReminderConfiguration, at date: Date, calendar: Calendar) -> Bool {
-        guard habit.reminderEnabled, let reminderTime = habit.reminderTime else { return false }
-
-        let localDay = calendar.startOfDay(for: date)
-        let normalizedStartDate = calendar.startOfDay(for: habit.startDate)
-        guard localDay >= normalizedStartDate else { return false }
-        guard habit.scheduleDays.contains(calendar.weekdaySet(for: localDay)) else { return false }
-        guard !habit.completedDays.contains(localDay) else { return false }
-        guard !habit.skippedDays.contains(localDay) else { return false }
-
-        return reminderDate(
-            hour: reminderTime.hour,
-            minute: reminderTime.minute,
-            on: date,
+        ScheduledOverdueState.activeOverdueDay(
+            startDate: habit.startDate,
+            schedules: effectiveHabitScheduleHistory(for: habit),
+            reminderTime: habit.reminderEnabled ? habit.reminderTime : nil,
+            positiveDays: habit.completedDays,
+            skippedDays: habit.skippedDays,
+            now: date,
             calendar: calendar
-        ).map { $0 <= date } ?? false
+        ) != nil
     }
 
     private static func isOverdue(_ pill: PillReminderConfiguration, at date: Date, calendar: Calendar) -> Bool {
-        guard pill.reminderEnabled, let reminderTime = pill.reminderTime else { return false }
-
-        let localDay = calendar.startOfDay(for: date)
-        let normalizedStartDate = calendar.startOfDay(for: pill.startDate)
-        guard localDay >= normalizedStartDate else { return false }
-        guard pill.scheduleDays.contains(calendar.weekdaySet(for: localDay)) else { return false }
-        guard !pill.takenDays.contains(localDay) else { return false }
-        guard !pill.skippedDays.contains(localDay) else { return false }
-
-        return reminderDate(
-            hour: reminderTime.hour,
-            minute: reminderTime.minute,
-            on: date,
+        ScheduledOverdueState.activeOverdueDay(
+            startDate: pill.startDate,
+            schedules: effectivePillScheduleHistory(for: pill),
+            reminderTime: pill.reminderEnabled ? pill.reminderTime : nil,
+            positiveDays: pill.takenDays,
+            skippedDays: pill.skippedDays,
+            now: date,
             calendar: calendar
-        ).map { $0 <= date } ?? false
+        ) != nil
     }
 
-    private static func reminderDate(hour: Int, minute: Int, on date: Date, calendar: Calendar) -> Date? {
-        let day = calendar.startOfDay(for: date)
-        return calendar.date(
-            bySettingHour: hour,
-            minute: minute,
-            second: 0,
-            of: day
-        )
+    private static func effectiveHabitScheduleHistory(for habit: HabitReminderConfiguration) -> [HabitScheduleVersion] {
+        guard habit.scheduleHistory.isEmpty else { return habit.scheduleHistory }
+        return [
+            HabitScheduleVersion(
+                id: habit.id,
+                habitID: habit.id,
+                weekdays: habit.scheduleDays,
+                effectiveFrom: habit.startDate,
+                createdAt: habit.startDate,
+                version: 1
+            ),
+        ]
+    }
+
+    private static func effectivePillScheduleHistory(for pill: PillReminderConfiguration) -> [PillScheduleVersion] {
+        guard pill.scheduleHistory.isEmpty else { return pill.scheduleHistory }
+        return [
+            PillScheduleVersion(
+                id: pill.id,
+                pillID: pill.id,
+                weekdays: pill.scheduleDays,
+                effectiveFrom: pill.startDate,
+                createdAt: pill.startDate,
+                version: 1
+            ),
+        ]
     }
 
 }
@@ -133,6 +109,7 @@ final class AppBadgeService {
     private let pillRepository: PillRepository
     private let calendar: Calendar
     private let clock: AppClock
+    private var lastBadgeCount: Int?
 
     init(
         loadDashboardUseCase: LoadDashboardUseCase,
@@ -155,6 +132,29 @@ final class AppBadgeService {
             ReliabilityLog.error("badge.refresh failed: \(error.localizedDescription)")
             return
         }
+
+        applyBadgeCountIfNeeded(badgeCount)
+    }
+
+    func refreshBadge(
+        habitDashboard: DashboardProjection,
+        pillDashboard: PillDashboardProjection,
+        now: Date? = nil
+    ) {
+        let currentDate = now ?? clock.now()
+        let badgeCount = ProjectedBadgeCountCalculator.overdueCount(
+            now: currentDate,
+            habits: habitDashboard.sections.flatMap(\.habits),
+            pills: pillDashboard.pills,
+            calendar: calendar
+        )
+
+        applyBadgeCountIfNeeded(badgeCount)
+    }
+
+    private func applyBadgeCountIfNeeded(_ badgeCount: Int) {
+        guard lastBadgeCount != badgeCount else { return }
+        lastBadgeCount = badgeCount
 
         if #available(iOS 17.0, *) {
             UNUserNotificationCenter.current().setBadgeCount(badgeCount, withCompletionHandler: nil)

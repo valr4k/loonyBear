@@ -2,7 +2,7 @@ import CoreData
 import Foundation
 
 enum DemoDataWriter {
-    static func seedIfNeeded(into context: NSManagedObjectContext, clock: AppClock = .live) {
+    static func seedIfNeeded(into context: NSManagedObjectContext, clock: AppClock = AppClock()) {
         let calendar = clock.calendar
         let request = NSFetchRequest<NSFetchRequestResult>(entityName: "Habit")
         request.fetchLimit = 1

@@ -4,22 +4,21 @@ struct PillDetailsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var pillAppState: PillAppState
     let pill: PillCardProjection
-    let onEdit: (UUID) -> Void
 
     @State private var details: PillDetailsProjection?
     @State private var detailErrorMessage: String?
     @State private var isIntegrityError = false
     @State private var isLoadingDetails = true
     @State private var needsReloadOnAppear = false
+    @State private var isShowingEdit = false
     @State private var displayedMonth: Date = {
         var calendar = Calendar.autoupdatingCurrent
         calendar.firstWeekday = 2
         return calendar.date(from: calendar.dateComponents([.year, .month], from: Date())) ?? Date()
     }()
 
-    init(pill: PillCardProjection, onEdit: @escaping (UUID) -> Void = { _ in }) {
+    init(pill: PillCardProjection) {
         self.pill = pill
-        self.onEdit = onEdit
     }
 
     var body: some View {
@@ -88,6 +87,10 @@ struct PillDetailsView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     AppFormSectionHeader(title: "Calendar")
 
+                    if let calendarReviewMessage = calendarReviewMessage(for: details) {
+                        AppHistoryReviewRow(message: calendarReviewMessage)
+                    }
+
                     AppCard {
                         PillReadOnlyMonthCalendarView(
                             month: displayedMonth,
@@ -144,11 +147,14 @@ struct PillDetailsView: View {
             if details != nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Edit") {
-                        onEdit(pill.id)
+                        isShowingEdit = true
                     }
                     .accessibilityLabel("Edit Pill")
                 }
             }
+        }
+        .navigationDestination(isPresented: $isShowingEdit) {
+            pillEditDestination
         }
         .onAppear {
             guard needsReloadOnAppear else { return }
@@ -160,6 +166,29 @@ struct PillDetailsView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .pillStoreDidChange)) { _ in
             reloadDetails()
+        }
+    }
+
+    @ViewBuilder
+    private var pillEditDestination: some View {
+        if let details {
+            EditPillView(
+                details: details,
+                showsCloseButton: false,
+                onSaveSuccess: {
+                    reloadDetails()
+                },
+                onDeleteSuccess: {
+                    dismiss()
+                }
+            )
+            .environmentObject(pillAppState)
+        } else {
+            ContentUnavailableView(
+                "Pill not found",
+                systemImage: "pills",
+                description: Text("This pill is no longer available.")
+            )
         }
     }
 
@@ -184,5 +213,29 @@ struct PillDetailsView: View {
 
     private func availableMonths(for startDate: Date) -> [Date] {
         HistoryMonthWindow.months(from: startDate)
+    }
+
+    private func calendarReviewMessage(for details: PillDetailsProjection) -> String? {
+        let missingPastDays = EditableHistoryValidation.missingPastDays(
+            editableDays: details.requiredPastScheduledDays,
+            positiveDays: details.takenDays,
+            skippedDays: details.skippedDays
+        )
+        guard !missingPastDays.isEmpty else { return nil }
+
+        if isOnlyActiveOverdueMissing(missingPastDays, activeOverdueDay: details.activeOverdueDay) {
+            return AppCopy.overdueScheduledDayDetailsMessage(actionLabel: "Taken", days: missingPastDays)
+        }
+        return AppCopy.missingScheduledDaysDetailsMessage(actionLabel: "Taken", days: missingPastDays)
+    }
+
+    private func isOnlyActiveOverdueMissing(_ missingPastDays: [Date], activeOverdueDay: Date?) -> Bool {
+        guard
+            missingPastDays.count == 1,
+            let activeOverdueDay
+        else {
+            return false
+        }
+        return Calendar.current.isDate(missingPastDays[0], inSameDayAs: activeOverdueDay)
     }
 }

@@ -1,6 +1,6 @@
 import Foundation
 
-struct WidgetSnapshot: Codable {
+struct WidgetSnapshot: Codable, Equatable {
     static let currentVersion = 1
 
     let version: Int
@@ -51,13 +51,13 @@ struct WidgetSnapshot: Codable {
     }
 }
 
-struct WidgetSectionSnapshot: Codable {
+struct WidgetSectionSnapshot: Codable, Equatable {
     let type: String
     let title: String
     let habits: [WidgetHabitSnapshot]
 }
 
-struct WidgetHabitSnapshot: Codable {
+struct WidgetHabitSnapshot: Codable, Equatable {
     let id: UUID
     let name: String
     let scheduleSummary: String

@@ -222,6 +222,66 @@ enum EditableHistoryContract {
     }
 }
 
+enum EditableHistoryValidationError: LocalizedError, Equatable {
+    case missingHabitPastDays([Date])
+    case missingPillPastDays([Date])
+
+    var errorDescription: String? {
+        switch self {
+        case .missingHabitPastDays(let days):
+            return Self.message(
+                actionLabel: "Completed",
+                days: days
+            )
+        case .missingPillPastDays(let days):
+            return Self.message(
+                actionLabel: "Taken",
+                days: days
+            )
+        }
+    }
+
+    private static func message(actionLabel: String, days: [Date]) -> String {
+        "Choose \(actionLabel) or Skipped for every past scheduled day before saving. Missing: \(formattedDays(days))."
+    }
+
+    private static func formattedDays(_ days: [Date]) -> String {
+        let sortedDays = days.sorted()
+        let visibleDays = sortedDays.prefix(3).map {
+            $0.formatted(date: .abbreviated, time: .omitted)
+        }
+        let remainingCount = sortedDays.count - visibleDays.count
+        guard remainingCount > 0 else {
+            return visibleDays.joined(separator: ", ")
+        }
+        return "\(visibleDays.joined(separator: ", ")), and \(remainingCount) more"
+    }
+}
+
+enum EditableHistoryValidation {
+    static func missingPastDays(
+        editableDays: Set<Date>,
+        positiveDays: Set<Date>,
+        skippedDays: Set<Date>,
+        today: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> [Date] {
+        let normalizedToday = calendar.startOfDay(for: today)
+        let normalizedEditablePastDays = Set(
+            editableDays
+                .map { calendar.startOfDay(for: $0) }
+                .filter { $0 < normalizedToday }
+        )
+        let normalizedPositiveDays = Set(positiveDays.map { calendar.startOfDay(for: $0) })
+        let normalizedSkippedDays = Set(skippedDays.map { calendar.startOfDay(for: $0) })
+
+        return normalizedEditablePastDays
+            .subtracting(normalizedPositiveDays)
+            .subtracting(normalizedSkippedDays)
+            .sorted()
+    }
+}
+
 protocol HistoryScheduleVersionLike {
     var weekdays: WeekdaySet { get }
     var effectiveFrom: Date { get }
@@ -299,6 +359,247 @@ enum HistoryScheduleApplicability {
             }
             .last { calendar.startOfDay(for: $0.effectiveFrom) <= normalizedDay }?
             .weekdays
+    }
+}
+
+enum ScheduledOverdueState {
+    static func activeOverdueDay<Schedule: HistoryScheduleVersionLike>(
+        startDate: Date,
+        schedules: [Schedule],
+        reminderTime: ReminderTime?,
+        positiveDays: Set<Date>,
+        skippedDays: Set<Date>,
+        now: Date,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Date? {
+        guard let latestDueDay = latestScheduledDueDay(
+            startDate: startDate,
+            schedules: schedules,
+            reminderTime: reminderTime,
+            now: now,
+            calendar: calendar
+        ) else {
+            return nil
+        }
+
+        let normalizedLatestDueDay = calendar.startOfDay(for: latestDueDay)
+        let normalizedPositiveDays = Set(positiveDays.map { calendar.startOfDay(for: $0) })
+        let normalizedSkippedDays = Set(skippedDays.map { calendar.startOfDay(for: $0) })
+
+        guard
+            !normalizedPositiveDays.contains(normalizedLatestDueDay),
+            !normalizedSkippedDays.contains(normalizedLatestDueDay)
+        else {
+            return nil
+        }
+
+        return normalizedLatestDueDay
+    }
+
+    static func actionableOverdueDay<Schedule: HistoryScheduleVersionLike>(
+        anchorDay: Date?,
+        startDate: Date,
+        schedules: [Schedule],
+        reminderTime: ReminderTime?,
+        positiveDays: Set<Date>,
+        skippedDays: Set<Date>,
+        now: Date,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Date? {
+        guard let anchorDay else { return nil }
+
+        let normalizedAnchorDay = calendar.startOfDay(for: anchorDay)
+        let dueDays = dueScheduledDays(
+            startDate: startDate,
+            schedules: schedules,
+            reminderTime: reminderTime,
+            positiveDays: positiveDays,
+            skippedDays: skippedDays,
+            now: now,
+            calendar: calendar
+        )
+
+        return dueDays.contains(normalizedAnchorDay) ? normalizedAnchorDay : nil
+    }
+
+    static func dueScheduledDays<Schedule: HistoryScheduleVersionLike>(
+        startDate: Date,
+        schedules: [Schedule],
+        reminderTime: ReminderTime?,
+        positiveDays: Set<Date>,
+        skippedDays: Set<Date>,
+        now: Date,
+        calendar: Calendar
+    ) -> [Date] {
+        let normalizedPositiveDays = Set(positiveDays.map { calendar.startOfDay(for: $0) })
+        let normalizedSkippedDays = Set(skippedDays.map { calendar.startOfDay(for: $0) })
+
+        return scheduledDueDays(
+            startDate: startDate,
+            schedules: schedules,
+            reminderTime: reminderTime,
+            now: now,
+            calendar: calendar
+        )
+        .filter {
+            !normalizedPositiveDays.contains($0) && !normalizedSkippedDays.contains($0)
+        }
+    }
+
+    private static func scheduledDueDays<Schedule: HistoryScheduleVersionLike>(
+        startDate: Date,
+        schedules: [Schedule],
+        reminderTime: ReminderTime?,
+        now: Date,
+        calendar: Calendar
+    ) -> [Date] {
+        let normalizedStartDate = calendar.startOfDay(for: startDate)
+        let normalizedToday = calendar.startOfDay(for: now)
+        guard normalizedStartDate <= normalizedToday else { return [] }
+
+        let normalizedSchedules = sortedSchedules(schedules)
+        var dueDays: [Date] = []
+        var cursor = normalizedStartDate
+
+        while cursor <= normalizedToday {
+            let dueDate = reminderTime.flatMap {
+                calendar.date(
+                    bySettingHour: $0.hour,
+                    minute: $0.minute,
+                    second: 0,
+                    of: cursor
+                )
+            } ?? cursor
+
+            if isScheduled(cursor, schedules: normalizedSchedules, calendar: calendar),
+               dueDate <= now {
+                dueDays.append(cursor)
+            }
+
+            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else {
+                break
+            }
+            cursor = calendar.startOfDay(for: next)
+        }
+
+        return dueDays
+    }
+
+    private static func latestScheduledDueDay<Schedule: HistoryScheduleVersionLike>(
+        startDate: Date,
+        schedules: [Schedule],
+        reminderTime: ReminderTime?,
+        now: Date,
+        calendar: Calendar
+    ) -> Date? {
+        let normalizedStartDate = calendar.startOfDay(for: startDate)
+        var cursor = calendar.startOfDay(for: now)
+        guard normalizedStartDate <= cursor else { return nil }
+
+        let normalizedSchedules = sortedSchedules(schedules)
+
+        while cursor >= normalizedStartDate {
+            let dueDate = reminderTime.flatMap {
+                calendar.date(
+                    bySettingHour: $0.hour,
+                    minute: $0.minute,
+                    second: 0,
+                    of: cursor
+                )
+            } ?? cursor
+
+            if dueDate <= now,
+               isScheduled(cursor, schedules: normalizedSchedules, calendar: calendar) {
+                return cursor
+            }
+
+            guard let previous = calendar.date(byAdding: .day, value: -1, to: cursor) else {
+                break
+            }
+            let previousDay = calendar.startOfDay(for: previous)
+            guard previousDay < cursor else { break }
+            cursor = previousDay
+        }
+
+        return nil
+    }
+
+    private static func isScheduled<Schedule: HistoryScheduleVersionLike>(
+        _ day: Date,
+        schedules: [Schedule],
+        calendar: Calendar
+    ) -> Bool {
+        let normalizedDay = calendar.startOfDay(for: day)
+        guard let weekdays = schedules.last(where: {
+            calendar.startOfDay(for: $0.effectiveFrom) <= normalizedDay
+        })?.weekdays else {
+            return false
+        }
+        return weekdays.contains(calendar.weekdaySet(for: day))
+    }
+
+    private static func sortedSchedules<Schedule: HistoryScheduleVersionLike>(_ schedules: [Schedule]) -> [Schedule] {
+        schedules.sorted { lhs, rhs in
+            if lhs.effectiveFrom != rhs.effectiveFrom {
+                return lhs.effectiveFrom < rhs.effectiveFrom
+            }
+            if lhs.version != rhs.version {
+                return lhs.version < rhs.version
+            }
+            return lhs.createdAt < rhs.createdAt
+        }
+    }
+}
+
+enum OverdueAnchorKind: String {
+    case habit
+    case pill
+}
+
+protocol OverdueAnchorStore {
+    func anchorDay(for kind: OverdueAnchorKind, id: UUID, calendar: Calendar) -> Date?
+    func setAnchorDay(_ day: Date, for kind: OverdueAnchorKind, id: UUID, calendar: Calendar)
+    func clearAnchorDay(for kind: OverdueAnchorKind, id: UUID)
+    func clearAllAnchors()
+}
+
+final class UserDefaultsOverdueAnchorStore: OverdueAnchorStore {
+    static let shared = UserDefaultsOverdueAnchorStore()
+
+    private let defaults: UserDefaults
+    private let key = "overdue_anchor_days"
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func anchorDay(for kind: OverdueAnchorKind, id: UUID, calendar: Calendar) -> Date? {
+        guard let timestamp = values()[storageKey(for: kind, id: id)] else { return nil }
+        return calendar.startOfDay(for: Date(timeIntervalSince1970: timestamp))
+    }
+
+    func setAnchorDay(_ day: Date, for kind: OverdueAnchorKind, id: UUID, calendar: Calendar) {
+        var values = values()
+        values[storageKey(for: kind, id: id)] = calendar.startOfDay(for: day).timeIntervalSince1970
+        defaults.set(values, forKey: key)
+    }
+
+    func clearAnchorDay(for kind: OverdueAnchorKind, id: UUID) {
+        var values = values()
+        values.removeValue(forKey: storageKey(for: kind, id: id))
+        defaults.set(values, forKey: key)
+    }
+
+    func clearAllAnchors() {
+        defaults.removeObject(forKey: key)
+    }
+
+    private func values() -> [String: TimeInterval] {
+        defaults.dictionary(forKey: key) as? [String: TimeInterval] ?? [:]
+    }
+
+    private func storageKey(for kind: OverdueAnchorKind, id: UUID) -> String {
+        "\(kind.rawValue):\(id.uuidString)"
     }
 }
 
@@ -400,6 +701,24 @@ enum CoreDataFetchSupport {
         request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
             NSPredicate(format: "\(ownerKey) == %@", ownerID as CVarArg),
             NSPredicate(format: "localDate == %@", localDate as CVarArg),
+        ])
+        request.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
+        return try context.fetch(request)
+    }
+
+    static func fetchHistoryObjects(
+        entityName: String,
+        ownerKey: String,
+        ownerID: UUID,
+        localDates: Set<Date>,
+        in context: NSManagedObjectContext
+    ) throws -> [NSManagedObject] {
+        guard !localDates.isEmpty else { return [] }
+
+        let request = NSFetchRequest<NSManagedObject>(entityName: entityName)
+        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            NSPredicate(format: "\(ownerKey) == %@", ownerID as CVarArg),
+            NSPredicate(format: "localDate IN %@", Array(localDates)),
         ])
         request.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
         return try context.fetch(request)

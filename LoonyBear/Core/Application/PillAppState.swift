@@ -20,21 +20,23 @@ final class PillAppState: ObservableObject {
     let notificationService: PillNotificationService
     private let sideEffectCoordinator: PillSideEffectCoordinator
     private let writeCoordinator = AppStateWriteCoordinator(name: "LoonyBear.PillAppState.WriteQueue")
+    private let clock: AppClock
 
     init(
         reconcileHistoryUseCase: ReconcilePillHistoryUseCase,
         repository: PillRepository,
         notificationService: PillNotificationService,
         badgeService: AppBadgeService,
-        clock: AppClock = .live
+        clock: AppClock? = nil
     ) {
+        let resolvedClock = clock ?? .live
         self.reconcileHistoryUseCase = reconcileHistoryUseCase
         self.repository = repository
         self.notificationService = notificationService
+        self.clock = resolvedClock
         sideEffectCoordinator = PillSideEffectCoordinator(
             notificationService: notificationService,
-            badgeService: badgeService,
-            clock: clock
+            clock: resolvedClock
         )
     }
 
@@ -56,6 +58,11 @@ final class PillAppState: ObservableObject {
     }
 
     func handleAppDidBecomeActive() async {
+        let shouldMarkInitialLoad = !hasLoadedOnce
+        if shouldMarkInitialLoad {
+            isLoading = true
+        }
+
         await writeCoordinator.performReconciliation(
             logPrefix: "pill.history.reconcile",
             refresh: refreshDashboard,
@@ -63,6 +70,11 @@ final class PillAppState: ObservableObject {
             afterRefresh: notificationService.handleAppDidBecomeActive
         ) {
             try self.reconcileHistoryUseCase.execute()
+        }
+
+        if shouldMarkInitialLoad {
+            hasLoadedOnce = true
+            isLoading = false
         }
     }
 
@@ -111,42 +123,54 @@ final class PillAppState: ObservableObject {
     }
 
     func markTakenToday(id: UUID) async {
+        await markPillTaken(id: id, on: clock.now())
+    }
+
+    func markPillTaken(id: UUID, on day: Date) async {
         let didMutate = await writeCoordinator.performMutation(
             refresh: refreshDashboard,
             setError: { self.actionErrorMessage = $0 },
             refreshOnFailure: true
         ) {
-            try self.repository.markTakenToday(id: id)
+            try self.repository.markPillTaken(id: id, on: day)
         }
         guard didMutate else { return }
 
-        sideEffectCoordinator.handleDailyMutation(forPillID: id)
+        sideEffectCoordinator.handleDailyMutation(forPillID: id, on: day)
     }
 
     func skipPillToday(id: UUID) async {
+        await skipPillDay(id: id, on: clock.now())
+    }
+
+    func skipPillDay(id: UUID, on day: Date) async {
         let didMutate = await writeCoordinator.performMutation(
             refresh: refreshDashboard,
             setError: { self.actionErrorMessage = $0 },
             refreshOnFailure: true
         ) {
-            try self.repository.skipPillToday(id: id)
+            try self.repository.skipPillDay(id: id, on: day)
         }
         guard didMutate else { return }
 
-        sideEffectCoordinator.handleDailyMutation(forPillID: id)
+        sideEffectCoordinator.handleDailyMutation(forPillID: id, on: day)
     }
 
     func clearPillDayStateToday(id: UUID) async {
+        await clearPillDayState(id: id, on: clock.now())
+    }
+
+    func clearPillDayState(id: UUID, on day: Date) async {
         let didMutate = await writeCoordinator.performMutation(
             refresh: refreshDashboard,
             setError: { self.actionErrorMessage = $0 },
             refreshOnFailure: true
         ) {
-            try self.repository.clearPillDayStateToday(id: id)
+            try self.repository.clearPillDayState(id: id, on: day)
         }
         guard didMutate else { return }
 
-        sideEffectCoordinator.handleDailyMutation(forPillID: id)
+        sideEffectCoordinator.handleDailyMutation(forPillID: id, on: day)
     }
 
     func deletePill(id: UUID) async {

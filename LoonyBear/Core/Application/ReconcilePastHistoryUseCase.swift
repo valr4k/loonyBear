@@ -5,9 +5,9 @@ struct ReconcileHabitHistoryUseCase {
     let repository: HabitRepository
     let clock: AppClock
 
-    init(repository: HabitRepository, clock: AppClock = .live) {
+    init(repository: HabitRepository, clock: AppClock? = nil) {
         self.repository = repository
-        self.clock = clock
+        self.clock = clock ?? .live
     }
 
     func execute(today: Date? = nil) throws -> Int {
@@ -20,9 +20,9 @@ struct ReconcilePillHistoryUseCase {
     let repository: PillRepository
     let clock: AppClock
 
-    init(repository: PillRepository, clock: AppClock = .live) {
+    init(repository: PillRepository, clock: AppClock? = nil) {
         self.repository = repository
-        self.clock = clock
+        self.clock = clock ?? .live
     }
 
     func execute(today: Date? = nil) throws -> Int {

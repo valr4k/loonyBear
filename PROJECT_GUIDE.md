@@ -51,7 +51,7 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
 3. `ContentView` configures notifications, loads dashboards, and refreshes the badge.
 4. `RootTabView` exposes `My Pills`, `My Habits`, and `Settings`.
 5. Create, Details, and Edit screens are opened as sheets.
-6. App-active lifecycle runs history reconciliation and notification rescheduling.
+6. App-active lifecycle refreshes derived overdue/history state and reschedules notifications.
 
 ## Habit Flow Summary
 
@@ -66,8 +66,7 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
 - Habit details show:
   - name
   - start date
-  - plan
-  - history mode
+  - schedule
   - reminder
   - current streak
   - best streak
@@ -95,7 +94,7 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
   - name
   - dosage
   - start date
-  - plan
+  - schedule
   - reminder
   - total taken days
   - read-only calendar

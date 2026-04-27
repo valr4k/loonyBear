@@ -21,20 +21,34 @@ struct WidgetSnapshotStore {
         self.decoder = decoder
     }
 
-    func save(_ snapshot: WidgetSnapshot) throws {
+    @discardableResult
+    func save(_ snapshot: WidgetSnapshot) throws -> Bool {
         let url = snapshotURL()
         try fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var didWrite = false
+
         try coordinateWrite(at: url) { coordinatedURL in
-            if
-                let existingSnapshot = try loadSnapshotIfPresent(at: coordinatedURL),
-                snapshot.revision <= existingSnapshot.revision
-            {
-                return
+            if let existingSnapshot = try loadSnapshotIfPresent(at: coordinatedURL) {
+                if snapshot.sections == existingSnapshot.sections {
+                    return
+                }
+
+                if snapshot.revision < existingSnapshot.revision {
+                    return
+                }
             }
 
             let data = try encoder.encode(snapshot)
             try data.write(to: coordinatedURL, options: .atomic)
+            didWrite = true
         }
+
+        return didWrite
+    }
+
+    @discardableResult
+    func saveIfChanged(_ snapshot: WidgetSnapshot) throws -> Bool {
+        try save(snapshot)
     }
 
     func load() throws -> WidgetSnapshot {

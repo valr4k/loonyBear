@@ -3,18 +3,18 @@ import SwiftUI
 
 struct MyPillsView: View {
     @EnvironmentObject private var pillAppState: PillAppState
-    @State private var currentTime = Date()
-
-    private let reminderStateTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+    let currentTime: Date
     let onCreatePill: () -> Void
     let onShowPillInfo: (PillCardProjection) -> Void
     let onEditPill: (PillCardProjection) -> Void
 
     init(
+        currentTime: Date = Date(),
         onCreatePill: @escaping () -> Void = {},
         onShowPillInfo: @escaping (PillCardProjection) -> Void = { _ in },
         onEditPill: @escaping (PillCardProjection) -> Void = { _ in }
     ) {
+        self.currentTime = currentTime
         self.onCreatePill = onCreatePill
         self.onShowPillInfo = onShowPillInfo
         self.onEditPill = onEditPill
@@ -46,7 +46,25 @@ struct MyPillsView: View {
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
                                 .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                    if pill.isTakenToday {
+                                    if let overdueDay = pill.activeOverdueDay {
+                                        Button {
+                                            Task {
+                                                await pillAppState.markPillTaken(id: pill.id, on: overdueDay)
+                                            }
+                                        } label: {
+                                            Image(systemName: "checkmark")
+                                        }
+                                        .tint(.green)
+
+                                        Button {
+                                            Task {
+                                                await pillAppState.skipPillDay(id: pill.id, on: overdueDay)
+                                            }
+                                        } label: {
+                                            Image(systemName: "xmark")
+                                        }
+                                        .tint(.red)
+                                    } else if pill.isTakenToday {
                                         Button {
                                             Task {
                                                 await pillAppState.clearPillDayStateToday(id: pill.id)
@@ -127,9 +145,6 @@ struct MyPillsView: View {
         } message: {
             Text(pillAppState.actionErrorMessage ?? "")
         }
-        .onReceive(reminderStateTimer) { now in
-            currentTime = now
-        }
     }
 
     private var pills: [PillCardProjection] {
@@ -137,8 +152,8 @@ struct MyPillsView: View {
     }
 
     private var sections: [PillDashboardSectionProjection] {
-        let today = pills.filter(\.isScheduledToday)
-        let pending = pills.filter { !$0.isScheduledToday }
+        let today = pills.filter { $0.isScheduledToday || $0.activeOverdueDay != nil }
+        let pending = pills.filter { !$0.isScheduledToday && $0.activeOverdueDay == nil }
         return [
             PillDashboardSectionProjection(id: .today, title: "Today", pills: today),
             PillDashboardSectionProjection(id: .pending, title: "Pending", pills: pending),
