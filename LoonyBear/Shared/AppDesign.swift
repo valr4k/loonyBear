@@ -160,6 +160,7 @@ private struct AppBackButtonModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .navigationBarBackButtonHidden(true)
+            .background(AppInteractivePopGestureEnabler())
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
@@ -170,6 +171,29 @@ private struct AppBackButtonModifier: ViewModifier {
                     .appAccentTint()
                 }
             }
+    }
+}
+
+private struct AppInteractivePopGestureEnabler: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> Controller {
+        Controller()
+    }
+
+    func updateUIViewController(_ uiViewController: Controller, context: Context) {
+        uiViewController.enableSwipeBack()
+    }
+
+    final class Controller: UIViewController {
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            enableSwipeBack()
+        }
+
+        func enableSwipeBack() {
+            guard let navigationController else { return }
+            navigationController.interactivePopGestureRecognizer?.delegate = nil
+            navigationController.interactivePopGestureRecognizer?.isEnabled = navigationController.viewControllers.count > 1
+        }
     }
 }
 
@@ -386,6 +410,39 @@ struct AppValueRow: View {
     }
 }
 
+struct AppPlainValueRow: View {
+    let title: String
+    let value: String
+    var valueColor: AnyShapeStyle = AnyShapeStyle(.secondary)
+    var showsChevron = false
+
+    var body: some View {
+        HStack(spacing: 16) {
+            Text(title)
+                .foregroundStyle(.primary)
+
+            Spacer()
+
+            HStack(spacing: 6) {
+                Text(value)
+                    .foregroundStyle(valueColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .multilineTextAlignment(.trailing)
+
+                if showsChevron {
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .padding(.horizontal, AppLayout.rowHorizontalPadding)
+        .padding(.vertical, AppLayout.rowVerticalPadding)
+        .contentShape(Rectangle())
+    }
+}
+
 private struct AppReadOnlyValueCapsule: View {
     let text: String
     var valueColor: AnyShapeStyle = AnyShapeStyle(.secondary)
@@ -427,8 +484,9 @@ private struct AppChevronForegroundStyle: ViewModifier {
     }
 }
 
-private struct AppPickerValueCapsule: View {
+private struct AppPickerValueLabel: View {
     let text: String
+    var isTinted = true
     var showsChevron = false
 
     var body: some View {
@@ -441,61 +499,18 @@ private struct AppPickerValueCapsule: View {
                     .font(.footnote.weight(.semibold))
             }
         }
-        .appAccentForeground()
-        .padding(.horizontal, 14)
-        .padding(.vertical, 7)
-        .background {
-            Capsule()
-                .fill(Color(uiColor: .tertiarySystemFill))
-        }
+        .modifier(AppPickerValueForegroundStyle(isTinted: isTinted))
     }
 }
 
-@MainActor
-private enum AppDatePickerPopoverPrewarmer {
-    private static var didWarmUp = false
-    private static var isWarmingUp = false
-    private static var retainedWarmUpView: UIView?
+private struct AppPickerValueForegroundStyle: ViewModifier {
+    let isTinted: Bool
 
-    static func warmUpDeferred() async {
-        guard !didWarmUp, !isWarmingUp else { return }
-        isWarmingUp = true
-        try? await Task.sleep(nanoseconds: 180_000_000)
-
-        guard !Task.isCancelled else {
-            isWarmingUp = false
-            return
-        }
-
-        warmUpNow()
-        isWarmingUp = false
-    }
-
-    private static func warmUpNow() {
-        guard !didWarmUp else { return }
-        didWarmUp = true
-
-        let container = UIView(frame: CGRect(x: 0, y: 0, width: 340, height: 260))
-        container.alpha = 0
-        container.isUserInteractionEnabled = false
-
-        let datePicker = UIDatePicker(frame: CGRect(x: 0, y: 0, width: 320, height: 260))
-        datePicker.datePickerMode = .date
-        datePicker.preferredDatePickerStyle = .inline
-
-        let timePicker = UIDatePicker(frame: CGRect(x: 0, y: 0, width: 220, height: 180))
-        timePicker.datePickerMode = .time
-        timePicker.preferredDatePickerStyle = .wheels
-
-        container.addSubview(datePicker)
-        container.addSubview(timePicker)
-        container.setNeedsLayout()
-        container.layoutIfNeeded()
-
-        retainedWarmUpView = container
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            retainedWarmUpView = nil
+    func body(content: Content) -> some View {
+        if isTinted {
+            content.appAccentForeground()
+        } else {
+            content.foregroundStyle(.primary)
         }
     }
 }
@@ -505,6 +520,7 @@ struct AppSchedulePickerRow<PopoverContent: View>: View {
     let onTap: (() -> Void)?
     @ViewBuilder let popoverContent: PopoverContent
     @State private var isShowingPopover = false
+    @State private var isValueTinted = false
 
     init(
         value: String,
@@ -524,15 +540,25 @@ struct AppSchedulePickerRow<PopoverContent: View>: View {
                 onTap?()
                 isShowingPopover = true
             }
-        .popover(
-            isPresented: $isShowingPopover,
-            attachmentAnchor: .point(.trailing),
-            arrowEdge: .trailing
-        ) {
-            popoverContent
-                .presentationCompactAdaptation(.popover)
-                .presentationBackground(.clear)
-        }
+            .popover(
+                isPresented: $isShowingPopover,
+                attachmentAnchor: .point(.trailing),
+                arrowEdge: .trailing
+            ) {
+                popoverContent
+                    .presentationCompactAdaptation(.popover)
+                    .presentationBackground(.clear)
+                    .background {
+                        AppPopoverLifecycleObserver(
+                            onWillAppear: {
+                                isValueTinted = true
+                            },
+                            onWillDisappear: {
+                                isValueTinted = false
+                            }
+                        )
+                    }
+            }
     }
 
     private var rowContent: some View {
@@ -542,10 +568,50 @@ struct AppSchedulePickerRow<PopoverContent: View>: View {
 
             Spacer()
 
-            AppPickerValueCapsule(text: value, showsChevron: true)
+            AppPickerValueLabel(text: value, isTinted: isValueTinted, showsChevron: true)
         }
         .padding(.horizontal, AppLayout.rowHorizontalPadding)
         .padding(.vertical, AppLayout.rowVerticalPadding)
+    }
+}
+
+private struct AppPopoverLifecycleObserver: UIViewControllerRepresentable {
+    let onWillAppear: () -> Void
+    let onWillDisappear: () -> Void
+
+    func makeUIViewController(context: Context) -> Controller {
+        Controller(onWillAppear: onWillAppear, onWillDisappear: onWillDisappear)
+    }
+
+    func updateUIViewController(_ viewController: Controller, context: Context) {
+        viewController.onWillAppear = onWillAppear
+        viewController.onWillDisappear = onWillDisappear
+    }
+
+    final class Controller: UIViewController {
+        var onWillAppear: () -> Void
+        var onWillDisappear: () -> Void
+
+        init(onWillAppear: @escaping () -> Void, onWillDisappear: @escaping () -> Void) {
+            self.onWillAppear = onWillAppear
+            self.onWillDisappear = onWillDisappear
+            super.init(nibName: nil, bundle: nil)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        override func viewWillAppear(_ animated: Bool) {
+            super.viewWillAppear(animated)
+            onWillAppear()
+        }
+
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            onWillDisappear()
+        }
     }
 }
 
@@ -553,7 +619,6 @@ struct AppReminderTimeRows: View {
     @Binding var isEnabled: Bool
     @Binding var reminderDate: Date
     let onTimeTap: (() -> Void)?
-    @State private var isShowingTimePicker = false
 
     init(
         isEnabled: Binding<Bool>,
@@ -587,9 +652,6 @@ struct AppReminderTimeRows: View {
                 timePickerRow
             }
         }
-        .task {
-            await AppDatePickerPopoverPrewarmer.warmUpDeferred()
-        }
     }
 
     @ViewBuilder
@@ -600,32 +662,18 @@ struct AppReminderTimeRows: View {
 
             Spacer()
 
-            AppPickerValueCapsule(text: formattedTime)
+            DatePicker("", selection: $reminderDate, displayedComponents: .hourAndMinute)
+                .datePickerStyle(.compact)
+                .labelsHidden()
+                .appAccentTint()
+                .fixedSize()
         }
         .padding(.horizontal, AppLayout.rowHorizontalPadding)
         .padding(.vertical, AppLayout.rowVerticalPadding)
         .contentShape(Rectangle())
-        .onTapGesture {
+        .simultaneousGesture(TapGesture().onEnded {
             dismissKeyboardForNonTextControl()
-            isShowingTimePicker = true
-        }
-        .popover(
-            isPresented: $isShowingTimePicker,
-            attachmentAnchor: .point(.trailing),
-            arrowEdge: .trailing
-        ) {
-            DatePicker("", selection: $reminderDate, displayedComponents: .hourAndMinute)
-                .datePickerStyle(.wheel)
-                .labelsHidden()
-                .appAccentTint()
-                .frame(width: 220, height: 180)
-                .presentationCompactAdaptation(.popover)
-        }
-    }
-
-    private var formattedTime: String {
-        let components = Calendar.current.dateComponents([.hour, .minute], from: reminderDate)
-        return String(format: "%02d:%02d", components.hour ?? 0, components.minute ?? 0)
+        })
     }
 
     private func dismissKeyboardForNonTextControl() {
@@ -638,7 +686,6 @@ struct AppStartDatePickerRow: View {
     @Binding var date: Date
     let range: ClosedRange<Date>
     let onTap: (() -> Void)?
-    @State private var isShowingDatePicker = false
 
     init(
         date: Binding<Date>,
@@ -657,41 +704,19 @@ struct AppStartDatePickerRow: View {
 
             Spacer()
 
-            AppPickerValueCapsule(text: formattedDate)
+            DatePicker("", selection: $date, in: range, displayedComponents: .date)
+                .datePickerStyle(.compact)
+                .labelsHidden()
+                .appAccentTint()
+                .fixedSize()
         }
         .padding(.horizontal, AppLayout.rowHorizontalPadding)
         .padding(.vertical, AppLayout.rowVerticalPadding)
         .contentShape(Rectangle())
-        .onTapGesture {
+        .simultaneousGesture(TapGesture().onEnded {
             AppDescriptionFieldSupport.dismissKeyboard()
             onTap?()
-            isShowingDatePicker = true
-        }
-        .popover(
-            isPresented: $isShowingDatePicker,
-            attachmentAnchor: .point(.trailing),
-            arrowEdge: .trailing
-        ) {
-            DatePicker(
-                "",
-                selection: $date,
-                in: range,
-                displayedComponents: .date
-            )
-            .datePickerStyle(.graphical)
-            .labelsHidden()
-            .appAccentTint()
-            .frame(width: 320)
-            .padding(8)
-            .presentationCompactAdaptation(.popover)
-        }
-        .task {
-            await AppDatePickerPopoverPrewarmer.warmUpDeferred()
-        }
-    }
-
-    private var formattedDate: String {
-        date.formatted(date: .abbreviated, time: .omitted)
+        })
     }
 }
 
@@ -699,7 +724,7 @@ struct AppStartDateValueRow: View {
     let date: Date
 
     var body: some View {
-        AppValueRow(
+        AppPlainValueRow(
             title: "Start Date",
             value: date.formatted(date: .abbreviated, time: .omitted)
         )
@@ -1033,6 +1058,7 @@ private struct AppScheduleEditorPopoverBody: View {
             }
         }
         .frame(width: 340)
+        .padding(.vertical, 8)
     }
 }
 
@@ -1358,6 +1384,7 @@ struct AppReadOnlySchedulePopoverContent: View {
     var body: some View {
         AppReadOnlyScheduleList(scheduleDays: scheduleDays)
             .frame(width: 280)
+            .padding(.vertical, 8)
             .presentationCompactAdaptation(.popover)
     }
 }

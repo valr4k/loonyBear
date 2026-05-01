@@ -168,6 +168,12 @@ struct CoreDataPillRepository: PillRepository {
 
     func createPill(from draft: PillDraft) throws -> UUID {
         try repositoryContext.performWrite({ context in
+            let totalPillsRequest = NSFetchRequest<NSFetchRequestResult>(entityName: "Pill")
+            let totalPills = try context.count(for: totalPillsRequest)
+            guard totalPills < 20 else {
+                throw PillRepositoryError.tooManyPills
+            }
+
             let countRequest = NSFetchRequest<NSDictionary>(entityName: "Pill")
             countRequest.resultType = .dictionaryResultType
             countRequest.propertiesToFetch = ["sortOrder"]

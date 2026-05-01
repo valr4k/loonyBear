@@ -152,6 +152,7 @@ Derived values include:
 - Habit and Pill create/details/edit screens open as sheets.
 - Settings uses a route-based `NavigationStack` for Backup and Rules & Logic.
 - The selected tab and active Settings route are stored in `@SceneStorage` so app tint or restore-driven root rebuilds preserve the user's place.
+- Settings child screens use the shared custom tinted back button while a UIKit bridge keeps the native left-edge interactive pop gesture enabled.
 - Notification taps can switch tabs by posting:
   - `openMyHabitsTab`
   - `openMyPillsTab`
@@ -199,6 +200,6 @@ On every `.active` scene phase:
 - Streak logic exists only for Habits.
 - Pills support reordering through `sortOrder`.
 - Backup covers both trackers and app appearance settings in one archive schema.
-- Restore success feedback is owned above the tint-keyed tab subtree and passed down to Backup as a callback.
+- Backup owns create/restore feedback through floating banners; restore success refreshes app state and shows a green banner on the Backup screen.
 - App tint updates are applied through SwiftUI tint helpers and visible UIKit tab/navigation bar updates.
 - Widget snapshot currently serializes Habit dashboard data only.

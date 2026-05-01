@@ -6,6 +6,8 @@ struct BackupSettingsView: View {
     @StateObject private var viewModel: BackupSettingsViewModel
     @State private var isShowingCreateBackupConfirmation = false
     @State private var isShowingRestoreBackupConfirmation = false
+    @State private var visibleBanner: BackupBanner?
+    @State private var bannerDismissTask: Task<Void, Never>?
     let onRestoreComplete: () -> Void
 
     init(viewModel: BackupSettingsViewModel, onRestoreComplete: @escaping () -> Void = {}) {
@@ -24,33 +26,41 @@ struct BackupSettingsView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     AppFormSectionHeader(title: "Actions")
 
-                    if let noticeKind = viewModel.actionNoticeKind {
-                        BackupActionNoticeRow(kind: noticeKind)
-                    }
-
                     actionsCard
 
                     AppHelperText(text: AppCopy.backupFolderHint)
                 }
             }
         }
+        .overlay(alignment: .bottom) {
+            floatingBanner
+        }
         .navigationTitle("Backup")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             viewModel.load()
+            if !presentViewModelBannerIfNeeded() {
+                presentActionNoticeIfNeeded()
+            }
+        }
+        .onChange(of: viewModel.actionNoticeKind) { _, _ in
+            guard viewModel.actionNoticeKind != nil else {
+                dismissVisibleBanner()
+                return
+            }
+            presentActionNoticeIfNeeded()
+        }
+        .onChange(of: viewModel.banner?.id) { _, _ in
+            _ = presentViewModelBannerIfNeeded()
+        }
+        .onDisappear {
+            dismissVisibleBanner()
         }
         .sheet(isPresented: $viewModel.isShowingFolderPicker) {
             FolderPickerView { url in
                 viewModel.didPickFolder(url)
                 viewModel.isShowingFolderPicker = false
             }
-        }
-        .alert(item: $viewModel.alert) { alert in
-            Alert(
-                title: Text(alert.title),
-                message: Text(alert.message),
-                dismissButton: .default(Text("OK"))
-            )
         }
     }
 
@@ -165,6 +175,57 @@ struct BackupSettingsView: View {
             }
         }
     }
+
+    @ViewBuilder
+    private var floatingBanner: some View {
+        if let visibleBanner {
+            BackupFloatingBanner(banner: visibleBanner) {
+                dismissVisibleBanner()
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 14)
+            .zIndex(1)
+        }
+    }
+
+    private func presentActionNoticeIfNeeded() {
+        guard let noticeKind = viewModel.actionNoticeKind else { return }
+        presentBanner(noticeKind.banner)
+    }
+
+    private func presentViewModelBannerIfNeeded() -> Bool {
+        guard let banner = viewModel.banner else { return false }
+        presentBanner(banner)
+        viewModel.banner = nil
+        return true
+    }
+
+    private func presentBanner(_ banner: BackupBanner) {
+        bannerDismissTask?.cancel()
+        withAnimation(.easeInOut(duration: 0.18)) {
+            visibleBanner = banner
+        }
+
+        bannerDismissTask = Task {
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                guard visibleBanner?.id == banner.id else { return }
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    visibleBanner = nil
+                }
+            }
+        }
+    }
+
+    private func dismissVisibleBanner() {
+        bannerDismissTask?.cancel()
+        bannerDismissTask = nil
+        withAnimation(.easeInOut(duration: 0.18)) {
+            visibleBanner = nil
+        }
+    }
 }
 
 private struct BackupInfoRow: View {
@@ -253,63 +314,105 @@ private struct BackupActionButton: View {
     }
 }
 
-private struct BackupActionNoticeRow: View {
-    let kind: BackupActionNoticeKind
+private struct BackupFloatingBanner: View {
+    let banner: BackupBanner
+    let onDismiss: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(alignment: .center, spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(color)
 
-            Text(message)
-                .font(.caption)
-                .foregroundStyle(.primary)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 3) {
+                if let title = banner.title {
+                    Text(title)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.primary)
+                }
+
+                Text(banner.message)
+                    .font(.footnote)
+                    .foregroundStyle(.primary)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button(action: onDismiss) {
+                Label("Dismiss", systemImage: "xmark.circle.fill")
+                    .labelStyle(.iconOnly)
+                    .font(.system(size: 17, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(color.opacity(0.10))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(color.opacity(0.16), lineWidth: 1)
-        )
+        .background {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(color.opacity(0.16))
+                }
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(color.opacity(0.28), lineWidth: 1)
+        }
+        .shadow(color: Color.black.opacity(0.12), radius: 14, x: 0, y: 6)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
     private var icon: String {
-        switch kind {
-        case .noBackup:
-            return "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90"
-        case .restoreAvailable:
-            return "checkmark.arrow.trianglehead.counterclockwise"
-        case .unreadable:
+        if let icon = banner.icon {
+            return icon
+        }
+
+        switch banner.style {
+        case .info:
+            return "arrow.trianglehead.2.clockwise.rotate.90"
+        case .success:
+            return "checkmark.circle.fill"
+        case .failure:
             return "exclamationmark.triangle.fill"
         }
     }
 
     private var color: Color {
-        switch kind {
-        case .noBackup:
+        switch banner.style {
+        case .info:
             return .blue
-        case .restoreAvailable:
-            return .blue
-        case .unreadable:
+        case .success:
+            return .green
+        case .failure:
             return .red
         }
     }
+}
 
-    private var message: String {
-        switch kind {
+private extension BackupActionNoticeKind {
+    var banner: BackupBanner {
+        switch self {
         case .noBackup:
-            return "No backup found. Tap Create Backup to save one."
+            return BackupBanner(
+                message: "No backup found. Tap Create Backup to save one.",
+                style: .info,
+                icon: "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90"
+            )
         case .restoreAvailable:
-            return "Backup found. Tap Restore Backup to apply it."
+            return BackupBanner(
+                message: "Backup found. Tap Restore Backup to apply it.",
+                style: .info,
+                icon: "checkmark.arrow.trianglehead.counterclockwise"
+            )
         case .unreadable:
-            return "Backup file can’t be read. Choose another folder or create a new backup."
+            return BackupBanner(
+                message: "Backup file can’t be read. Choose another folder or create a new backup.",
+                style: .failure
+            )
         }
     }
 }

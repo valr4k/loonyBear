@@ -38,12 +38,11 @@ struct HabitDetailsView: View {
                     AppFormSectionHeader(title: "Notifications")
 
                     DetailsCard {
-                        AppValueRow(
+                        AppPlainValueRow(
                             title: "Schedule",
                             value: details.scheduleDays.compactSummary,
                             valueColor: AnyShapeStyle(.secondary),
-                            showsChevron: true,
-                            usesTintedChevron: true
+                            showsChevron: true
                         )
                         .contentShape(Rectangle())
                         .onTapGesture {
@@ -59,7 +58,7 @@ struct HabitDetailsView: View {
                         }
 
                         AppSectionDivider()
-                        AppValueRow(title: "Reminder", value: details.reminderTime?.formatted ?? "Off")
+                        AppPlainValueRow(title: "Reminder", value: details.reminderTime?.formatted ?? "Off")
                     }
                 }
 
@@ -67,13 +66,13 @@ struct HabitDetailsView: View {
                     AppFormSectionHeader(title: "History")
 
                     DetailsCard {
-                        AppValueRow(title: "Start Date", value: details.startDate.formatted(date: .abbreviated, time: .omitted))
+                        AppPlainValueRow(title: "Start Date", value: details.startDate.formatted(date: .abbreviated, time: .omitted))
                         AppSectionDivider()
-                        AppValueRow(title: "Current streak", value: DayCountFormatter.compactDurationString(for: details.currentStreak), valueColor: AnyShapeStyle(.secondary))
+                        AppPlainValueRow(title: "Current streak", value: DayCountFormatter.compactDurationString(for: details.currentStreak), valueColor: AnyShapeStyle(.secondary))
                         AppSectionDivider()
-                        AppValueRow(title: "Best streak", value: DayCountFormatter.compactDurationString(for: details.longestStreak), valueColor: AnyShapeStyle(.secondary))
+                        AppPlainValueRow(title: "Best streak", value: DayCountFormatter.compactDurationString(for: details.longestStreak), valueColor: AnyShapeStyle(.secondary))
                         AppSectionDivider()
-                        AppValueRow(title: "Completed for", value: DayCountFormatter.compactDurationString(for: details.totalCompletedDays), valueColor: AnyShapeStyle(.secondary))
+                        AppPlainValueRow(title: "Completed for", value: DayCountFormatter.compactDurationString(for: details.totalCompletedDays), valueColor: AnyShapeStyle(.secondary))
                     }
                 }
 

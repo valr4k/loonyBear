@@ -8,7 +8,7 @@ import UniformTypeIdentifiers
 final class BackupSettingsViewModel: ObservableObject {
     @Published private(set) var status = BackupStatus.empty
     @Published var isShowingFolderPicker = false
-    @Published var alert: BackupAlert?
+    @Published var banner: BackupBanner?
     @Published private(set) var isCreatingBackup = false
     @Published private(set) var isRestoringBackup = false
 
@@ -42,13 +42,14 @@ final class BackupSettingsViewModel: ObservableObject {
         do {
             status = try service.loadStatus()
             if status.requiresFolderReselection {
-                alert = BackupAlert(
+                showBanner(
                     title: "Backup Folder Unavailable",
-                    message: "The selected backup folder is no longer accessible. Choose the folder again to keep using backups."
+                    message: "The selected backup folder is no longer accessible. Choose the folder again to keep using backups.",
+                    style: .failure
                 )
             }
         } catch {
-            alert = BackupAlert(title: "Backup Failed", message: Self.createFailureMessage(for: error))
+            showBanner(title: "Backup Failed", message: Self.createFailureMessage(for: error), style: .failure)
         }
     }
 
@@ -61,7 +62,7 @@ final class BackupSettingsViewModel: ObservableObject {
             try service.saveFolderBookmark(for: url)
             status = try service.loadStatus()
         } catch {
-            alert = BackupAlert(title: "Backup Failed", message: Self.createFailureMessage(for: error))
+            showBanner(title: "Backup Failed", message: Self.createFailureMessage(for: error), style: .failure)
         }
     }
 
@@ -125,10 +126,10 @@ final class BackupSettingsViewModel: ObservableObject {
         case .success(let updatedStatus):
             status = updatedStatus
             await finishLoading(startedAt: start, kind: .create)
-            alert = BackupAlert(title: "Backup Created", message: "Your backup is ready in the selected folder.")
+            showBanner(title: "Backup Created", message: "Your backup is ready in the selected folder.", style: .success)
         case .failure(let message):
             await finishLoading(startedAt: start, kind: .create)
-            alert = BackupAlert(title: "Backup Failed", message: message)
+            showBanner(title: "Backup Failed", message: message, style: .failure)
         }
     }
 
@@ -147,20 +148,26 @@ final class BackupSettingsViewModel: ObservableObject {
             pillNotificationService.rescheduleAllNotifications()
             status = updatedStatus
             await finishLoading(startedAt: start, kind: .restore)
+            showBanner(title: "Restore Complete", message: "Your backup was restored successfully.", style: .success)
             return true
         case .failure(let message):
             await finishLoading(startedAt: start, kind: .restore)
-            alert = BackupAlert(title: "Restore Failed", message: message)
+            showBanner(title: "Restore Failed", message: message, style: .failure)
             return false
         }
     }
 
     private func promptFolderReselection() {
-        alert = BackupAlert(
+        showBanner(
             title: "Backup Folder Unavailable",
-            message: "The selected backup folder is no longer accessible. Choose the folder again to keep using backups."
+            message: "The selected backup folder is no longer accessible. Choose the folder again to keep using backups.",
+            style: .failure
         )
         isShowingFolderPicker = true
+    }
+
+    private func showBanner(title: String, message: String, style: BackupBannerStyle) {
+        banner = BackupBanner(title: title, message: message, style: style)
     }
 
     private func finishLoading(startedAt start: ContinuousClock.Instant, kind: BackupOperationKind) async {
@@ -227,23 +234,30 @@ private enum BackupOperationResult {
     case failure(String)
 }
 
-enum BackupActionNoticeKind {
+enum BackupActionNoticeKind: Equatable {
     case noBackup
     case restoreAvailable
     case unreadable
 }
 
-struct BackupAlert: Identifiable {
-    let id = UUID()
-    let title: String
-    let message: String
+enum BackupBannerStyle: Equatable {
+    case info
+    case success
+    case failure
 }
 
-@MainActor
-final class BackupSettingsFeedback: ObservableObject {
-    @Published var alert: BackupAlert?
+struct BackupBanner: Identifiable {
+    let id = UUID()
+    let title: String?
+    let message: String
+    let icon: String?
 
-    func showRestoreComplete() {
-        alert = BackupAlert(title: "Restore Complete", message: "Your backup was restored successfully.")
+    init(title: String? = nil, message: String, style: BackupBannerStyle, icon: String? = nil) {
+        self.title = title
+        self.message = message
+        self.icon = icon
+        self.style = style
     }
+
+    let style: BackupBannerStyle
 }

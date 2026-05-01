@@ -2,11 +2,14 @@ import Foundation
 
 enum PillRepositoryError: LocalizedError {
     case internalFailure
+    case tooManyPills
 
     var errorDescription: String? {
         switch self {
         case .internalFailure:
             return "Pill operation failed unexpectedly."
+        case .tooManyPills:
+            return "You can create up to 20 pills."
         }
     }
 }

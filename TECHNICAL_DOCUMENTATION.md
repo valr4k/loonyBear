@@ -37,6 +37,8 @@ Settings uses route-based navigation:
 
 `RootTabView` stores the selected tab and active Settings route in `@SceneStorage` so a tint-driven root rebuild or restored appearance setting does not drop the user out of the Settings/Backup flow.
 
+Settings child screens use the shared custom tinted back button while preserving the native left-edge interactive pop gesture through `AppInteractivePopGestureEnabler`.
+
 ### 1.4 Device Orientation
 The app is configured as portrait-only on iPhone.
 
@@ -648,14 +650,14 @@ UI behavior:
 - readable backup files are fingerprinted from their compressed file data using SHA-256
 - after a successful create, the current fingerprint is stored as the last created backup fingerprint
 - after a successful restore, the current fingerprint is stored as the last restored backup fingerprint
-- if a selected folder contains a readable backup whose fingerprint is neither created nor restored in this app install, the screen shows `Backup found. Tap Restore Backup to apply it.` as a blue informational notice under the `Actions` header and above the action buttons
+- if a selected folder contains a readable backup whose fingerprint is neither created nor restored in this app install, the screen shows `Backup found. Tap Restore Backup to apply it.` as a blue floating informational banner
 - while that restore-available notice is visible, `Create Backup` is disabled so the next action is explicitly `Restore Backup`
-- if a selected folder contains no readable backup, the screen shows `No backup found. Tap Create Backup to save one.`
+- if a selected folder contains no readable backup, the screen shows `No backup found. Tap Create Backup to save one.` as a blue floating informational banner
 - if the selected backup fingerprint was created or restored by this app install, no action notice is shown
-- if backup files exist but cannot be read, the screen shows `Backup file can’t be read. Choose another folder or create a new backup.`
-- successful create/restore still records the fingerprint, but success feedback is handled by the operation alert rather than a persistent green notice row
-- successful restore refreshes dashboards, rebuilds notifications, shows the restore success alert, and clears the restore-needed notice for that fingerprint
-- restore success feedback is owned by `RootTabView` and passed into `BackupSettingsView` as a callback, so the success alert survives tint/appearance restores that rebuild the Settings subtree
+- if backup files exist but cannot be read, the screen shows `Backup file can’t be read. Choose another folder or create a new backup.` as a red floating banner
+- all Backup banners are dismissible overlays pinned near the bottom of the visible screen; they auto-hide after 4 seconds and clear when leaving the Backup screen
+- successful create/restore still records the fingerprint, and success feedback is shown as green floating banners: `Backup Created` and `Restore Complete`
+- successful restore refreshes dashboards, rebuilds notifications, shows the green restore success banner, and clears the restore-needed notice for that fingerprint
 
 ## 11. Reliability Support
 
@@ -734,6 +736,9 @@ Contains:
 - Backup navigation
 - Rules & Logic navigation
 - app version and build footer
+
+Navigation behavior:
+- Settings child screens keep the custom tinted back button and support the native left-edge swipe-back gesture.
 
 Appearance behavior:
 - `Blue` is the default app tint and appears first in the palette.

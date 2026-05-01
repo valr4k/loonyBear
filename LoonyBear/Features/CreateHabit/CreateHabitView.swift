@@ -6,14 +6,15 @@ struct CreateHabitView: View {
 
     @State private var draft = CreateHabitDraft()
     @State private var validationMessage: String?
+    @State private var createLimitWarningMessage: String?
+    @State private var isCreateLimitWarningDismissed = false
     @State private var isSaving = false
     @State private var isShowingNotificationSettingsAlert = false
 
     var body: some View {
         AppScreen(backgroundStyle: .habits, topPadding: 8) {
             VStack(alignment: .leading, spacing: 20) {
-                typeSection
-                nameSection
+                headerSection
                 notificationsSection
                 historySection
                 if let validationMessage {
@@ -24,6 +25,9 @@ struct CreateHabitView: View {
             .onTapGesture {
                 AppDescriptionFieldSupport.dismissKeyboard()
             }
+        }
+        .overlay(alignment: .bottom) {
+            createLimitWarningBanner
         }
         .navigationTitle("Create Habit")
         .navigationBarTitleDisplayMode(.inline)
@@ -51,6 +55,8 @@ struct CreateHabitView: View {
         }
         .onAppear {
             validationMessage = nil
+            createLimitWarningMessage = nil
+            isCreateLimitWarningDismissed = false
             appState.clearCreateHabitError()
         }
         .onChange(of: draft.reminderEnabled) { _, isEnabled in
@@ -60,6 +66,7 @@ struct CreateHabitView: View {
                 let granted = await appState.requestNotificationAuthorizationIfNeeded()
                 if !granted {
                     validationMessage = nil
+                    createLimitWarningMessage = nil
                     isShowingNotificationSettingsAlert = true
                     draft.reminderEnabled = false
                 }
@@ -67,18 +74,27 @@ struct CreateHabitView: View {
         }
         .appNotificationSettingsAlert(isPresented: $isShowingNotificationSettingsAlert)
         .animation(.easeInOut(duration: 0.18), value: validationMessage)
+        .animation(.easeInOut(duration: 0.18), value: createLimitWarningMessage)
+        .animation(.easeInOut(duration: 0.18), value: isCreateLimitWarningDismissed)
+    }
+
+    private var headerSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            typeSection
+            nameSection
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var typeSection: some View {
-        AppCard {
-            Picker("Habit Type", selection: $draft.type) {
-                ForEach(HabitType.allCases) { type in
-                    Text(type.sectionTitle).tag(type)
-                }
+        Picker("Habit Type", selection: $draft.type) {
+            ForEach(HabitType.allCases) { type in
+                Text(type.sectionTitle).tag(type)
             }
-            .pickerStyle(.segmented)
-            .padding(12)
         }
+        .pickerStyle(.segmented)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 12)
     }
 
     private var nameSection: some View {
@@ -125,8 +141,21 @@ struct CreateHabitView: View {
         draft.name.isEmpty == false && draft.trimmedName.isEmpty
     }
 
+    @ViewBuilder
+    private var createLimitWarningBanner: some View {
+        if let message = createLimitWarningMessage, !isCreateLimitWarningDismissed {
+            AppFloatingWarningBanner(message: message) {
+                isCreateLimitWarningDismissed = true
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 14)
+            .zIndex(1)
+        }
+    }
+
     private func saveHabit() {
         guard isFormValid else {
+            createLimitWarningMessage = nil
             validationMessage = draft.trimmedName.isEmpty
                 ? "Habit name is required."
                 : AppCopy.chooseAtLeastOneDay
@@ -135,6 +164,7 @@ struct CreateHabitView: View {
 
         isSaving = true
         validationMessage = nil
+        createLimitWarningMessage = nil
         let savedDraft = draft
 
         Task {
@@ -146,10 +176,28 @@ struct CreateHabitView: View {
                 guard savedDraft.reminderEnabled else { return }
                 await appState.prepareReminderNotifications(forHabitID: habitID)
             } catch {
-                validationMessage = appState.createHabitErrorMessage ?? error.localizedDescription
+                let message = appState.createHabitErrorMessage ?? error.localizedDescription
+                if isCreateLimitError(error, message: message) {
+                    showCreateLimitWarning(message)
+                } else {
+                    validationMessage = message
+                }
                 isSaving = false
             }
         }
+    }
+
+    private func isCreateLimitError(_ error: Error, message: String) -> Bool {
+        if let createHabitError = error as? CreateHabitError, createHabitError == .tooManyHabits {
+            return true
+        }
+        return message == CreateHabitError.tooManyHabits.localizedDescription
+    }
+
+    private func showCreateLimitWarning(_ message: String) {
+        validationMessage = nil
+        createLimitWarningMessage = message
+        isCreateLimitWarningDismissed = false
     }
 
     private func dismissKeyboardForNonTextControl() {

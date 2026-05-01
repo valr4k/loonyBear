@@ -8,6 +8,8 @@ struct CreatePillView: View {
     @FocusState private var focusedField: Field?
     @State private var draft = PillDraft()
     @State private var validationMessage: String?
+    @State private var createLimitWarningMessage: String?
+    @State private var isCreateLimitWarningDismissed = false
     @State private var isSaving = false
     @State private var isDismissingKeyboardForNonTextControl = false
     @State private var isShowingNotificationSettingsAlert = false
@@ -34,6 +36,9 @@ struct CreatePillView: View {
                     focusedField = nil
                     AppDescriptionFieldSupport.dismissKeyboard()
                 }
+            }
+            .overlay(alignment: .bottom) {
+                createLimitWarningBanner
             }
             .navigationTitle("Create Pill")
             .navigationBarTitleDisplayMode(.inline)
@@ -70,6 +75,7 @@ struct CreatePillView: View {
                     let granted = await pillAppState.requestNotificationAuthorizationIfNeeded()
                     if !granted {
                         validationMessage = nil
+                        createLimitWarningMessage = nil
                         isShowingNotificationSettingsAlert = true
                         draft.reminderEnabled = false
                     }
@@ -97,6 +103,8 @@ struct CreatePillView: View {
                 )
             }
             .animation(.easeInOut(duration: 0.18), value: validationMessage)
+            .animation(.easeInOut(duration: 0.18), value: createLimitWarningMessage)
+            .animation(.easeInOut(duration: 0.18), value: isCreateLimitWarningDismissed)
         }
     }
 
@@ -158,14 +166,28 @@ struct CreatePillView: View {
         )
     }
 
+    @ViewBuilder
+    private var createLimitWarningBanner: some View {
+        if let message = createLimitWarningMessage, !isCreateLimitWarningDismissed {
+            AppFloatingWarningBanner(message: message) {
+                isCreateLimitWarningDismissed = true
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 14)
+            .zIndex(1)
+        }
+    }
+
     private func savePill() {
         guard isFormValid else {
+            createLimitWarningMessage = nil
             validationMessage = invalidMessage
             return
         }
 
         isSaving = true
         validationMessage = nil
+        createLimitWarningMessage = nil
         let savedDraft = draft
 
         Task {
@@ -177,10 +199,29 @@ struct CreatePillView: View {
                 guard savedDraft.reminderEnabled else { return }
                 await pillAppState.prepareReminderNotifications(forPillID: pillID)
             } catch {
-                validationMessage = pillAppState.actionErrorMessage ?? error.localizedDescription
+                let message = pillAppState.actionErrorMessage ?? error.localizedDescription
+                if isCreateLimitError(error, message: message) {
+                    showCreateLimitWarning(message)
+                } else {
+                    validationMessage = message
+                }
                 isSaving = false
             }
         }
+    }
+
+    private func isCreateLimitError(_ error: Error, message: String) -> Bool {
+        if let pillRepositoryError = error as? PillRepositoryError,
+           case .tooManyPills = pillRepositoryError {
+            return true
+        }
+        return message == PillRepositoryError.tooManyPills.localizedDescription
+    }
+
+    private func showCreateLimitWarning(_ message: String) {
+        validationMessage = nil
+        createLimitWarningMessage = message
+        isCreateLimitWarningDismissed = false
     }
 
     private var invalidMessage: String {

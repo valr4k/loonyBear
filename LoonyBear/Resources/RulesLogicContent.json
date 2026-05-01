@@ -55,7 +55,7 @@
         },
         {
           "title": "Creating a Habit",
-          "body": "Create Habit includes type, name, start date, reminder toggle, reminder time, selected days, and the Use schedule for history? toggle. The save button is enabled only when the habit name is not empty and at least one day is selected."
+          "body": "Create Habit includes type, name, start date, reminder toggle, reminder time, selected days, and the Use schedule for history? toggle. The save button is enabled only when the habit name is not empty and at least one day is selected. If the 20-habit hard limit blocks creation, the error is shown as a dismissible floating warning banner."
         },
         {
           "title": "Habit start date range",
@@ -133,7 +133,7 @@
         },
         {
           "title": "Creating a Pill",
-          "body": "Create Pill includes name, dosage, start date, reminder toggle, reminder time, selected days, Use schedule for history?, and an optional description. Save is enabled only when the pill name is not empty, the dosage is not empty, and at least one day is selected."
+          "body": "Create Pill includes name, dosage, start date, reminder toggle, reminder time, selected days, Use schedule for history?, and an optional description. Save is enabled only when the pill name is not empty, the dosage is not empty, and at least one day is selected. If the 20-pill hard limit blocks creation, the error is shown as a dismissible floating warning banner."
         },
         {
           "title": "Pill start date range",
@@ -257,19 +257,19 @@
       "items": [
         {
           "title": "What Backup screen shows",
-          "body": "Backup shows Last backup, Total size, and Folder. Last backup uses the same color as its cloud status icon: green when a readable backup exists and red when it does not. Create Backup and Restore Backup are full-width capsule buttons; Create uses the primary label color and Restore stays system red."
+          "body": "Backup shows Last backup, Total size, and Folder. Last backup uses the same color as its cloud status icon: green when a readable backup exists and red when it does not. Create Backup and Restore Backup are full-width capsule buttons; Create uses the primary label color and Restore stays system red. Backup feedback uses dismissible floating banners that auto-hide after 4 seconds or clear when leaving the Backup screen."
         },
         {
           "title": "Folder with an existing backup",
-          "body": "Choosing a folder never restores data automatically. Backup action notices are derived from the selected folder state and remembered backup fingerprints, not from a temporary screen session. If the folder contains a readable backup that has not been created or restored by this app install, the Backup screen shows Backup found. Tap Restore Backup to apply it. as a blue informational notice under the Actions header and disables Create Backup. If the same backup was already created or restored by this app install, no restore-needed or success notice row is shown."
+          "body": "Choosing a folder never restores data automatically. Backup action notices are derived from the selected folder state and remembered backup fingerprints, not from a temporary screen session. If the folder contains a readable backup that has not been created or restored by this app install, the Backup screen shows Backup found. Tap Restore Backup to apply it. as a blue floating informational banner and disables Create Backup. If the same backup was already created or restored by this app install, no restore-needed informational banner is shown."
         },
         {
           "title": "Folder without a backup",
-          "body": "If the selected folder has no readable backup, Backup shows No backup found. Tap Create Backup to save one. under the Actions header. Create Backup stays available and Restore Backup is disabled."
+          "body": "If the selected folder has no readable backup, Backup shows No backup found. Tap Create Backup to save one. as a blue floating informational banner. Create Backup stays available and Restore Backup is disabled."
         },
         {
           "title": "Unreadable backup files",
-          "body": "If backup files exist but cannot be read, Backup shows Backup file can’t be read. Choose another folder or create a new backup. Restore Backup is disabled."
+          "body": "If backup files exist but cannot be read, Backup shows Backup file can’t be read. Choose another folder or create a new backup. as a red floating banner. Restore Backup is disabled. Backup Created and Restore Complete are green floating success banners."
         },
         {
           "title": "Backup file names",
@@ -343,7 +343,7 @@
         },
         {
           "title": "Settings navigation persistence",
-          "body": "Settings uses route-based navigation for Backup and Rules & Logic. The selected tab and active Settings route are stored in scene storage so restore-driven appearance changes and tint rebuilds do not drop the user out of the Backup screen."
+          "body": "Settings uses route-based navigation for Backup and Rules & Logic. Settings child screens keep the custom tinted back button and preserve the native left-edge swipe-back gesture. The selected tab and active Settings route are stored in scene storage so restore-driven appearance changes and tint rebuilds do not drop the user out of the Backup screen."
         }
       ]
     },
@@ -360,7 +360,7 @@
         },
         {
           "title": "Reminder time rules",
-          "body": "ReminderTime stores hour and minute as integers. ReminderTime.default rounds the current time up to a 5-minute boundary. If rounding reaches 60 minutes, the hour is incremented and minute becomes 0. Create/Edit reminder time rows show a capsule value and open a wheel-style time picker popover without the compact DatePicker pressed-control effect. Editable Start Date rows use the same capsule trigger pattern and open a graphical calendar popover."
+          "body": "ReminderTime stores hour and minute as integers. ReminderTime.default rounds the current time up to a 5-minute boundary. If rounding reaches 60 minutes, the hour is incremented and minute becomes 0. Create/Edit reminder time rows use the native compact DatePicker when reminders are enabled, preserving system picker presentation and tint behavior. Create Start Date rows use the native compact DatePicker for date selection. Read-only Start Date rows on Edit and Details display plain trailing values without capsule backgrounds."
         },
         {
           "title": "Weekday model",
@@ -398,7 +398,7 @@
       "items": [
         {
           "title": "Create Habit validations",
-          "body": "CreateHabitUseCase requires a non-empty trimmed name and at least one schedule day. CoreDataHabitRepository also enforces a hard limit of 20 habits."
+          "body": "CreateHabitUseCase requires a non-empty trimmed name and at least one schedule day. CoreDataHabitRepository also enforces a hard limit of 20 habits. Create Habit presents hard-limit errors with the shared dismissible floating warning banner."
         },
         {
           "title": "Habit create storage",
@@ -427,7 +427,7 @@
       "items": [
         {
           "title": "Create Pill validations",
-          "body": "Create Pill requires a non-empty trimmed name, a non-empty trimmed dosage, and at least one schedule day. There is no hard create-count cap in the Pill repository code."
+          "body": "Create Pill requires a non-empty trimmed name, a non-empty trimmed dosage, and at least one schedule day. CoreDataPillRepository also enforces a hard limit of 20 pills. Create Pill presents hard-limit errors with the shared dismissible floating warning banner."
         },
         {
           "title": "Create Pill day generation",

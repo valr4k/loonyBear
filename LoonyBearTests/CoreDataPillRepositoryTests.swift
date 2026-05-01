@@ -8,6 +8,37 @@ import Testing
 @Suite
 struct CoreDataPillRepositoryTests {
     @Test
+    func createPillBlocksMoreThanTwentyPills() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        var draft = PillDraft()
+        draft.name = "Vitamin"
+        draft.dosage = "1 tablet"
+        draft.startDate = TestSupport.makeDate(2026, 4, 1)
+        draft.scheduleDays = .daily
+
+        for index in 1 ... 20 {
+            draft.name = "Vitamin \(index)"
+            _ = try repository.createPill(from: draft)
+        }
+
+        draft.name = "Vitamin 21"
+
+        do {
+            _ = try repository.createPill(from: draft)
+            Issue.record("Expected pill creation to stop at 20 pills.")
+        } catch let error as PillRepositoryError {
+            #expect(error.localizedDescription == "You can create up to 20 pills.")
+        }
+
+        #expect(try repository.fetchDashboardPills().count == 20)
+    }
+
+    @Test
     func dashboardPillsSortByReminderTimeThenSortOrder() throws {
         let persistence = PersistenceController(inMemory: true)
         let repository = CoreDataPillRepository(

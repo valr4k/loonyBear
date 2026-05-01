@@ -56,12 +56,11 @@ struct PillDetailsView: View {
                     AppFormSectionHeader(title: "Notifications")
 
                     AppCard {
-                        AppValueRow(
+                        AppPlainValueRow(
                             title: "Schedule",
                             value: details.scheduleDays.compactSummary,
                             valueColor: AnyShapeStyle(.secondary),
-                            showsChevron: true,
-                            usesTintedChevron: true
+                            showsChevron: true
                         )
                         .contentShape(Rectangle())
                         .onTapGesture {
@@ -77,7 +76,7 @@ struct PillDetailsView: View {
                         }
 
                         AppSectionDivider()
-                        AppValueRow(title: "Reminder", value: details.reminderTime?.formatted ?? "Off")
+                        AppPlainValueRow(title: "Reminder", value: details.reminderTime?.formatted ?? "Off")
                     }
                 }
 
@@ -85,9 +84,9 @@ struct PillDetailsView: View {
                     AppFormSectionHeader(title: "History")
 
                     AppCard {
-                        AppValueRow(title: "Start Date", value: details.startDate.formatted(date: .abbreviated, time: .omitted))
+                        AppPlainValueRow(title: "Start Date", value: details.startDate.formatted(date: .abbreviated, time: .omitted))
                         AppSectionDivider()
-                        AppValueRow(title: "Taken for", value: DayCountFormatter.compactDurationString(for: details.totalTakenDays), valueColor: AnyShapeStyle(.secondary))
+                        AppPlainValueRow(title: "Taken for", value: DayCountFormatter.compactDurationString(for: details.totalTakenDays), valueColor: AnyShapeStyle(.secondary))
                     }
                 }
 

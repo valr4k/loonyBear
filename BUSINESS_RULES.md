@@ -205,10 +205,12 @@ This file describes the behavioral rules that are currently implemented in code.
 - Each readable backup file is fingerprinted from its compressed data.
 - After Create Backup succeeds, the current backup fingerprint is remembered as created by this app install.
 - After Restore Backup succeeds, the restored backup fingerprint is remembered as restored by this app install.
-- If the selected folder has no readable backup, Backup shows `No backup found. Tap Create Backup to save one.` under the `Actions` header.
-- If the selected folder has a readable backup whose fingerprint has not been created or restored by this app install, Backup shows `Backup found. Tap Restore Backup to apply it.` as a blue informational notice and disables `Create Backup`.
+- Backup feedback appears as dismissible floating banners pinned near the bottom of the visible screen. Banners auto-hide after 4 seconds and clear when leaving the Backup screen.
+- If the selected folder has no readable backup, Backup shows `No backup found. Tap Create Backup to save one.` as a blue floating informational banner.
+- If the selected folder has a readable backup whose fingerprint has not been created or restored by this app install, Backup shows `Backup found. Tap Restore Backup to apply it.` as a blue floating informational banner and disables `Create Backup`.
 - If the selected folder has the backup that was created or restored by this app install, Backup does not show a restore-needed action notice.
-- If backup files exist but cannot be read, Backup shows `Backup file can’t be read. Choose another folder or create a new backup.`
+- If backup files exist but cannot be read, Backup shows `Backup file can’t be read. Choose another folder or create a new backup.` as a red floating banner.
+- Successful `Backup Created` and `Restore Complete` feedback uses green floating success banners.
 
 ## Appearance Rules
 
@@ -234,3 +236,4 @@ This file describes the behavioral rules that are currently implemented in code.
 
 - iPhone is locked to portrait orientation.
 - iPad supports portrait and landscape orientations.
+- Settings child screens use the custom tinted back button while preserving the native left-edge swipe-back gesture.

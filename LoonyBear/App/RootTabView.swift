@@ -10,7 +10,6 @@ struct RootTabView: View {
     @SceneStorage("settings_route") private var settingsRouteRawValue = ""
     @State private var settingsPath: [SettingsRoute] = []
     @State private var didRestoreSettingsPath = false
-    @StateObject private var backupFeedback = BackupSettingsFeedback()
     let currentTime: Date
 
     init(currentTime: Date = Date()) {
@@ -74,9 +73,7 @@ struct RootTabView: View {
                 .badge(overdueHabitCount)
 
             NavigationStack(path: $settingsPath) {
-                SettingsView {
-                    backupFeedback.showRestoreComplete()
-                }
+                SettingsView()
             }
                 .tag(AppTab.settings)
                 .tabItem {
@@ -98,13 +95,6 @@ struct RootTabView: View {
         }
         .onChange(of: settingsPath) { _, routes in
             persistSettingsPath(routes)
-        }
-        .alert(item: $backupFeedback.alert) { alert in
-            Alert(
-                title: Text(alert.title),
-                message: Text(alert.message),
-                dismissButton: .default(Text("OK"))
-            )
         }
     }
 
