@@ -142,6 +142,7 @@ This file describes the behavioral rules that are currently implemented in code.
 ## Reminder Rules
 
 - Reminders are scheduled only when enabled and authorized.
+- Notification permission must be requested on first launch
 - Turning on a reminder from Create/Edit requests notification authorization when needed.
 - If notification access is denied, the reminder toggle is turned back off and the app shows an alert with an `Open Settings` action instead of an inline validation banner.
 - iOS only shows the system notification permission prompt once. After the user chooses `Don’t Allow`, the app can only route the user to Settings.

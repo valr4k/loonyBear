@@ -179,8 +179,6 @@ struct AppToolbarIconLabel: View {
 
     var body: some View {
         Image(systemName: systemName)
-            .frame(width: 56, height: 56)
-            .contentShape(Circle())
     }
 }
 
@@ -189,8 +187,6 @@ struct AppToolbarTextLabel: View {
 
     var body: some View {
         Text(title)
-            .frame(minWidth: 64, minHeight: 52)
-            .contentShape(Capsule())
     }
 }
 
