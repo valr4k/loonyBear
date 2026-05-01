@@ -191,9 +191,10 @@ Functions:
 - `pastEditableDays(...)`
 - `pastScheduledEditableDays(...)`
 - `pastRequiredEditableDays(...)`
+- `scheduledDays(...)`
 - `effectiveWeekdays(on:from:calendar:)`
 
-These helpers are used to determine which past editable days must be finalized according to schedule and history mode.
+These helpers are used to determine which past editable days must be finalized according to schedule and history mode. `scheduledDays(...)` returns the normalized schedule-matching dates through a supplied end date so Details/Edit calendars can draw schedule indicators without changing stored history.
 
 ## 5. Habit Pipeline
 
@@ -752,7 +753,7 @@ Appearance behavior:
 - The root `TabView` is not globally tinted; tab item colors refresh through `UITabBarAppearance` so tint does not leak into child controls.
 - `LoonyBearApp` also updates visible `UITabBar` and `UINavigationBar` instances when app tint or appearance mode changes, so current screens update without requiring a tab switch.
 - Editable schedule checkmarks, Settings app-row icons, and Calendar Taken/Completed markers use the selected app tint.
-- The following remain fixed system colors and do not follow app tint: read-only schedule checkmarks, toggles, segmented picker selection, skipped markers, overdue and warning colors, card Edit/Info swipe actions, and Backup action rows.
+- The following remain fixed system colors and do not follow app tint: read-only schedule checkmarks, scheduled-day calendar dots, toggles, segmented picker selection, skipped markers, overdue and warning colors, card Edit/Info swipe actions, and Backup action rows.
 
 Shared warning overlay behavior:
 - `AppFloatingWarningBanner` is defined in `LoonyBear/Shared/AppDesign.swift`.
@@ -776,6 +777,7 @@ Behavior:
 - month navigation is controlled by the header chevron buttons
 - horizontal swipe paging is disabled
 - the day grid uses a stable six-week footprint and adjusts vertical row spacing for months with fewer visible week rows
+- Habit and Pill Details/Edit calendar day views can draw a small `tertiaryLabel` dot under dates that match the effective schedule history
 
 ### 13.4 Shared Schedule UI
 Defined in `LoonyBear/Shared/AppDesign.swift`.
@@ -784,6 +786,9 @@ Create/Edit schedule behavior:
 - schedule rows open `AppScheduleEditorPopoverContent` from `AppSchedulePickerRow`
 - schedule rows use a tap gesture instead of a visible pressed `Button` highlight
 - the popover uses full weekday names
+- the Intervals mode shows Daily, Weekdays, Weekends, Weekly, Biweekly, and Custom as a single-selection list
+- Custom enables a native Stepper for every 2 to 20 days only after Custom is selected
+- `ScheduleRule.intervalDays(14)` is still stored as a Custom interval rule, but its public summary and compact summary are `Biweekly`
 - day rows use compact `schedulePopoverRowVerticalPadding`
 - dividers between weekday rows are not shown
 - `Use schedule for history?` appears only when the caller supplies a binding

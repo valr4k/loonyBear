@@ -136,6 +136,20 @@ enum HistoryMonthWindow {
 
         return months
     }
+
+    static func endOfMonth(
+        containing date: Date,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Date {
+        let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: date)) ?? date
+        guard
+            let nextMonth = calendar.date(byAdding: .month, value: 1, to: monthStart),
+            let lastDay = calendar.date(byAdding: .day, value: -1, to: nextMonth)
+        else {
+            return calendar.startOfDay(for: date)
+        }
+        return calendar.startOfDay(for: lastDay)
+    }
 }
 
 enum StartDateSelectionWindow {
@@ -295,6 +309,33 @@ enum HistoryScheduleApplicability {
         return Set(pastEditableDays.filter { day in
             isScheduled(on: day, startDate: startDate, from: schedules, calendar: calendar)
         })
+    }
+
+    static func scheduledDays<Schedule: HistoryScheduleVersionLike>(
+        startDate: Date,
+        through endDate: Date,
+        schedules: [Schedule],
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Set<Date> {
+        let normalizedStartDate = calendar.startOfDay(for: startDate)
+        let normalizedEndDate = calendar.startOfDay(for: endDate)
+        guard normalizedStartDate <= normalizedEndDate else { return [] }
+
+        var result: Set<Date> = []
+        var cursor = normalizedStartDate
+
+        while cursor <= normalizedEndDate {
+            if isScheduled(on: cursor, startDate: startDate, from: schedules, calendar: calendar) {
+                result.insert(cursor)
+            }
+
+            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else {
+                break
+            }
+            cursor = calendar.startOfDay(for: next)
+        }
+
+        return result
     }
 
     static func pastRequiredEditableDays<Schedule: HistoryScheduleVersionLike>(

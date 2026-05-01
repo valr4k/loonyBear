@@ -98,6 +98,7 @@ struct PillDetailsView: View {
                             month: displayedMonth,
                             takenDays: details.takenDays,
                             skippedDays: details.skippedDays,
+                            scheduledDates: details.scheduledDates,
                             availableMonths: availableMonths(for: details.startDate),
                             onMonthChange: { displayedMonth = $0 }
                         )

@@ -132,6 +132,12 @@ struct CoreDataPillRepository: PillRepository {
             now: now,
             calendar: calendar
         )
+        let scheduledDates = HistoryScheduleApplicability.scheduledDays(
+            startDate: startDate,
+            through: HistoryMonthWindow.endOfMonth(containing: today, calendar: calendar),
+            schedules: schedules,
+            calendar: calendar
+        )
 
         return PillDetailsProjection(
             id: id,
@@ -148,6 +154,7 @@ struct CoreDataPillRepository: PillRepository {
             totalTakenDays: takenDays.count,
             takenDays: takenDays,
             skippedDays: skippedDays,
+            scheduledDates: scheduledDates,
             needsHistoryReview: needsHistoryReview(
                 startDate: startDate,
                 schedules: schedules,

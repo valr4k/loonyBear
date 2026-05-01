@@ -124,6 +124,7 @@ struct PillDetailsProjection: Equatable {
     let totalTakenDays: Int
     let takenDays: Set<Date>
     let skippedDays: Set<Date>
+    let scheduledDates: Set<Date>
     var needsHistoryReview = false
     var requiredPastScheduledDays: Set<Date> = []
     var activeOverdueDay: Date?

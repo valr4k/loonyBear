@@ -115,6 +115,7 @@ struct PillCardView: View {
 struct PillHistoryCalendarView: View {
     let month: Date
     let editableDays: Set<Date>
+    let scheduledDates: Set<Date>
     @Binding var takenDays: Set<Date>
     @Binding var skippedDays: Set<Date>
     let availableMonths: [Date]
@@ -135,6 +136,7 @@ struct PillHistoryCalendarView: View {
             PillCalendarDayView(
                 dayNumber: calendar.component(.day, from: date),
                 style: dayStyle(for: date),
+                isScheduled: isScheduled(date),
                 cellSize: cellSize
             )
             .contentShape(Circle())
@@ -193,12 +195,17 @@ struct PillHistoryCalendarView: View {
             return .available
         }
     }
+
+    private func isScheduled(_ date: Date) -> Bool {
+        scheduledDates.contains(calendar.startOfDay(for: date))
+    }
 }
 
 struct PillReadOnlyMonthCalendarView: View {
     let month: Date
     let takenDays: Set<Date>
     let skippedDays: Set<Date>
+    let scheduledDates: Set<Date>
     let availableMonths: [Date]
     let onMonthChange: (Date) -> Void
 
@@ -217,6 +224,7 @@ struct PillReadOnlyMonthCalendarView: View {
             PillReadOnlyCalendarDayView(
                 dayNumber: calendar.component(.day, from: date),
                 style: dayStyle(for: date),
+                isScheduled: isScheduled(date),
                 cellSize: cellSize
             )
         }
@@ -233,6 +241,10 @@ struct PillReadOnlyMonthCalendarView: View {
         }
         return .disabled
     }
+
+    private func isScheduled(_ date: Date) -> Bool {
+        scheduledDates.contains(calendar.startOfDay(for: date))
+    }
 }
 
 private enum PillCalendarDayStyle {
@@ -245,6 +257,7 @@ private enum PillCalendarDayStyle {
 private struct PillCalendarDayView: View {
     let dayNumber: Int
     let style: PillCalendarDayStyle
+    let isScheduled: Bool
     let cellSize: CGFloat
     @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
     @Environment(\.colorScheme) private var colorScheme
@@ -261,6 +274,13 @@ private struct PillCalendarDayView: View {
                 .font(.system(size: 19, weight: .regular, design: .rounded))
                 .foregroundStyle(foreground)
                 .frame(width: markerSize, height: markerSize)
+
+            if isScheduled {
+                Circle()
+                    .fill(scheduleIndicatorColor)
+                    .frame(width: scheduleIndicatorSize, height: scheduleIndicatorSize)
+                    .offset(y: scheduleIndicatorOffset)
+            }
         }
         .frame(width: cellSize, height: cellSize)
     }
@@ -293,6 +313,18 @@ private struct PillCalendarDayView: View {
         min(cellSize, 40)
     }
 
+    private var scheduleIndicatorSize: CGFloat {
+        4
+    }
+
+    private var scheduleIndicatorOffset: CGFloat {
+        markerSize / 2 - scheduleIndicatorSize
+    }
+
+    private var scheduleIndicatorColor: Color {
+        Color(uiColor: .tertiaryLabel)
+    }
+
     private var appTint: AppTint {
         AppTint.stored(rawValue: appTintRawValue)
     }
@@ -307,6 +339,7 @@ private enum PillReadOnlyDayStyle {
 private struct PillReadOnlyCalendarDayView: View {
     let dayNumber: Int
     let style: PillReadOnlyDayStyle
+    let isScheduled: Bool
     let cellSize: CGFloat
     @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
     @Environment(\.colorScheme) private var colorScheme
@@ -323,6 +356,13 @@ private struct PillReadOnlyCalendarDayView: View {
                 .font(.system(size: 19, weight: .regular, design: .rounded))
                 .foregroundStyle(foreground)
                 .frame(width: markerSize, height: markerSize)
+
+            if isScheduled {
+                Circle()
+                    .fill(scheduleIndicatorColor)
+                    .frame(width: scheduleIndicatorSize, height: scheduleIndicatorSize)
+                    .offset(y: scheduleIndicatorOffset)
+            }
         }
         .frame(width: cellSize, height: cellSize)
     }
@@ -351,6 +391,18 @@ private struct PillReadOnlyCalendarDayView: View {
 
     private var markerSize: CGFloat {
         min(cellSize, 40)
+    }
+
+    private var scheduleIndicatorSize: CGFloat {
+        4
+    }
+
+    private var scheduleIndicatorOffset: CGFloat {
+        markerSize / 2 - scheduleIndicatorSize
+    }
+
+    private var scheduleIndicatorColor: Color {
+        Color(uiColor: .tertiaryLabel)
     }
 
     private var appTint: AppTint {

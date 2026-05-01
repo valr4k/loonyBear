@@ -9,6 +9,7 @@ struct EditPillView: View {
     private let onDeleteSuccess: () -> Void
     private let showsCloseButton: Bool
     private let requiredPastScheduledDays: Set<Date>
+    private let scheduledDates: Set<Date>
     private let activeOverdueDay: Date?
     @FocusState private var focusedField: Field?
     @State private var draft: EditPillDraft
@@ -35,6 +36,7 @@ struct EditPillView: View {
         self.onDeleteSuccess = onDeleteSuccess
         self.showsCloseButton = showsCloseButton
         requiredPastScheduledDays = details.requiredPastScheduledDays
+        scheduledDates = details.scheduledDates
         activeOverdueDay = details.activeOverdueDay
         _draft = State(initialValue: EditPillDraft(
             id: details.id,
@@ -65,6 +67,7 @@ struct EditPillView: View {
                         PillHistoryCalendarView(
                             month: displayedMonth,
                             editableDays: editableHistoryDays,
+                            scheduledDates: scheduledDates,
                             takenDays: $draft.takenDays,
                             skippedDays: $draft.skippedDays,
                             availableMonths: availableMonths,

@@ -8,6 +8,7 @@ struct EditHabitView: View {
     private let onDeleteSuccess: () -> Void
     private let showsCloseButton: Bool
     private let requiredPastScheduledDays: Set<Date>
+    private let scheduledDates: Set<Date>
     private let activeOverdueDay: Date?
     @State private var draft: EditHabitDraft
     @State private var validationMessage: String?
@@ -28,6 +29,7 @@ struct EditHabitView: View {
         self.onDeleteSuccess = onDeleteSuccess
         self.showsCloseButton = showsCloseButton
         requiredPastScheduledDays = details.requiredPastScheduledDays
+        scheduledDates = details.scheduledDates
         activeOverdueDay = details.activeOverdueDay
         _draft = State(initialValue: EditHabitDraft(
             id: details.id,
@@ -56,6 +58,7 @@ struct EditHabitView: View {
                     HabitHistoryCalendarView(
                         month: displayedMonth,
                         editableDays: editableHistoryDays,
+                        scheduledDates: scheduledDates,
                         completedDays: $draft.completedDays,
                         skippedDays: $draft.skippedDays,
                         availableMonths: availableMonths,
@@ -349,6 +352,7 @@ private struct EditHabitScheduleView: View {
 private struct HabitHistoryCalendarView: View {
     let month: Date
     let editableDays: Set<Date>
+    let scheduledDates: Set<Date>
     @Binding var completedDays: Set<Date>
     @Binding var skippedDays: Set<Date>
     let availableMonths: [Date]
@@ -369,6 +373,7 @@ private struct HabitHistoryCalendarView: View {
             HabitCalendarDayView(
                 dayNumber: calendar.component(.day, from: date),
                 style: dayStyle(for: date),
+                isScheduled: isScheduled(date),
                 cellSize: cellSize
             )
             .contentShape(Circle())
@@ -428,6 +433,10 @@ private struct HabitHistoryCalendarView: View {
             return .available
         }
     }
+
+    private func isScheduled(_ date: Date) -> Bool {
+        scheduledDates.contains(calendar.startOfDay(for: date))
+    }
 }
 
 enum HabitCalendarDayStyle {
@@ -440,6 +449,7 @@ enum HabitCalendarDayStyle {
 struct HabitCalendarDayView: View {
     let dayNumber: Int
     let style: HabitCalendarDayStyle
+    let isScheduled: Bool
     let cellSize: CGFloat
     @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
     @Environment(\.colorScheme) private var colorScheme
@@ -456,6 +466,13 @@ struct HabitCalendarDayView: View {
                 .font(.system(size: 19, weight: .regular, design: .rounded))
                 .foregroundStyle(foreground)
                 .frame(width: markerSize, height: markerSize)
+
+            if isScheduled {
+                Circle()
+                    .fill(scheduleIndicatorColor)
+                    .frame(width: scheduleIndicatorSize, height: scheduleIndicatorSize)
+                    .offset(y: scheduleIndicatorOffset)
+            }
         }
         .frame(width: cellSize, height: cellSize)
     }
@@ -486,6 +503,18 @@ struct HabitCalendarDayView: View {
 
     private var markerSize: CGFloat {
         min(cellSize, 40)
+    }
+
+    private var scheduleIndicatorSize: CGFloat {
+        4
+    }
+
+    private var scheduleIndicatorOffset: CGFloat {
+        markerSize / 2 - scheduleIndicatorSize
+    }
+
+    private var scheduleIndicatorColor: Color {
+        Color(uiColor: .tertiaryLabel)
     }
 
     private var appTint: AppTint {

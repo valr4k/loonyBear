@@ -118,11 +118,13 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
 - Pills do not use streak logic.
 - Notifications are scheduled only for the next 2 days.
 - Pill `Remind me in 10 mins` survives global regular pill reschedules.
+- Schedule Intervals support Daily, Weekdays, Weekends, Weekly, Biweekly, and Custom every 2 to 20 days; `Every 14 days` is summarized as `Biweekly` outside the picker.
 - Settings supports System/Light/Dark appearance and Blue/Indigo/Green/Amber app color selection; Blue is the default and first palette option.
 - App tint colors supported accent surfaces, while page backgrounds stay on the system grouped background.
 - Backup includes the selected appearance mode and app tint, while legacy backups without those settings keep the current appearance.
 - Custom calendars use arrow-only month navigation, without horizontal swipe paging.
 - Custom calendar blocks keep a stable six-week footprint when changing months.
+- Habit and Pill Details/Edit calendars show a small tertiary system-gray dot under days that match the active schedule history.
 - Missing past-day review warnings use a dismissible floating red material banner on Edit and Details screens; they do not list dates and do not take space inside the calendar layout.
 - Schedule selection opens as a popover with full weekday names and no row dividers on Create/Edit and Details surfaces.
 - Edit Habit and Edit Pill delete confirmations use system alerts with `Cancel` and destructive `Delete` actions.

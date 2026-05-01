@@ -184,7 +184,7 @@ enum ScheduleRule: Equatable, Hashable {
     }
 
     nonisolated static let defaultIntervalDays = 2
-    nonisolated static let intervalDaysRange = 2 ... 14
+    nonisolated static let intervalDaysRange = 2 ... 20
     nonisolated private static let validWeekdayMask = WeekdaySet.daily.rawValue
 
     case weekly(WeekdaySet)
@@ -360,7 +360,10 @@ enum ScheduleRule: Equatable, Hashable {
     }
 
     private func intervalSummary(for days: Int) -> String {
-        "Every \(days) days"
+        if days == ScheduleIntervalPreset.biweekly.storageIntervalDays {
+            return ScheduleIntervalPreset.biweekly.title
+        }
+        return "Every \(days) days"
     }
 
     private func isIntervalScheduled(days: Int, from normalizedAnchor: Date, to normalizedDay: Date, calendar: Calendar) -> Bool {
@@ -567,6 +570,7 @@ struct HabitDetailsProjection: Equatable {
     let totalCompletedDays: Int
     let completedDays: Set<Date>
     let skippedDays: Set<Date>
+    let scheduledDates: Set<Date>
     var needsHistoryReview = false
     var requiredPastScheduledDays: Set<Date> = []
     var activeOverdueDay: Date?

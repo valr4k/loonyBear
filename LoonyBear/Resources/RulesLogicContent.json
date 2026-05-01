@@ -55,7 +55,7 @@
         },
         {
           "title": "Creating a Habit",
-          "body": "Create Habit includes type, name, start date, reminder toggle, reminder time, a schedule rule, and the Use schedule for history? toggle. The schedule rule can be weekly weekdays or an Intervals preset: Daily, Weekdays, Weekends, Weekly, Biweekly, or Custom every 2 to 14 days. The save button is enabled only when the habit name is not empty and the schedule rule is valid. If the 20-habit hard limit blocks creation, the error is shown as a dismissible floating warning banner."
+          "body": "Create Habit includes type, name, start date, reminder toggle, reminder time, a schedule rule, and the Use schedule for history? toggle. The schedule rule can be weekly weekdays or an Intervals preset: Daily, Weekdays, Weekends, Weekly, Biweekly, or Custom every 2 to 20 days. Custom Every 14 days uses the same schedule math as Biweekly and is summarized as Biweekly outside the picker. The save button is enabled only when the habit name is not empty and the schedule rule is valid. If the 20-habit hard limit blocks creation, the error is shown as a dismissible floating warning banner."
         },
         {
           "title": "Habit start date range",
@@ -67,11 +67,11 @@
         },
         {
           "title": "Habit details screen",
-          "body": "Habit Details shows name, schedule, reminder, start date, current streak, best streak, completed for, and a read-only calendar. If any past scheduled day needs review, a dismissible floating warning banner asks the user to open Edit and choose Completed or Skipped. If the only missing day is the active overdue day, the banner uses overdue-specific copy. The toolbar has Close on the left and Edit on the right. Edit is shown only when details load successfully."
+          "body": "Habit Details shows name, schedule, reminder, start date, current streak, best streak, completed for, and a read-only calendar. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. If any past scheduled day needs review, a dismissible floating warning banner asks the user to open Edit and choose Completed or Skipped. If the only missing day is the active overdue day, the banner uses overdue-specific copy. The toolbar has Close on the left and Edit on the right. Edit is shown only when details load successfully."
         },
         {
           "title": "Editing a Habit",
-          "body": "Edit Habit shows name, read-only start date, reminder settings, schedule rule, an editable calendar, helper text, and a Delete button at the bottom. Missing past-day review is shown as a dismissible floating warning banner that does not take space inside the calendar layout, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a system alert with Cancel and Delete actions."
+          "body": "Edit Habit shows name, read-only start date, reminder settings, schedule rule, an editable calendar, helper text, and a Delete button at the bottom. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Missing past-day review is shown as a dismissible floating warning banner that does not take space inside the calendar layout, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a system alert with Cancel and Delete actions."
         }
       ]
     },
@@ -133,7 +133,7 @@
         },
         {
           "title": "Creating a Pill",
-          "body": "Create Pill includes name, dosage, start date, reminder toggle, reminder time, a schedule rule, Use schedule for history?, and an optional description. The schedule rule can be weekly weekdays or an Intervals preset: Daily, Weekdays, Weekends, Weekly, Biweekly, or Custom every 2 to 14 days. Save is enabled only when the pill name is not empty, the dosage is not empty, and the schedule rule is valid. If the 20-pill hard limit blocks creation, the error is shown as a dismissible floating warning banner."
+          "body": "Create Pill includes name, dosage, start date, reminder toggle, reminder time, a schedule rule, Use schedule for history?, and an optional description. The schedule rule can be weekly weekdays or an Intervals preset: Daily, Weekdays, Weekends, Weekly, Biweekly, or Custom every 2 to 20 days. Custom Every 14 days uses the same schedule math as Biweekly and is summarized as Biweekly outside the picker. Save is enabled only when the pill name is not empty, the dosage is not empty, and the schedule rule is valid. If the 20-pill hard limit blocks creation, the error is shown as a dismissible floating warning banner."
         },
         {
           "title": "Pill start date range",
@@ -141,11 +141,11 @@
         },
         {
           "title": "Pill details screen",
-          "body": "Pill Details shows name, dosage, start date, schedule, reminder, taken for, a read-only calendar, and description if one exists. If any past scheduled day needs review, a dismissible floating warning banner asks the user to open Edit and choose Taken or Skipped. If the only missing day is the active overdue day, the banner uses overdue-specific copy. The toolbar has Close on the left and Edit on the right. Edit is shown only when details load successfully."
+          "body": "Pill Details shows name, dosage, start date, schedule, reminder, taken for, a read-only calendar, and description if one exists. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. If any past scheduled day needs review, a dismissible floating warning banner asks the user to open Edit and choose Taken or Skipped. If the only missing day is the active overdue day, the banner uses overdue-specific copy. The toolbar has Close on the left and Edit on the right. Edit is shown only when details load successfully."
         },
         {
           "title": "Editing a Pill",
-          "body": "Edit Pill shows name, dosage, read-only start date, reminder settings, schedule rule, an editable calendar, helper text, description, and a Delete button at the bottom. Missing past-day review is shown as a dismissible floating warning banner that does not take space inside the calendar layout, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a system alert with Cancel and Delete actions."
+          "body": "Edit Pill shows name, dosage, read-only start date, reminder settings, schedule rule, an editable calendar, helper text, description, and a Delete button at the bottom. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Missing past-day review is shown as a dismissible floating warning banner that does not take space inside the calendar layout, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a system alert with Cancel and Delete actions."
         }
       ]
     },
@@ -335,11 +335,11 @@
         },
         {
           "title": "Calendar navigation",
-          "body": "Shared month calendars use header chevron buttons for month navigation. Horizontal swipe paging is disabled on Details and Edit calendar surfaces. Calendar blocks keep a stable six-week footprint and adjust vertical row spacing for shorter months."
+          "body": "Shared month calendars use header chevron buttons for month navigation. Horizontal swipe paging is disabled on Details and Edit calendar surfaces. Calendar blocks keep a stable six-week footprint and adjust vertical row spacing for shorter months. Habit and Pill Details/Edit calendar day views show a small tertiary system-gray dot under dates that match the effective schedule history."
         },
         {
           "title": "Schedule popovers",
-          "body": "Create and Edit screens open schedule selection in an in-place popover with Weekly and Intervals modes. Weekly mode uses full weekday names, compact row spacing, and no row dividers. Intervals mode is a single-selection list with Daily, Weekdays, Weekends, Weekly, Biweekly, and Custom rows. Custom enables a native Stepper for every 2 to 14 days only after Custom is selected. Switching between Weekly and Intervals preserves the previous choice while the Create/Edit screen remains open, but Save or Cancel does not persist unsaved picker memory. Details screens open a read-only schedule popover that shows either the weekday list or the selected interval rule. Schedule rows open popovers without a pressed-row visual effect. The popover content does not add an extra inner card or background layer."
+          "body": "Create and Edit screens open schedule selection in an in-place popover with Weekly and Intervals modes. Weekly mode uses full weekday names, compact row spacing, and no row dividers. Intervals mode is a single-selection list with Daily, Weekdays, Weekends, Weekly, Biweekly, and Custom rows. Custom enables a native Stepper for every 2 to 20 days only after Custom is selected. Custom Every 14 days remains a custom interval in storage but is summarized as Biweekly outside the picker. Switching between Weekly and Intervals preserves the previous choice while the Create/Edit screen remains open, but Save or Cancel does not persist unsaved picker memory. Details screens open a read-only schedule popover that shows either the weekday list or the selected interval rule. Schedule rows open popovers without a pressed-row visual effect. The popover content does not add an extra inner card or background layer."
         },
         {
           "title": "Settings navigation persistence",
@@ -364,7 +364,7 @@
         },
         {
           "title": "Schedule model",
-          "body": "ScheduleRule supports weekly, intervalPreset, and intervalDays modes. Weekly stores a WeekdaySet OptionSet with Monday through Sunday bit flags and summaries such as Daily, Weekdays, Weekends, or an ordered Mon through Sun list. IntervalPreset stores Daily, Weekdays, Weekends, Weekly, or Biweekly. IntervalDays is Custom every N days, limited to 2 through 14 days. Initial schedules are anchored to the item start date; edited interval schedules are anchored to the active schedule version effectiveFrom."
+          "body": "ScheduleRule supports weekly, intervalPreset, and intervalDays modes. Weekly stores a WeekdaySet OptionSet with Monday through Sunday bit flags and summaries such as Daily, Weekdays, Weekends, or an ordered Mon through Sun list. IntervalPreset stores Daily, Weekdays, Weekends, Weekly, or Biweekly. IntervalDays is Custom every N days, limited to 2 through 20 days. Custom intervalDays(14) uses the same schedule math as Biweekly and returns Biweekly from summary and compactSummary. Initial schedules are anchored to the item start date; edited interval schedules are anchored to the active schedule version effectiveFrom."
         }
       ]
     },
@@ -389,7 +389,7 @@
         },
         {
           "title": "Schedule applicability",
-          "body": "HistoryScheduleApplicability can compute past editable days, past scheduled editable days, and past required editable days. Effective schedule for a given day is the latest schedule version whose effectiveFrom is not later than that day, ordered by effectiveFrom, version, and createdAt. Weekly rules and weekday/weekend presets use weekday membership. Weekly interval, Biweekly, and Custom every-N-days rules use the active schedule version effectiveFrom as the interval anchor. If today already has an explicit Completed/Taken or Skipped state when the schedule changes, repository update logic keeps the existing behavior and makes the new schedule effective tomorrow."
+          "body": "HistoryScheduleApplicability can compute past editable days, past scheduled editable days, past required editable days, and scheduled calendar indicator days. Effective schedule for a given day is the latest schedule version whose effectiveFrom is not later than that day, ordered by effectiveFrom, version, and createdAt. Weekly rules and weekday/weekend presets use weekday membership. Weekly interval, Biweekly, and Custom every-N-days rules use the active schedule version effectiveFrom as the interval anchor. If today already has an explicit Completed/Taken or Skipped state when the schedule changes, repository update logic keeps the existing behavior and makes the new schedule effective tomorrow."
         }
       ]
     },

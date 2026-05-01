@@ -135,9 +135,11 @@ This file describes the behavioral rules that are currently implemented in code.
 - Editing schedule days appends a new schedule version row instead of rewriting older versions.
 - The current schedule is the latest schedule version whose `effectiveFrom` is not later than the relevant day.
 - If a schedule change is saved after today already has an explicit state, the new schedule version starts tomorrow.
+- Schedule rules support Weekly selection plus Intervals: Daily, Weekdays, Weekends, Weekly, Biweekly, and Custom every 2 to 20 days.
+- Custom `Every 14 days` uses the same schedule math as Biweekly and is summarized as `Biweekly` on cards and details.
 - Create and Edit screens edit schedule days from an in-place popover instead of pushing a separate Schedule screen.
 - Details screens show the schedule in a read-only popover.
-- Schedule popovers use full weekday names, no row dividers, and compact row spacing.
+- Schedule popovers use full weekday names, Intervals single-selection rows, no row dividers, and compact row spacing.
 - Schedule rows open popovers without a pressed-row visual effect.
 - Create/Edit schedule popovers include `Use schedule for history?` only on flows that expose that option.
 - Schedule ordering uses:
@@ -224,13 +226,14 @@ This file describes the behavioral rules that are currently implemented in code.
 - Page backgrounds stay on the system grouped background; the tint background wash is currently disabled.
 - Legacy stored tint values `default`, `gray`, `yellow`, `cyan`, `teal`, `brown`, `red`, and `white` are treated as Blue.
 - Editable schedule checkmarks, Settings app-row icons, and Calendar Taken/Completed markers use the selected app color.
-- Read-only schedule checkmarks, skipped markers, overdue/warning colors, card Edit/Info swipe actions, backup action rows, toggles, and segmented picker selection remain fixed system colors.
+- Read-only schedule checkmarks, scheduled-day calendar dots, skipped markers, overdue/warning colors, card Edit/Info swipe actions, backup action rows, toggles, and segmented picker selection remain fixed system colors.
 
 ## Calendar UI Rules
 
 - Custom month calendars are navigated only with the left and right header arrows.
 - Custom month calendars do not support horizontal swipe paging.
 - Custom month calendars keep a stable six-week grid footprint while changing vertical spacing between week rows for shorter months.
+- Habit and Pill Details/Edit calendars show scheduled days with a small tertiary system-gray dot under the date number, derived from the effective schedule history.
 - History review warnings are floating overlays instead of inline calendar rows, so resolving the last missing day does not move the calendar.
 
 ## Device UI Rules

@@ -74,7 +74,10 @@ struct LoonyBearTests {
         ))
         #expect(!ScheduleRule.intervalDays(1).isValidSelection)
         #expect(ScheduleRule.intervalDays(14).isValidSelection)
-        #expect(!ScheduleRule.intervalDays(15).isValidSelection)
+        #expect(ScheduleRule.intervalDays(20).isValidSelection)
+        #expect(!ScheduleRule.intervalDays(21).isValidSelection)
+        #expect(ScheduleRule.intervalDays(14).summary == "Biweekly")
+        #expect(ScheduleRule.intervalDays(14).compactSummary == "Biweekly")
     }
 
     @Test
@@ -122,6 +125,43 @@ struct LoonyBearTests {
             from: schedules,
             calendar: calendar
         ))
+    }
+
+    @Test
+    func scheduledCalendarDaysFollowScheduleHistory() {
+        let calendar = Calendar(identifier: .gregorian)
+        let habitID = UUID()
+        let startDate = TestSupport.makeDate(2026, 5, 1, calendar: calendar)
+        let editEffectiveFrom = TestSupport.makeDate(2026, 5, 6, calendar: calendar)
+        let schedules = [
+            TestSupport.makeSchedule(
+                habitID: habitID,
+                weekdays: [.monday, .wednesday, .friday],
+                effectiveFrom: startDate,
+                version: 1
+            ),
+            TestSupport.makeSchedule(
+                habitID: habitID,
+                rule: .intervalDays(3),
+                effectiveFrom: editEffectiveFrom,
+                version: 2
+            ),
+        ]
+
+        let scheduledDays = HistoryScheduleApplicability.scheduledDays(
+            startDate: startDate,
+            through: TestSupport.makeDate(2026, 5, 12, calendar: calendar),
+            schedules: schedules,
+            calendar: calendar
+        )
+
+        #expect(scheduledDays == [
+            TestSupport.makeDate(2026, 5, 1, calendar: calendar),
+            TestSupport.makeDate(2026, 5, 4, calendar: calendar),
+            TestSupport.makeDate(2026, 5, 6, calendar: calendar),
+            TestSupport.makeDate(2026, 5, 9, calendar: calendar),
+            TestSupport.makeDate(2026, 5, 12, calendar: calendar),
+        ])
     }
 
     @Test

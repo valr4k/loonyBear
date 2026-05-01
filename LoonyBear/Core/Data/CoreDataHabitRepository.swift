@@ -148,6 +148,12 @@ struct CoreDataHabitRepository: HabitRepository {
             now: now,
             calendar: calendar
         )
+        let scheduledDates = HistoryScheduleApplicability.scheduledDays(
+            startDate: startDate,
+            through: HistoryMonthWindow.endOfMonth(containing: today, calendar: calendar),
+            schedules: scheduleHistory,
+            calendar: calendar
+        )
 
         return HabitDetailsProjection(
             id: id,
@@ -175,6 +181,7 @@ struct CoreDataHabitRepository: HabitRepository {
             totalCompletedDays: completedDays.count,
             completedDays: completedDays,
             skippedDays: skippedDays,
+            scheduledDates: scheduledDates,
             needsHistoryReview: needsHistoryReview(
                 startDate: startDate,
                 schedules: scheduleHistory,

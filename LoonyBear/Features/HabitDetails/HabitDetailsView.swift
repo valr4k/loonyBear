@@ -84,6 +84,7 @@ struct HabitDetailsView: View {
                             startDate: details.startDate,
                             completedDays: details.completedDays,
                             skippedDays: details.skippedDays,
+                            scheduledDates: details.scheduledDates,
                             displayedMonth: $displayedMonth
                         )
                         .padding(.horizontal, 18)
@@ -264,6 +265,7 @@ private struct HabitHeatmapView: View {
     let startDate: Date
     let completedDays: Set<Date>
     let skippedDays: Set<Date>
+    let scheduledDates: Set<Date>
     @Binding var displayedMonth: Date
 
     private var calendar: Calendar {
@@ -278,6 +280,7 @@ private struct HabitHeatmapView: View {
                 month: displayedMonth,
                 completedDays: completedDays,
                 skippedDays: skippedDays,
+                scheduledDates: scheduledDates,
                 availableMonths: displayMonths,
                 onMonthChange: { displayedMonth = $0 }
             )
@@ -294,6 +297,7 @@ private struct ReadOnlyMonthCalendarView: View {
     let month: Date
     let completedDays: Set<Date>
     let skippedDays: Set<Date>
+    let scheduledDates: Set<Date>
     let availableMonths: [Date]
     let onMonthChange: (Date) -> Void
 
@@ -312,6 +316,7 @@ private struct ReadOnlyMonthCalendarView: View {
             HabitCalendarDayView(
                 dayNumber: calendar.component(.day, from: date),
                 style: dayStyle(for: date),
+                isScheduled: isScheduled(date),
                 cellSize: cellSize
             )
         }
@@ -327,6 +332,10 @@ private struct ReadOnlyMonthCalendarView: View {
             return .skipped
         }
         return .disabled
+    }
+
+    private func isScheduled(_ date: Date) -> Bool {
+        scheduledDates.contains(calendar.startOfDay(for: date))
     }
 }
 
