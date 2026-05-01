@@ -141,10 +141,9 @@ struct MyHabitsView: View {
                 Button {
                     onCreateHabit()
                 } label: {
-                    AppToolbarIconLabel(systemName: "plus")
+                    AppToolbarIconLabel("Create Habit", systemName: "plus")
                 }
                 .appAccentTint()
-                .accessibilityLabel("Create Habit")
             }
         }
         .alert("Action failed", isPresented: actionErrorAlertBinding) {

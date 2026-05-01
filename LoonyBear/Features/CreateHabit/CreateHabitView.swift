@@ -33,21 +33,19 @@ struct CreateHabitView: View {
                 Button {
                     dismiss()
                 } label: {
-                    AppToolbarIconLabel(systemName: "xmark")
+                    AppToolbarIconLabel("Close", systemName: "xmark")
                 }
                 .appAccentTint()
-                .accessibilityLabel("Close")
             }
 
             ToolbarItem(placement: .confirmationAction) {
                 Button {
                     saveHabit()
                 } label: {
-                    AppToolbarIconLabel(systemName: "checkmark")
+                    AppToolbarIconLabel("Save", systemName: "checkmark")
                 }
                 .appAccentTint()
                 .fontWeight(.semibold)
-                .accessibilityLabel("Save")
                 .disabled(!isFormValid || isSaving)
             }
         }

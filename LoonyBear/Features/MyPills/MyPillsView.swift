@@ -140,10 +140,9 @@ struct MyPillsView: View {
                 Button {
                     onCreatePill()
                 } label: {
-                    AppToolbarIconLabel(systemName: "plus")
+                    AppToolbarIconLabel("Create Pill", systemName: "plus")
                 }
                 .appAccentTint()
-                .accessibilityLabel("Create Pill")
             }
         }
         .alert("Action failed", isPresented: actionErrorAlertBinding) {

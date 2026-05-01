@@ -145,18 +145,15 @@ struct PillDetailsView: View {
                 Button {
                     dismiss()
                 } label: {
-                    AppToolbarIconLabel(systemName: "xmark")
+                    AppToolbarIconLabel("Close", systemName: "xmark")
                 }
                 .appAccentTint()
-                .accessibilityLabel("Close")
             }
 
             if details != nil {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button {
+                    Button("Edit") {
                         isShowingEdit = true
-                    } label: {
-                        AppToolbarTextLabel(title: "Edit")
                     }
                     .appAccentTint()
                     .accessibilityLabel("Edit Pill")

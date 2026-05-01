@@ -47,21 +47,19 @@ struct CreatePillView: View {
                     Button {
                         dismiss()
                     } label: {
-                        AppToolbarIconLabel(systemName: "xmark")
+                        AppToolbarIconLabel("Close", systemName: "xmark")
                     }
                     .appAccentTint()
-                    .accessibilityLabel("Close")
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
                         savePill()
                     } label: {
-                        AppToolbarIconLabel(systemName: "checkmark")
+                        AppToolbarIconLabel("Save", systemName: "checkmark")
                     }
                     .appAccentTint()
                     .fontWeight(.semibold)
-                    .accessibilityLabel("Save")
                     .disabled(!isFormValid || isSaving)
                 }
             }

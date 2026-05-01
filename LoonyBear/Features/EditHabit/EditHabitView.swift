@@ -114,10 +114,9 @@ struct EditHabitView: View {
                     Button {
                         dismiss()
                     } label: {
-                        AppToolbarIconLabel(systemName: "xmark")
+                        AppToolbarIconLabel("Close", systemName: "xmark")
                     }
                     .appAccentTint()
-                    .accessibilityLabel("Close")
                 }
             }
 
@@ -125,11 +124,10 @@ struct EditHabitView: View {
                 Button {
                     save()
                 } label: {
-                    AppToolbarIconLabel(systemName: "checkmark")
+                    AppToolbarIconLabel("Save", systemName: "checkmark")
                 }
                 .appAccentTint()
                 .fontWeight(.semibold)
-                .accessibilityLabel("Save")
                 .disabled(!isFormValid || hasMissingPastDays || isSaving)
             }
         }

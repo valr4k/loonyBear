@@ -165,28 +165,26 @@ private struct AppBackButtonModifier: ViewModifier {
                     Button {
                         dismiss()
                     } label: {
-                        AppToolbarIconLabel(systemName: "chevron.left")
+                        AppToolbarIconLabel("Back", systemName: "chevron.left")
                     }
                     .appAccentTint()
-                    .accessibilityLabel("Back")
                 }
             }
     }
 }
 
 struct AppToolbarIconLabel: View {
+    let title: String
     let systemName: String
 
-    var body: some View {
-        Image(systemName: systemName)
+    init(_ title: String, systemName: String) {
+        self.title = title
+        self.systemName = systemName
     }
-}
-
-struct AppToolbarTextLabel: View {
-    let title: String
 
     var body: some View {
-        Text(title)
+        Label(title, systemImage: systemName)
+            .labelStyle(.iconOnly)
     }
 }
 
