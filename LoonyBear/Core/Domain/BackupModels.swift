@@ -142,9 +142,54 @@ struct BackupScheduleVersion: Codable {
     let id: UUID
     let habitId: UUID
     let weekdayMask: Int
+    let scheduleKind: String
+    let intervalDays: Int?
     let effectiveFrom: Date
     let createdAt: Date
     let version: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case habitId
+        case weekdayMask
+        case scheduleKind
+        case intervalDays
+        case effectiveFrom
+        case createdAt
+        case version
+    }
+
+    init(
+        id: UUID,
+        habitId: UUID,
+        weekdayMask: Int,
+        scheduleKind: String = ScheduleRule.Kind.weekly.rawValue,
+        intervalDays: Int? = nil,
+        effectiveFrom: Date,
+        createdAt: Date,
+        version: Int
+    ) {
+        self.id = id
+        self.habitId = habitId
+        self.weekdayMask = weekdayMask
+        self.scheduleKind = scheduleKind
+        self.intervalDays = intervalDays
+        self.effectiveFrom = effectiveFrom
+        self.createdAt = createdAt
+        self.version = version
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        habitId = try container.decode(UUID.self, forKey: .habitId)
+        weekdayMask = try container.decode(Int.self, forKey: .weekdayMask)
+        scheduleKind = try container.decodeIfPresent(String.self, forKey: .scheduleKind) ?? ScheduleRule.Kind.weekly.rawValue
+        intervalDays = try container.decodeIfPresent(Int.self, forKey: .intervalDays)
+        effectiveFrom = try container.decode(Date.self, forKey: .effectiveFrom)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        version = try container.decode(Int.self, forKey: .version)
+    }
 }
 
 struct BackupCompletion: Codable {
@@ -244,9 +289,54 @@ struct BackupPillScheduleVersion: Codable {
     let id: UUID
     let pillId: UUID
     let weekdayMask: Int
+    let scheduleKind: String
+    let intervalDays: Int?
     let effectiveFrom: Date
     let createdAt: Date
     let version: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case pillId
+        case weekdayMask
+        case scheduleKind
+        case intervalDays
+        case effectiveFrom
+        case createdAt
+        case version
+    }
+
+    init(
+        id: UUID,
+        pillId: UUID,
+        weekdayMask: Int,
+        scheduleKind: String = ScheduleRule.Kind.weekly.rawValue,
+        intervalDays: Int? = nil,
+        effectiveFrom: Date,
+        createdAt: Date,
+        version: Int
+    ) {
+        self.id = id
+        self.pillId = pillId
+        self.weekdayMask = weekdayMask
+        self.scheduleKind = scheduleKind
+        self.intervalDays = intervalDays
+        self.effectiveFrom = effectiveFrom
+        self.createdAt = createdAt
+        self.version = version
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        pillId = try container.decode(UUID.self, forKey: .pillId)
+        weekdayMask = try container.decode(Int.self, forKey: .weekdayMask)
+        scheduleKind = try container.decodeIfPresent(String.self, forKey: .scheduleKind) ?? ScheduleRule.Kind.weekly.rawValue
+        intervalDays = try container.decodeIfPresent(Int.self, forKey: .intervalDays)
+        effectiveFrom = try container.decode(Date.self, forKey: .effectiveFrom)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        version = try container.decode(Int.self, forKey: .version)
+    }
 }
 
 struct BackupPillIntake: Codable {

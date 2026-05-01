@@ -115,14 +115,14 @@ struct CreateHabitView: View {
 
     private var notificationsSection: some View {
         AppNotificationSettingsSection(
-            scheduleSummary: draft.scheduleDays.compactSummaryOrPlaceholder,
+            scheduleSummary: draft.scheduleRule.compactSummary,
             scheduleTap: dismissKeyboardForNonTextControl,
             reminderEnabled: $draft.reminderEnabled,
             reminderDate: $draft.reminderTime.dateBinding(fallback: ReminderTime(hour: 20, minute: 0)),
             reminderTimeTap: dismissKeyboardForNonTextControl
         ) {
             CreateHabitScheduleView(
-                scheduleDays: $draft.scheduleDays,
+                scheduleRule: $draft.scheduleRule,
                 useScheduleForHistory: $draft.useScheduleForHistory,
                 dismissKeyboardForNonTextControl: dismissKeyboardForNonTextControl
             )
@@ -134,7 +134,7 @@ struct CreateHabitView: View {
     }
 
     private var isFormValid: Bool {
-        !draft.trimmedName.isEmpty && draft.scheduleDays.rawValue != 0
+        !draft.trimmedName.isEmpty && draft.scheduleRule.isValidSelection
     }
 
     private var shouldShowNameValidation: Bool {
@@ -211,13 +211,13 @@ struct CreateHabitView: View {
 }
 
 private struct CreateHabitScheduleView: View {
-    @Binding var scheduleDays: WeekdaySet
+    @Binding var scheduleRule: ScheduleRule
     @Binding var useScheduleForHistory: Bool
     let dismissKeyboardForNonTextControl: () -> Void
 
     var body: some View {
         AppScheduleEditorPopoverContent(
-            scheduleDays: $scheduleDays,
+            scheduleRule: $scheduleRule,
             onTap: dismissKeyboardForNonTextControl,
             useScheduleForHistory: $useScheduleForHistory,
             helperText: useScheduleForHistory

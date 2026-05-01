@@ -39,10 +39,48 @@ struct Pill: Identifiable, Equatable {
 struct PillScheduleVersion: Identifiable, Equatable {
     let id: UUID
     let pillID: UUID
-    let weekdays: WeekdaySet
+    let rule: ScheduleRule
     let effectiveFrom: Date
     let createdAt: Date
     let version: Int
+
+    init(
+        id: UUID,
+        pillID: UUID,
+        weekdays: WeekdaySet,
+        effectiveFrom: Date,
+        createdAt: Date,
+        version: Int
+    ) {
+        self.init(
+            id: id,
+            pillID: pillID,
+            rule: .weekly(weekdays),
+            effectiveFrom: effectiveFrom,
+            createdAt: createdAt,
+            version: version
+        )
+    }
+
+    init(
+        id: UUID,
+        pillID: UUID,
+        rule: ScheduleRule,
+        effectiveFrom: Date,
+        createdAt: Date,
+        version: Int
+    ) {
+        self.id = id
+        self.pillID = pillID
+        self.rule = rule
+        self.effectiveFrom = effectiveFrom
+        self.createdAt = createdAt
+        self.version = version
+    }
+
+    var weekdays: WeekdaySet {
+        rule.weeklyDays ?? .daily
+    }
 }
 
 struct PillIntake: Identifiable, Equatable {
@@ -80,6 +118,7 @@ struct PillDetailsProjection: Equatable {
     let historyMode: PillHistoryMode
     let scheduleSummary: String
     let scheduleDays: WeekdaySet
+    let scheduleRule: ScheduleRule
     let reminderEnabled: Bool
     let reminderTime: ReminderTime?
     let totalTakenDays: Int
@@ -101,11 +140,16 @@ struct PillDraft: Equatable {
     var dosage = ""
     var details = ""
     var startDate: Date = Calendar.autoupdatingCurrent.startOfDay(for: Date())
-    var scheduleDays: WeekdaySet = .daily
+    var scheduleRule: ScheduleRule = .weekly(.daily)
     var useScheduleForHistory = true
     var reminderEnabled = false
     var reminderTime = ReminderTime.default()
     var takenDays: Set<Date> = []
+
+    var scheduleDays: WeekdaySet {
+        get { scheduleRule.weeklyDays ?? .daily }
+        set { scheduleRule = .weekly(newValue) }
+    }
 
     var trimmedName: String {
         name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -127,11 +171,64 @@ struct EditPillDraft: Equatable {
     var dosage: String
     var details: String
     let startDate: Date
-    var scheduleDays: WeekdaySet
+    var scheduleRule: ScheduleRule
     var reminderEnabled: Bool
     var reminderTime: ReminderTime
     var takenDays: Set<Date>
     var skippedDays: Set<Date>
+
+    init(
+        id: UUID,
+        name: String,
+        dosage: String,
+        details: String,
+        startDate: Date,
+        scheduleDays: WeekdaySet,
+        reminderEnabled: Bool,
+        reminderTime: ReminderTime,
+        takenDays: Set<Date>,
+        skippedDays: Set<Date>
+    ) {
+        self.id = id
+        self.name = name
+        self.dosage = dosage
+        self.details = details
+        self.startDate = startDate
+        self.scheduleRule = .weekly(scheduleDays)
+        self.reminderEnabled = reminderEnabled
+        self.reminderTime = reminderTime
+        self.takenDays = takenDays
+        self.skippedDays = skippedDays
+    }
+
+    init(
+        id: UUID,
+        name: String,
+        dosage: String,
+        details: String,
+        startDate: Date,
+        scheduleRule: ScheduleRule,
+        reminderEnabled: Bool,
+        reminderTime: ReminderTime,
+        takenDays: Set<Date>,
+        skippedDays: Set<Date>
+    ) {
+        self.id = id
+        self.name = name
+        self.dosage = dosage
+        self.details = details
+        self.startDate = startDate
+        self.scheduleRule = scheduleRule
+        self.reminderEnabled = reminderEnabled
+        self.reminderTime = reminderTime
+        self.takenDays = takenDays
+        self.skippedDays = skippedDays
+    }
+
+    var scheduleDays: WeekdaySet {
+        get { scheduleRule.weeklyDays ?? .daily }
+        set { scheduleRule = .weekly(newValue) }
+    }
 
     var trimmedName: String {
         name.trimmingCharacters(in: .whitespacesAndNewlines)

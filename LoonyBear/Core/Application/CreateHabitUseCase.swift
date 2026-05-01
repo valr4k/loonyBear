@@ -26,7 +26,7 @@ struct CreateHabitUseCase {
             throw CreateHabitError.emptyName
         }
 
-        guard draft.scheduleDays.rawValue != 0 else {
+        guard draft.scheduleRule.isValidSelection else {
             throw CreateHabitError.noScheduleDays
         }
 

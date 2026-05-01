@@ -6,6 +6,7 @@ enum AppLayout {
     static let rowHorizontalPadding: CGFloat = 18
     static let rowVerticalPadding: CGFloat = 18
     static let schedulePopoverRowVerticalPadding: CGFloat = 12
+    static let scheduleStepperRowVerticalPadding: CGFloat = 6
     static let inlinePadding: CGFloat = 4
     static let cardCornerRadius: CGFloat = 22
     static let insetCardCornerRadius: CGFloat = 18
@@ -928,20 +929,20 @@ struct AppPillDetailsCard: View {
 
 struct AppScheduleEditorScreen: View {
     let backgroundStyle: AppBackgroundStyle
-    @Binding var scheduleDays: WeekdaySet
+    @Binding var scheduleRule: ScheduleRule
     let onTap: (() -> Void)?
     let useScheduleForHistory: Binding<Bool>?
     let helperText: String?
 
     init(
         backgroundStyle: AppBackgroundStyle,
-        scheduleDays: Binding<WeekdaySet>,
+        scheduleRule: Binding<ScheduleRule>,
         onTap: (() -> Void)? = nil,
         useScheduleForHistory: Binding<Bool>? = nil,
         helperText: String? = nil
     ) {
         self.backgroundStyle = backgroundStyle
-        _scheduleDays = scheduleDays
+        _scheduleRule = scheduleRule
         self.onTap = onTap
         self.useScheduleForHistory = useScheduleForHistory
         self.helperText = helperText
@@ -951,7 +952,7 @@ struct AppScheduleEditorScreen: View {
         AppScreen(backgroundStyle: backgroundStyle, topPadding: 8) {
             VStack(alignment: .leading, spacing: 8) {
                 AppScheduleEditorSectionContent(
-                    scheduleDays: $scheduleDays,
+                    scheduleRule: $scheduleRule,
                     onTap: onTap,
                     useScheduleForHistory: useScheduleForHistory,
                     helperText: helperText
@@ -965,18 +966,18 @@ struct AppScheduleEditorScreen: View {
 }
 
 struct AppScheduleEditorPopoverContent: View {
-    @Binding var scheduleDays: WeekdaySet
+    @Binding var scheduleRule: ScheduleRule
     let onTap: (() -> Void)?
     let useScheduleForHistory: Binding<Bool>?
     let helperText: String?
 
     init(
-        scheduleDays: Binding<WeekdaySet>,
+        scheduleRule: Binding<ScheduleRule>,
         onTap: (() -> Void)? = nil,
         useScheduleForHistory: Binding<Bool>? = nil,
         helperText: String? = nil
     ) {
-        _scheduleDays = scheduleDays
+        _scheduleRule = scheduleRule
         self.onTap = onTap
         self.useScheduleForHistory = useScheduleForHistory
         self.helperText = helperText
@@ -984,7 +985,7 @@ struct AppScheduleEditorPopoverContent: View {
 
     var body: some View {
         AppScheduleEditorPopoverBody(
-            scheduleDays: $scheduleDays,
+            scheduleRule: $scheduleRule,
             onTap: onTap,
             useScheduleForHistory: useScheduleForHistory,
             helperText: helperText
@@ -993,7 +994,7 @@ struct AppScheduleEditorPopoverContent: View {
 }
 
 private struct AppScheduleEditorSectionContent: View {
-    @Binding var scheduleDays: WeekdaySet
+    @Binding var scheduleRule: ScheduleRule
     let onTap: (() -> Void)?
     let useScheduleForHistory: Binding<Bool>?
     let helperText: String?
@@ -1002,7 +1003,7 @@ private struct AppScheduleEditorSectionContent: View {
         VStack(alignment: .leading, spacing: 8) {
             AppCard {
                 AppScheduleEditorListContent(
-                    scheduleDays: $scheduleDays,
+                    scheduleRule: $scheduleRule,
                     onTap: onTap,
                     useScheduleForHistory: useScheduleForHistory
                 )
@@ -1016,7 +1017,7 @@ private struct AppScheduleEditorSectionContent: View {
 }
 
 private struct AppScheduleEditorPopoverBody: View {
-    @Binding var scheduleDays: WeekdaySet
+    @Binding var scheduleRule: ScheduleRule
     let onTap: (() -> Void)?
     let useScheduleForHistory: Binding<Bool>?
     let helperText: String?
@@ -1024,7 +1025,7 @@ private struct AppScheduleEditorPopoverBody: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             AppScheduleEditorListContent(
-                scheduleDays: $scheduleDays,
+                scheduleRule: $scheduleRule,
                 onTap: onTap,
                 useScheduleForHistory: useScheduleForHistory
             )
@@ -1041,15 +1042,110 @@ private struct AppScheduleEditorPopoverBody: View {
     }
 }
 
+private enum ScheduleEditorMode: String {
+    case weekly
+    case intervals
+}
+
+private enum ScheduleIntervalChoice: CaseIterable {
+    case daily
+    case weekdays
+    case weekends
+    case weekly
+    case biweekly
+    case custom
+
+    var title: String {
+        switch self {
+        case .daily:
+            return "Daily"
+        case .weekdays:
+            return "Weekdays"
+        case .weekends:
+            return "Weekends"
+        case .weekly:
+            return "Weekly"
+        case .biweekly:
+            return "Biweekly"
+        case .custom:
+            return "Custom"
+        }
+    }
+
+    var rule: ScheduleRule {
+        switch self {
+        case .daily:
+            return .intervalPreset(.daily)
+        case .weekdays:
+            return .intervalPreset(.weekdays)
+        case .weekends:
+            return .intervalPreset(.weekends)
+        case .weekly:
+            return .intervalPreset(.weekly)
+        case .biweekly:
+            return .intervalPreset(.biweekly)
+        case .custom:
+            return .intervalDays(ScheduleRule.defaultIntervalDays)
+        }
+    }
+
+    init?(rule: ScheduleRule) {
+        switch rule {
+        case .weekly:
+            return nil
+        case .intervalPreset(.daily):
+            self = .daily
+        case .intervalPreset(.weekdays):
+            self = .weekdays
+        case .intervalPreset(.weekends):
+            self = .weekends
+        case .intervalPreset(.weekly):
+            self = .weekly
+        case .intervalPreset(.biweekly):
+            self = .biweekly
+        case .intervalDays:
+            self = .custom
+        }
+    }
+}
+
 private struct AppScheduleEditorListContent: View {
-    @Binding var scheduleDays: WeekdaySet
+    @Binding var scheduleRule: ScheduleRule
     let onTap: (() -> Void)?
     let useScheduleForHistory: Binding<Bool>?
+    @State private var rememberedWeeklyDays: WeekdaySet?
+    @State private var rememberedIntervalRule: ScheduleRule?
+    @State private var rememberedCustomIntervalDays = ScheduleRule.defaultIntervalDays
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            InlineDaysSelector(selection: $scheduleDays)
-                .appTapAction(onTap)
+            Picker("Schedule Mode", selection: modeBinding) {
+                Text("Weekly").tag(ScheduleEditorMode.weekly)
+                Text("Intervals").tag(ScheduleEditorMode.intervals)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, AppLayout.rowHorizontalPadding)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+            .appTapAction(onTap)
+
+            ZStack(alignment: .top) {
+                InlineDaysSelector(selection: weeklyDaysBinding)
+                    .opacity(currentMode == .weekly ? 1 : 0)
+                    .allowsHitTesting(currentMode == .weekly)
+                    .accessibilityHidden(currentMode != .weekly)
+                    .appTapAction(onTap)
+
+                InlineIntervalSelector(
+                    selectedChoice: selectedIntervalChoice,
+                    customIntervalDays: customIntervalDaysBinding,
+                    onSelect: selectIntervalChoice
+                )
+                    .opacity(currentMode == .intervals ? 1 : 0)
+                    .allowsHitTesting(currentMode == .intervals)
+                    .accessibilityHidden(currentMode != .intervals)
+                    .appTapAction(onTap)
+            }
 
             if let useScheduleForHistory {
                 HStack(spacing: 16) {
@@ -1067,7 +1163,7 @@ private struct AppScheduleEditorListContent: View {
                 .appTapAction(onTap)
             }
 
-            if scheduleDays.rawValue == 0 {
+            if !scheduleRule.isValidSelection {
                 HStack {
                     AppInlineErrorText(text: AppCopy.chooseAtLeastOneDay)
                     Spacer()
@@ -1076,6 +1172,146 @@ private struct AppScheduleEditorListContent: View {
                 .padding(.bottom, 16)
             }
         }
+    }
+
+    private var currentMode: ScheduleEditorMode {
+        switch scheduleRule.kind {
+        case .weekly:
+            return .weekly
+        case .daily, .weekdays, .weekends, .weeklyInterval, .biweekly, .intervalDays:
+            return .intervals
+        }
+    }
+
+    private var modeBinding: Binding<ScheduleEditorMode> {
+        Binding(
+            get: { currentMode },
+            set: { newMode in
+                switch newMode {
+                case .weekly:
+                    if case .weekly = scheduleRule { return }
+                    rememberIntervalRule()
+                    scheduleRule = .weekly(rememberedWeeklyDays ?? .daily)
+                case .intervals:
+                    if case .weekly(let days) = scheduleRule {
+                        rememberedWeeklyDays = days
+                    } else {
+                        return
+                    }
+                    scheduleRule = rememberedIntervalRule ?? .intervalPreset(.daily)
+                }
+            }
+        )
+    }
+
+    private var weeklyDaysBinding: Binding<WeekdaySet> {
+        Binding(
+            get: { scheduleRule.weeklyDays ?? .daily },
+            set: {
+                rememberedWeeklyDays = $0
+                scheduleRule = .weekly($0)
+            }
+        )
+    }
+
+    private var selectedIntervalChoice: ScheduleIntervalChoice {
+        ScheduleIntervalChoice(rule: scheduleRule) ?? .daily
+    }
+
+    private var customIntervalDaysBinding: Binding<Int> {
+        Binding(
+            get: { scheduleRule.customIntervalDays ?? rememberedCustomIntervalDays },
+            set: { newValue in
+                rememberedCustomIntervalDays = newValue
+                if case .intervalDays = scheduleRule {
+                    scheduleRule = .intervalDays(newValue)
+                    rememberedIntervalRule = scheduleRule
+                }
+            }
+        )
+    }
+
+    private func selectIntervalChoice(_ choice: ScheduleIntervalChoice) {
+        if case .weekly(let days) = scheduleRule {
+            rememberedWeeklyDays = days
+        }
+
+        switch choice {
+        case .custom:
+            scheduleRule = .intervalDays(rememberedCustomIntervalDays)
+        default:
+            scheduleRule = choice.rule
+        }
+        rememberedIntervalRule = scheduleRule
+    }
+
+    private func rememberIntervalRule() {
+        switch scheduleRule {
+        case .weekly:
+            return
+        case let .intervalDays(days):
+            rememberedCustomIntervalDays = days
+            rememberedIntervalRule = scheduleRule
+        case .intervalPreset:
+            rememberedIntervalRule = scheduleRule
+        }
+    }
+}
+
+private struct InlineIntervalSelector: View {
+    let selectedChoice: ScheduleIntervalChoice
+    @Binding var customIntervalDays: Int
+    let onSelect: (ScheduleIntervalChoice) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(ScheduleIntervalChoice.allCases, id: \.title) { choice in
+                IntervalChoiceRow(
+                    title: choice.title,
+                    isSelected: selectedChoice == choice
+                )
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    onSelect(choice)
+                }
+            }
+
+            HStack(spacing: 16) {
+                Spacer()
+
+                Text("Every \(customIntervalDays) days")
+                    .foregroundStyle(.secondary)
+
+                Stepper("", value: $customIntervalDays, in: ScheduleRule.intervalDaysRange)
+                    .labelsHidden()
+            }
+            .disabled(selectedChoice != .custom)
+            .opacity(selectedChoice == .custom ? 1 : 0.45)
+            .padding(.horizontal, AppLayout.rowHorizontalPadding)
+            .padding(.vertical, AppLayout.scheduleStepperRowVerticalPadding)
+        }
+    }
+}
+
+private struct IntervalChoiceRow: View {
+    let title: String
+    let isSelected: Bool
+
+    var body: some View {
+        HStack {
+            Text(title)
+                .foregroundStyle(.primary)
+
+            Spacer()
+
+            if isSelected {
+                Image(systemName: "checkmark")
+                    .font(.system(size: AppLayout.listIconSize, weight: .semibold))
+                    .appAccentForeground()
+            }
+        }
+        .padding(.horizontal, AppLayout.rowHorizontalPadding)
+        .padding(.vertical, AppLayout.schedulePopoverRowVerticalPadding)
     }
 }
 
@@ -1344,12 +1580,12 @@ struct AppFormCardSection<Content: View>: View {
 }
 
 struct AppReadOnlyScheduleView: View {
-    let scheduleDays: WeekdaySet
+    let scheduleRule: ScheduleRule
     let backgroundStyle: AppBackgroundStyle
 
     var body: some View {
         AppScreen(backgroundStyle: backgroundStyle, topPadding: 8) {
-            AppReadOnlyScheduleCard(scheduleDays: scheduleDays)
+            AppReadOnlyScheduleCard(scheduleRule: scheduleRule)
         }
         .navigationTitle("Schedule")
         .navigationBarTitleDisplayMode(.inline)
@@ -1358,10 +1594,18 @@ struct AppReadOnlyScheduleView: View {
 }
 
 struct AppReadOnlySchedulePopoverContent: View {
-    let scheduleDays: WeekdaySet
+    let scheduleRule: ScheduleRule
+
+    init(scheduleRule: ScheduleRule) {
+        self.scheduleRule = scheduleRule
+    }
+
+    init(scheduleDays: WeekdaySet) {
+        self.scheduleRule = .weekly(scheduleDays)
+    }
 
     var body: some View {
-        AppReadOnlyScheduleList(scheduleDays: scheduleDays)
+        AppReadOnlyScheduleList(scheduleRule: scheduleRule)
             .frame(width: 280)
             .padding(.vertical, 8)
             .presentationCompactAdaptation(.popover)
@@ -1369,24 +1613,32 @@ struct AppReadOnlySchedulePopoverContent: View {
 }
 
 private struct AppReadOnlyScheduleCard: View {
-    let scheduleDays: WeekdaySet
+    let scheduleRule: ScheduleRule
 
     var body: some View {
         AppCard {
-            AppReadOnlyScheduleList(scheduleDays: scheduleDays)
+            AppReadOnlyScheduleList(scheduleRule: scheduleRule)
         }
     }
 }
 
 private struct AppReadOnlyScheduleList: View {
-    let scheduleDays: WeekdaySet
+    let scheduleRule: ScheduleRule
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(WeekdayDisplay.fullNames, id: \.label) { day in
+            switch scheduleRule {
+            case let .weekly(scheduleDays):
+                ForEach(WeekdayDisplay.fullNames, id: \.label) { day in
+                    AppReadOnlyScheduleRow(
+                        title: day.label,
+                        isSelected: scheduleDays.contains(day.value)
+                    )
+                }
+            case .intervalPreset, .intervalDays:
                 AppReadOnlyScheduleRow(
-                    title: day.label,
-                    isSelected: scheduleDays.contains(day.value)
+                    title: scheduleRule.summary,
+                    isSelected: true
                 )
             }
         }

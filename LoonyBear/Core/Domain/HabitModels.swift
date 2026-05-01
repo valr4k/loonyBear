@@ -123,6 +123,252 @@ struct WeekdaySet: OptionSet, Codable, Hashable {
     }
 }
 
+enum ScheduleIntervalPreset: String, Codable, CaseIterable, Hashable {
+    case daily
+    case weekdays
+    case weekends
+    case weekly
+    case biweekly
+
+    var title: String {
+        switch self {
+        case .daily:
+            return "Daily"
+        case .weekdays:
+            return "Weekdays"
+        case .weekends:
+            return "Weekends"
+        case .weekly:
+            return "Weekly"
+        case .biweekly:
+            return "Biweekly"
+        }
+    }
+
+    var storageWeekdayMask: Int {
+        switch self {
+        case .daily:
+            return WeekdaySet.daily.rawValue
+        case .weekdays:
+            return WeekdaySet.weekdays.rawValue
+        case .weekends:
+            return WeekdaySet.weekends.rawValue
+        case .weekly, .biweekly:
+            return 0
+        }
+    }
+
+    var storageIntervalDays: Int {
+        switch self {
+        case .daily:
+            return 1
+        case .weekly:
+            return 7
+        case .biweekly:
+            return 14
+        case .weekdays, .weekends:
+            return ScheduleRule.defaultIntervalDays
+        }
+    }
+}
+
+enum ScheduleRule: Equatable, Hashable {
+    enum Kind: String, Codable {
+        case weekly
+        case daily
+        case weekdays
+        case weekends
+        case weeklyInterval
+        case biweekly
+        case intervalDays
+    }
+
+    nonisolated static let defaultIntervalDays = 2
+    nonisolated static let intervalDaysRange = 2 ... 14
+    nonisolated private static let validWeekdayMask = WeekdaySet.daily.rawValue
+
+    case weekly(WeekdaySet)
+    case intervalPreset(ScheduleIntervalPreset)
+    case intervalDays(Int)
+
+    var kind: Kind {
+        switch self {
+        case .weekly:
+            return .weekly
+        case let .intervalPreset(preset):
+            switch preset {
+            case .daily:
+                return .daily
+            case .weekdays:
+                return .weekdays
+            case .weekends:
+                return .weekends
+            case .weekly:
+                return .weeklyInterval
+            case .biweekly:
+                return .biweekly
+            }
+        case .intervalDays:
+            return .intervalDays
+        }
+    }
+
+    var weeklyDays: WeekdaySet? {
+        switch self {
+        case let .weekly(days):
+            return days
+        case .intervalPreset(.daily):
+            return .daily
+        case .intervalPreset(.weekdays):
+            return .weekdays
+        case .intervalPreset(.weekends):
+            return .weekends
+        case .intervalPreset(.weekly), .intervalPreset(.biweekly), .intervalDays:
+            return nil
+        }
+    }
+
+    var intervalDays: Int? {
+        switch self {
+        case .intervalPreset(.daily):
+            return 1
+        case .intervalPreset(.weekly):
+            return 7
+        case .intervalPreset(.biweekly):
+            return 14
+        case let .intervalDays(days):
+            return days
+        case .weekly, .intervalPreset(.weekdays), .intervalPreset(.weekends):
+            return nil
+        }
+    }
+
+    var customIntervalDays: Int? {
+        guard case let .intervalDays(days) = self else { return nil }
+        return days
+    }
+
+    var storageWeekdayMask: Int {
+        switch self {
+        case let .weekly(days):
+            return days.rawValue
+        case let .intervalPreset(preset):
+            return preset.storageWeekdayMask
+        case .intervalDays:
+            return 0
+        }
+    }
+
+    var storageIntervalDays: Int {
+        switch self {
+        case .weekly:
+            return Self.defaultIntervalDays
+        case let .intervalPreset(preset):
+            return preset.storageIntervalDays
+        case let .intervalDays(days):
+            return days
+        }
+    }
+
+    var isValidSelection: Bool {
+        switch self {
+        case let .weekly(days):
+            return days.rawValue != 0
+        case .intervalPreset:
+            return true
+        case let .intervalDays(days):
+            return Self.intervalDaysRange.contains(days)
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case let .weekly(days):
+            return days.summaryOrPlaceholder
+        case let .intervalPreset(preset):
+            return preset.title
+        case let .intervalDays(days):
+            return intervalSummary(for: days)
+        }
+    }
+
+    var compactSummary: String {
+        switch self {
+        case let .weekly(days):
+            return days.compactSummaryOrPlaceholder
+        case let .intervalPreset(preset):
+            return preset.title
+        case let .intervalDays(days):
+            return intervalSummary(for: days)
+        }
+    }
+
+    func isScheduled(on day: Date, anchorDate: Date, calendar: Calendar) -> Bool {
+        let normalizedDay = calendar.startOfDay(for: day)
+        let normalizedAnchor = calendar.startOfDay(for: anchorDate)
+        guard normalizedDay >= normalizedAnchor else { return false }
+
+        switch self {
+        case let .weekly(days):
+            return days.contains(calendar.weekdaySet(for: normalizedDay))
+        case let .intervalPreset(preset):
+            switch preset {
+            case .daily:
+                return true
+            case .weekdays:
+                return WeekdaySet.weekdays.contains(calendar.weekdaySet(for: normalizedDay))
+            case .weekends:
+                return WeekdaySet.weekends.contains(calendar.weekdaySet(for: normalizedDay))
+            case .weekly:
+                return isIntervalScheduled(days: 7, from: normalizedAnchor, to: normalizedDay, calendar: calendar)
+            case .biweekly:
+                return isIntervalScheduled(days: 14, from: normalizedAnchor, to: normalizedDay, calendar: calendar)
+            }
+        case let .intervalDays(days):
+            guard Self.intervalDaysRange.contains(days) else { return false }
+            return isIntervalScheduled(days: days, from: normalizedAnchor, to: normalizedDay, calendar: calendar)
+        }
+    }
+
+    nonisolated static func make(kindRaw: String?, weekdayMask: Int, intervalDays: Int) -> ScheduleRule? {
+        let kind = kindRaw.flatMap(Kind.init(rawValue:)) ?? .weekly
+        switch kind {
+        case .weekly:
+            guard isValidWeekdayMask(weekdayMask) else { return nil }
+            return .weekly(WeekdaySet(rawValue: weekdayMask))
+        case .daily:
+            return .intervalPreset(.daily)
+        case .weekdays:
+            return .intervalPreset(.weekdays)
+        case .weekends:
+            return .intervalPreset(.weekends)
+        case .weeklyInterval:
+            return .intervalPreset(.weekly)
+        case .biweekly:
+            return .intervalPreset(.biweekly)
+        case .intervalDays:
+            if intervalDays == 1 {
+                return .intervalPreset(.daily)
+            }
+            guard intervalDaysRange.contains(intervalDays) else { return nil }
+            return .intervalDays(intervalDays)
+        }
+    }
+
+    nonisolated private static func isValidWeekdayMask(_ rawValue: Int) -> Bool {
+        rawValue >= 0 && (rawValue & ~validWeekdayMask) == 0
+    }
+
+    private func intervalSummary(for days: Int) -> String {
+        "Every \(days) days"
+    }
+
+    private func isIntervalScheduled(days: Int, from normalizedAnchor: Date, to normalizedDay: Date, calendar: Calendar) -> Bool {
+        let dayDifference = calendar.dateComponents([.day], from: normalizedAnchor, to: normalizedDay).day ?? 0
+        return dayDifference % days == 0
+    }
+}
+
 struct Habit: Identifiable, Equatable {
     let id: UUID
     let type: HabitType
@@ -148,10 +394,48 @@ struct HabitCompletion: Identifiable, Equatable {
 struct HabitScheduleVersion: Identifiable, Equatable {
     let id: UUID
     let habitID: UUID
-    let weekdays: WeekdaySet
+    let rule: ScheduleRule
     let effectiveFrom: Date
     let createdAt: Date
     let version: Int
+
+    init(
+        id: UUID,
+        habitID: UUID,
+        weekdays: WeekdaySet,
+        effectiveFrom: Date,
+        createdAt: Date,
+        version: Int
+    ) {
+        self.init(
+            id: id,
+            habitID: habitID,
+            rule: .weekly(weekdays),
+            effectiveFrom: effectiveFrom,
+            createdAt: createdAt,
+            version: version
+        )
+    }
+
+    init(
+        id: UUID,
+        habitID: UUID,
+        rule: ScheduleRule,
+        effectiveFrom: Date,
+        createdAt: Date,
+        version: Int
+    ) {
+        self.id = id
+        self.habitID = habitID
+        self.rule = rule
+        self.effectiveFrom = effectiveFrom
+        self.createdAt = createdAt
+        self.version = version
+    }
+
+    var weekdays: WeekdaySet {
+        rule.weeklyDays ?? .daily
+    }
 }
 
 struct HabitCardProjection: Identifiable, Equatable, Hashable {
@@ -187,10 +471,15 @@ struct CreateHabitDraft: Equatable {
     var type: HabitType = .build
     var name = ""
     var startDate: Date = Calendar.autoupdatingCurrent.startOfDay(for: Date())
-    var scheduleDays: WeekdaySet = .daily
+    var scheduleRule: ScheduleRule = .weekly(.daily)
     var useScheduleForHistory = true
     var reminderEnabled = false
     var reminderTime = ReminderTime.default()
+
+    var scheduleDays: WeekdaySet {
+        get { scheduleRule.weeklyDays ?? .daily }
+        set { scheduleRule = .weekly(newValue) }
+    }
 
     var trimmedName: String {
         name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -202,7 +491,7 @@ struct EditHabitDraft: Equatable {
     let type: HabitType
     let startDate: Date
     var name: String
-    var scheduleDays: WeekdaySet
+    var scheduleRule: ScheduleRule
     var reminderEnabled: Bool
     var reminderTime: ReminderTime
     var completedDays: Set<Date>
@@ -223,11 +512,38 @@ struct EditHabitDraft: Equatable {
         self.type = type
         self.startDate = startDate
         self.name = name
-        self.scheduleDays = scheduleDays
+        self.scheduleRule = .weekly(scheduleDays)
         self.reminderEnabled = reminderEnabled
         self.reminderTime = reminderTime
         self.completedDays = completedDays
         self.skippedDays = skippedDays
+    }
+
+    init(
+        id: UUID,
+        type: HabitType,
+        startDate: Date,
+        name: String,
+        scheduleRule: ScheduleRule,
+        reminderEnabled: Bool,
+        reminderTime: ReminderTime,
+        completedDays: Set<Date>,
+        skippedDays: Set<Date>
+    ) {
+        self.id = id
+        self.type = type
+        self.startDate = startDate
+        self.name = name
+        self.scheduleRule = scheduleRule
+        self.reminderEnabled = reminderEnabled
+        self.reminderTime = reminderTime
+        self.completedDays = completedDays
+        self.skippedDays = skippedDays
+    }
+
+    var scheduleDays: WeekdaySet {
+        get { scheduleRule.weeklyDays ?? .daily }
+        set { scheduleRule = .weekly(newValue) }
     }
 
     var trimmedName: String {
@@ -243,6 +559,7 @@ struct HabitDetailsProjection: Equatable {
     let historyMode: HabitHistoryMode
     let scheduleSummary: String
     let scheduleDays: WeekdaySet
+    let scheduleRule: ScheduleRule
     let reminderEnabled: Bool
     let reminderTime: ReminderTime?
     let currentStreak: Int

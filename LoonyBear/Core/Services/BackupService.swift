@@ -374,13 +374,12 @@ final class BackupService {
                     )
                     continue
                 }
-                let weekdayMask = Int(object.value(forKey: "weekdayMask") as? Int16 ?? 0)
-                guard WeekdayValidation.isValidMask(weekdayMask) else {
+                guard let rule = CoreDataScheduleSupport.rule(from: object) else {
                     report.append(
                         area: "backup",
                         entityName: object.entityName,
                         object: object,
-                        message: "Habit schedule row contains invalid weekdayMask."
+                        message: "Habit schedule row contains invalid schedule rule."
                     )
                     continue
                 }
@@ -389,7 +388,9 @@ final class BackupService {
                     BackupScheduleVersion(
                         id: id,
                         habitId: habitId,
-                        weekdayMask: weekdayMask,
+                        weekdayMask: rule.storageWeekdayMask,
+                        scheduleKind: rule.kind.rawValue,
+                        intervalDays: rule.intervalDays,
                         effectiveFrom: effectiveFrom,
                         createdAt: createdAt,
                         version: Int(object.value(forKey: "version") as? Int32 ?? 1)
@@ -519,13 +520,12 @@ final class BackupService {
                     )
                     continue
                 }
-                let weekdayMask = Int(object.value(forKey: "weekdayMask") as? Int16 ?? 0)
-                guard WeekdayValidation.isValidMask(weekdayMask) else {
+                guard let rule = CoreDataScheduleSupport.rule(from: object) else {
                     report.append(
                         area: "backup",
                         entityName: object.entityName,
                         object: object,
-                        message: "Pill schedule row contains invalid weekdayMask."
+                        message: "Pill schedule row contains invalid schedule rule."
                     )
                     continue
                 }
@@ -534,7 +534,9 @@ final class BackupService {
                     BackupPillScheduleVersion(
                         id: id,
                         pillId: pillId,
-                        weekdayMask: weekdayMask,
+                        weekdayMask: rule.storageWeekdayMask,
+                        scheduleKind: rule.kind.rawValue,
+                        intervalDays: rule.intervalDays,
                         effectiveFrom: effectiveFrom,
                         createdAt: createdAt,
                         version: Int(object.value(forKey: "version") as? Int32 ?? 1)
@@ -637,6 +639,8 @@ final class BackupService {
                     object.setValue(version.id, forKey: "id")
                     object.setValue(version.habitId, forKey: "habitID")
                     object.setValue(Int16(version.weekdayMask), forKey: "weekdayMask")
+                    object.setValue(version.scheduleKind, forKey: "scheduleKindRaw")
+                    object.setValue(Int16(version.intervalDays ?? ScheduleRule.defaultIntervalDays), forKey: "intervalDays")
                     object.setValue(version.effectiveFrom, forKey: "effectiveFrom")
                     object.setValue(version.createdAt, forKey: "createdAt")
                     object.setValue(Int32(version.version), forKey: "version")
@@ -680,6 +684,8 @@ final class BackupService {
                     object.setValue(version.id, forKey: "id")
                     object.setValue(version.pillId, forKey: "pillID")
                     object.setValue(Int16(version.weekdayMask), forKey: "weekdayMask")
+                    object.setValue(version.scheduleKind, forKey: "scheduleKindRaw")
+                    object.setValue(Int16(version.intervalDays ?? ScheduleRule.defaultIntervalDays), forKey: "intervalDays")
                     object.setValue(version.effectiveFrom, forKey: "effectiveFrom")
                     object.setValue(version.createdAt, forKey: "createdAt")
                     object.setValue(Int32(version.version), forKey: "version")
@@ -837,12 +843,16 @@ final class BackupService {
                 )
                 continue
             }
-            guard WeekdayValidation.isValidMask(schedule.weekdayMask) else {
+            guard ScheduleRule.make(
+                kindRaw: schedule.scheduleKind,
+                weekdayMask: schedule.weekdayMask,
+                intervalDays: schedule.intervalDays ?? ScheduleRule.defaultIntervalDays
+            ) != nil else {
                 report.append(
                     area: "backup.restore",
                     entityName: "BackupScheduleVersion",
                     objectIdentifier: objectIdentifier,
-                    message: "Habit schedule payload contains invalid weekdayMask."
+                    message: "Habit schedule payload contains invalid schedule rule."
                 )
                 continue
             }
@@ -933,12 +943,16 @@ final class BackupService {
                 )
                 continue
             }
-            guard WeekdayValidation.isValidMask(schedule.weekdayMask) else {
+            guard ScheduleRule.make(
+                kindRaw: schedule.scheduleKind,
+                weekdayMask: schedule.weekdayMask,
+                intervalDays: schedule.intervalDays ?? ScheduleRule.defaultIntervalDays
+            ) != nil else {
                 report.append(
                     area: "backup.restore",
                     entityName: "BackupPillScheduleVersion",
                     objectIdentifier: objectIdentifier,
-                    message: "Pill schedule payload contains invalid weekdayMask."
+                    message: "Pill schedule payload contains invalid schedule rule."
                 )
                 continue
             }

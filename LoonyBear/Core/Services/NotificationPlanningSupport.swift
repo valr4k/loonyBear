@@ -167,23 +167,25 @@ enum ReminderPlanningSupport {
 
     private static func isScheduled(_ day: Date, for reminder: HabitReminderConfiguration, calendar: Calendar) -> Bool {
         guard !reminder.scheduleHistory.isEmpty else {
-            return reminder.scheduleDays.contains(calendar.weekdaySet(for: day))
+            return reminder.scheduleRule.isScheduled(on: day, anchorDate: reminder.startDate, calendar: calendar)
         }
-        return HistoryScheduleApplicability.effectiveWeekdays(
+        return HistoryScheduleApplicability.isScheduled(
             on: day,
+            startDate: reminder.startDate,
             from: reminder.scheduleHistory,
             calendar: calendar
-        )?.contains(calendar.weekdaySet(for: day)) ?? false
+        )
     }
 
     private static func isScheduled(_ day: Date, for reminder: PillReminderConfiguration, calendar: Calendar) -> Bool {
         guard !reminder.scheduleHistory.isEmpty else {
-            return reminder.scheduleDays.contains(calendar.weekdaySet(for: day))
+            return reminder.scheduleRule.isScheduled(on: day, anchorDate: reminder.startDate, calendar: calendar)
         }
-        return HistoryScheduleApplicability.effectiveWeekdays(
+        return HistoryScheduleApplicability.isScheduled(
             on: day,
+            startDate: reminder.startDate,
             from: reminder.scheduleHistory,
             calendar: calendar
-        )?.contains(calendar.weekdaySet(for: day)) ?? false
+        )
     }
 }

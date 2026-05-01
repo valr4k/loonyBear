@@ -265,7 +265,7 @@ enum EditableHistoryValidation {
 }
 
 protocol HistoryScheduleVersionLike {
-    var weekdays: WeekdaySet { get }
+    var rule: ScheduleRule { get }
     var effectiveFrom: Date { get }
     var createdAt: Date { get }
     var version: Int { get }
@@ -286,21 +286,20 @@ enum HistoryScheduleApplicability {
 
     static func pastScheduledEditableDays<Schedule: HistoryScheduleVersionLike>(
         in editableDays: Set<Date>,
+        startDate: Date,
         schedules: [Schedule],
         today: Date = Date(),
         calendar: Calendar = .autoupdatingCurrent
     ) -> Set<Date> {
         let pastEditableDays = pastEditableDays(in: editableDays, today: today, calendar: calendar)
         return Set(pastEditableDays.filter { day in
-            guard let weekdays = effectiveWeekdays(on: day, from: schedules, calendar: calendar) else {
-                return false
-            }
-            return weekdays.contains(calendar.weekdaySet(for: day))
+            isScheduled(on: day, startDate: startDate, from: schedules, calendar: calendar)
         })
     }
 
     static func pastRequiredEditableDays<Schedule: HistoryScheduleVersionLike>(
         in editableDays: Set<Date>,
+        startDate: Date,
         schedules: [Schedule],
         historyMode: HabitHistoryMode,
         today: Date = Date(),
@@ -310,6 +309,7 @@ enum HistoryScheduleApplicability {
         case .scheduleBased:
             return pastScheduledEditableDays(
                 in: editableDays,
+                startDate: startDate,
                 schedules: schedules,
                 today: today,
                 calendar: calendar
@@ -323,11 +323,36 @@ enum HistoryScheduleApplicability {
         }
     }
 
-    static func effectiveWeekdays<Schedule: HistoryScheduleVersionLike>(
+    static func isScheduled<Schedule: HistoryScheduleVersionLike>(
+        on day: Date,
+        startDate: Date,
+        from schedules: [Schedule],
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Bool {
+        let normalizedDay = calendar.startOfDay(for: day)
+        guard normalizedDay >= calendar.startOfDay(for: startDate) else {
+            return false
+        }
+
+        guard let schedule = effectiveSchedule(on: day, from: schedules, calendar: calendar) else {
+            return false
+        }
+        return schedule.rule.isScheduled(on: day, anchorDate: schedule.effectiveFrom, calendar: calendar)
+    }
+
+    static func effectiveRule<Schedule: HistoryScheduleVersionLike>(
         on day: Date,
         from schedules: [Schedule],
         calendar: Calendar = .autoupdatingCurrent
-    ) -> WeekdaySet? {
+    ) -> ScheduleRule? {
+        effectiveSchedule(on: day, from: schedules, calendar: calendar)?.rule
+    }
+
+    static func effectiveSchedule<Schedule: HistoryScheduleVersionLike>(
+        on day: Date,
+        from schedules: [Schedule],
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Schedule? {
         let normalizedDay = calendar.startOfDay(for: day)
         return schedules
             .sorted { lhs, rhs in
@@ -339,8 +364,7 @@ enum HistoryScheduleApplicability {
                 }
                 return lhs.createdAt < rhs.createdAt
             }
-            .last { calendar.startOfDay(for: $0.effectiveFrom) <= normalizedDay }?
-            .weekdays
+            .last { calendar.startOfDay(for: $0.effectiveFrom) <= normalizedDay }
     }
 }
 
@@ -453,7 +477,7 @@ enum ScheduledOverdueState {
                 )
             } ?? cursor
 
-            if isScheduled(cursor, schedules: normalizedSchedules, calendar: calendar),
+            if isScheduled(cursor, startDate: startDate, schedules: normalizedSchedules, calendar: calendar),
                dueDate <= now {
                 dueDays.append(cursor)
             }
@@ -491,7 +515,7 @@ enum ScheduledOverdueState {
             } ?? cursor
 
             if dueDate <= now,
-               isScheduled(cursor, schedules: normalizedSchedules, calendar: calendar) {
+               isScheduled(cursor, startDate: startDate, schedules: normalizedSchedules, calendar: calendar) {
                 return cursor
             }
 
@@ -508,16 +532,21 @@ enum ScheduledOverdueState {
 
     private static func isScheduled<Schedule: HistoryScheduleVersionLike>(
         _ day: Date,
+        startDate: Date,
         schedules: [Schedule],
         calendar: Calendar
     ) -> Bool {
         let normalizedDay = calendar.startOfDay(for: day)
-        guard let weekdays = schedules.last(where: {
-            calendar.startOfDay(for: $0.effectiveFrom) <= normalizedDay
-        })?.weekdays else {
+        guard normalizedDay >= calendar.startOfDay(for: startDate) else {
             return false
         }
-        return weekdays.contains(calendar.weekdaySet(for: day))
+
+        guard let schedule = schedules.last(where: {
+            calendar.startOfDay(for: $0.effectiveFrom) <= normalizedDay
+        }) else {
+            return false
+        }
+        return schedule.rule.isScheduled(on: normalizedDay, anchorDate: schedule.effectiveFrom, calendar: calendar)
     }
 
     private static func sortedSchedules<Schedule: HistoryScheduleVersionLike>(_ schedules: [Schedule]) -> [Schedule] {
@@ -616,6 +645,20 @@ enum CoreDataScheduleSupport {
             return lhs.version > rhs.version
         }
         return lhs.createdAt > rhs.createdAt
+    }
+
+    static func apply(_ rule: ScheduleRule, to object: NSManagedObject) {
+        object.setValue(rule.kind.rawValue, forKey: "scheduleKindRaw")
+        object.setValue(Int16(rule.storageWeekdayMask), forKey: "weekdayMask")
+        object.setValue(Int16(rule.storageIntervalDays), forKey: "intervalDays")
+    }
+
+    nonisolated static func rule(from object: NSManagedObject) -> ScheduleRule? {
+        ScheduleRule.make(
+            kindRaw: object.stringValue(forKey: "scheduleKindRaw"),
+            weekdayMask: object.int16Value(forKey: "weekdayMask"),
+            intervalDays: object.int16Value(forKey: "intervalDays", default: Int16(ScheduleRule.defaultIntervalDays))
+        )
     }
 }
 
@@ -766,7 +809,7 @@ enum CoreDataRelationshipLoadingSupport {
     static func compactScheduleModels<Model>(
         from ownerObject: NSManagedObject,
         relationshipKey: String,
-        makeModel: (UUID, Int, Date, Date, Int) -> Model
+        makeModel: (UUID, ScheduleRule, Date, Date, Int) -> Model
     ) -> [Model] {
         let rows = (ownerObject.mutableSetValue(forKey: relationshipKey).allObjects as? [NSManagedObject]) ?? []
         return rows.compactMap { row in
@@ -778,13 +821,9 @@ enum CoreDataRelationshipLoadingSupport {
                 return nil
             }
 
-            return makeModel(
-                id,
-                row.int16Value(forKey: "weekdayMask"),
-                effectiveFrom,
-                createdAt,
-                Int(row.int32Value(forKey: "version", default: 1))
-            )
+            guard let rule = CoreDataScheduleSupport.rule(from: row) else { return nil }
+
+            return makeModel(id, rule, effectiveFrom, createdAt, Int(row.int32Value(forKey: "version", default: 1)))
         }
     }
 
@@ -795,7 +834,7 @@ enum CoreDataRelationshipLoadingSupport {
         missingFieldsMessage: String,
         invalidMaskMessage: String,
         report: inout IntegrityReportBuilder,
-        makeModel: (UUID, Int, Date, Date, Int) -> Model
+        makeModel: (UUID, ScheduleRule, Date, Date, Int) -> Model
     ) -> [Model]? {
         let rows = (ownerObject.mutableSetValue(forKey: relationshipKey).allObjects as? [NSManagedObject]) ?? []
         var models: [Model] = []
@@ -815,8 +854,7 @@ enum CoreDataRelationshipLoadingSupport {
                 return nil
             }
 
-            let weekdayMask = row.int16Value(forKey: "weekdayMask")
-            guard WeekdayValidation.isValidMask(weekdayMask) else {
+            guard let rule = CoreDataScheduleSupport.rule(from: row) else {
                 report.append(
                     area: area,
                     entityName: row.entityName,
@@ -829,7 +867,7 @@ enum CoreDataRelationshipLoadingSupport {
             models.append(
                 makeModel(
                     id,
-                    weekdayMask,
+                    rule,
                     effectiveFrom,
                     createdAt,
                     Int(row.int32Value(forKey: "version", default: 1))
@@ -846,27 +884,31 @@ extension NSManagedObject {
         entity.name ?? "UnknownEntity"
     }
 
-    func uuidValue(forKey key: String) -> UUID? {
+    nonisolated func uuidValue(forKey key: String) -> UUID? {
         value(forKey: key) as? UUID
     }
 
-    func stringValue(forKey key: String) -> String? {
+    nonisolated func stringValue(forKey key: String) -> String? {
         value(forKey: key) as? String
     }
 
-    func dateValue(forKey key: String) -> Date? {
+    nonisolated func dateValue(forKey key: String) -> Date? {
         value(forKey: key) as? Date
     }
 
-    func boolValue(forKey key: String, default defaultValue: Bool = false) -> Bool {
+    nonisolated func boolValue(forKey key: String, default defaultValue: Bool = false) -> Bool {
         value(forKey: key) as? Bool ?? defaultValue
     }
 
-    func int16Value(forKey key: String) -> Int {
+    nonisolated func int16Value(forKey key: String) -> Int {
         Int(value(forKey: key) as? Int16 ?? 0)
     }
 
-    func int32Value(forKey key: String, default defaultValue: Int32 = 0) -> Int32 {
+    nonisolated func int16Value(forKey key: String, default defaultValue: Int16) -> Int {
+        Int(value(forKey: key) as? Int16 ?? defaultValue)
+    }
+
+    nonisolated func int32Value(forKey key: String, default defaultValue: Int32 = 0) -> Int32 {
         value(forKey: key) as? Int32 ?? defaultValue
     }
 }

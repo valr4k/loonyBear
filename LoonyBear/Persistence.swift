@@ -24,6 +24,11 @@ struct PersistenceController {
             container.persistentStoreDescriptions = [description]
         }
 
+        container.persistentStoreDescriptions.forEach { description in
+            description.setOption(true as NSNumber, forKey: NSMigratePersistentStoresAutomaticallyOption)
+            description.setOption(true as NSNumber, forKey: NSInferMappingModelAutomaticallyOption)
+        }
+
         var persistentStoreLoadError: Error?
         container.loadPersistentStores { _, error in
             if let error {

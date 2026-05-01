@@ -6,6 +6,7 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var appState: HabitAppState
     @StateObject private var pillAppState: PillAppState
+    @State private var didStartInitialStateLoad = false
     @State private var didLoadInitialState = false
     @State private var currentTime = Date()
     private let notificationCoordinator: AppNotificationCoordinator
@@ -35,14 +36,15 @@ struct ContentView: View {
             .environmentObject(appState)
             .environmentObject(pillAppState)
             .task {
-                guard !didLoadInitialState else { return }
-                didLoadInitialState = true
+                guard !didStartInitialStateLoad else { return }
+                didStartInitialStateLoad = true
                 await lifecycleRefreshCoordinator.perform {
                     await notificationCoordinator.configure()
                     await appState.handleAppDidBecomeActive()
                     await pillAppState.handleAppDidBecomeActive()
                     refreshBadgeFromDashboards(forceApply: true)
                 }
+                didLoadInitialState = true
                 Task {
                     await startupHealthCheckCoordinator.runIfNeeded()
                 }

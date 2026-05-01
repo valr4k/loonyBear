@@ -108,7 +108,11 @@ struct RootTabView: View {
             selectedTab.wrappedValue = .myPills
         }
         .onAppear {
-            restoreSettingsPathIfNeeded()
+            if quickActionCenter.pendingAction == nil {
+                restoreSettingsPathIfNeeded()
+            } else {
+                didRestoreSettingsPath = true
+            }
             routeQuickActionIfNeeded(quickActionCenter.pendingAction)
         }
         .onChange(of: settingsPath) { _, routes in
@@ -150,10 +154,18 @@ struct RootTabView: View {
     private func routeQuickActionIfNeeded(_ action: HomeQuickAction?) {
         guard let route = HomeQuickActionRouter.route(for: action) else { return }
 
-        presentedHabitSheet = nil
-        presentedPillSheet = nil
-        selectedTab.wrappedValue = route.selectedTab
-        settingsPath = route.settingsPath
+        if presentedHabitSheet != nil {
+            presentedHabitSheet = nil
+        }
+        if presentedPillSheet != nil {
+            presentedPillSheet = nil
+        }
+        if selectedTab.wrappedValue != route.selectedTab {
+            selectedTab.wrappedValue = route.selectedTab
+        }
+        if settingsPath != route.settingsPath {
+            settingsPath = route.settingsPath
+        }
         quickActionCenter.consume(.createBackup)
     }
 

@@ -28,6 +28,150 @@ struct LoonyBearTests {
     }
 
     @Test
+    func customIntervalScheduleRuleUsesProvidedAnchor() {
+        let calendar = Calendar(identifier: .gregorian)
+        let startDate = TestSupport.makeDate(2026, 5, 1)
+        let rule = ScheduleRule.intervalDays(3)
+
+        #expect(rule.summary == "Every 3 days")
+        #expect(rule.compactSummary == "Every 3 days")
+        #expect(rule.isValidSelection)
+        #expect(rule.isScheduled(on: TestSupport.makeDate(2026, 5, 1), anchorDate: startDate, calendar: calendar))
+        #expect(!rule.isScheduled(on: TestSupport.makeDate(2026, 5, 2), anchorDate: startDate, calendar: calendar))
+        #expect(rule.isScheduled(on: TestSupport.makeDate(2026, 5, 4), anchorDate: startDate, calendar: calendar))
+    }
+
+    @Test
+    func intervalPresetsUseActiveAnchorAndCustomRange() {
+        let calendar = Calendar(identifier: .gregorian)
+        let anchor = TestSupport.makeDate(2026, 5, 20)
+
+        #expect(ScheduleRule.intervalPreset(.daily).summary == "Daily")
+        #expect(ScheduleRule.intervalPreset(.weekdays).isScheduled(
+            on: TestSupport.makeDate(2026, 5, 22),
+            anchorDate: anchor,
+            calendar: calendar
+        ))
+        #expect(!ScheduleRule.intervalPreset(.weekends).isScheduled(
+            on: TestSupport.makeDate(2026, 5, 22),
+            anchorDate: anchor,
+            calendar: calendar
+        ))
+        #expect(ScheduleRule.intervalPreset(.weekly).isScheduled(
+            on: TestSupport.makeDate(2026, 5, 27),
+            anchorDate: anchor,
+            calendar: calendar
+        ))
+        #expect(!ScheduleRule.intervalPreset(.weekly).isScheduled(
+            on: TestSupport.makeDate(2026, 5, 28),
+            anchorDate: anchor,
+            calendar: calendar
+        ))
+        #expect(ScheduleRule.intervalPreset(.biweekly).isScheduled(
+            on: TestSupport.makeDate(2026, 6, 3),
+            anchorDate: anchor,
+            calendar: calendar
+        ))
+        #expect(!ScheduleRule.intervalDays(1).isValidSelection)
+        #expect(ScheduleRule.intervalDays(14).isValidSelection)
+        #expect(!ScheduleRule.intervalDays(15).isValidSelection)
+    }
+
+    @Test
+    func scheduleHistoryUsesEffectiveFromAsIntervalAnchorAfterEdit() {
+        let calendar = Calendar(identifier: .gregorian)
+        let habitID = UUID()
+        let startDate = TestSupport.makeDate(2026, 5, 1, calendar: calendar)
+        let editEffectiveFrom = TestSupport.makeDate(2026, 5, 20, calendar: calendar)
+        let schedules = [
+            TestSupport.makeSchedule(
+                habitID: habitID,
+                rule: .weekly(.daily),
+                effectiveFrom: startDate,
+                version: 1
+            ),
+            TestSupport.makeSchedule(
+                habitID: habitID,
+                rule: .intervalDays(2),
+                effectiveFrom: editEffectiveFrom,
+                version: 2
+            ),
+        ]
+
+        #expect(HistoryScheduleApplicability.isScheduled(
+            on: TestSupport.makeDate(2026, 5, 19, calendar: calendar),
+            startDate: startDate,
+            from: schedules,
+            calendar: calendar
+        ))
+        #expect(HistoryScheduleApplicability.isScheduled(
+            on: TestSupport.makeDate(2026, 5, 20, calendar: calendar),
+            startDate: startDate,
+            from: schedules,
+            calendar: calendar
+        ))
+        #expect(!HistoryScheduleApplicability.isScheduled(
+            on: TestSupport.makeDate(2026, 5, 21, calendar: calendar),
+            startDate: startDate,
+            from: schedules,
+            calendar: calendar
+        ))
+        #expect(HistoryScheduleApplicability.isScheduled(
+            on: TestSupport.makeDate(2026, 5, 22, calendar: calendar),
+            startDate: startDate,
+            from: schedules,
+            calendar: calendar
+        ))
+    }
+
+    @Test
+    func overdueAndStreakUseEditedIntervalAnchor() {
+        let calendar = Calendar(identifier: .gregorian)
+        let habitID = UUID()
+        let startDate = TestSupport.makeDate(2026, 5, 1, calendar: calendar)
+        let editEffectiveFrom = TestSupport.makeDate(2026, 5, 20, calendar: calendar)
+        let may20 = editEffectiveFrom
+        let may22 = TestSupport.makeDate(2026, 5, 22, calendar: calendar)
+        let schedules = [
+            TestSupport.makeSchedule(
+                habitID: habitID,
+                rule: .weekly(.daily),
+                effectiveFrom: startDate,
+                version: 1
+            ),
+            TestSupport.makeSchedule(
+                habitID: habitID,
+                rule: .intervalDays(2),
+                effectiveFrom: editEffectiveFrom,
+                version: 2
+            ),
+        ]
+
+        let activeOverdueDay = ScheduledOverdueState.activeOverdueDay(
+            startDate: startDate,
+            schedules: schedules,
+            reminderTime: nil,
+            positiveDays: [],
+            skippedDays: [],
+            now: TestSupport.makeDate(2026, 5, 22, calendar: calendar).addingTimeInterval(12 * 60 * 60),
+            calendar: calendar
+        )
+        let currentStreak = StreakEngine.currentStreak(
+            completions: [
+                TestSupport.makeCompletion(habitID: habitID, localDate: may20),
+                TestSupport.makeCompletion(habitID: habitID, localDate: may22),
+            ],
+            schedules: schedules,
+            startDate: startDate,
+            today: may22,
+            calendar: calendar
+        )
+
+        #expect(activeOverdueDay == may22)
+        #expect(currentStreak == 2)
+    }
+
+    @Test
     func missingPastHistoryValidationMessagesDoNotListDates() {
         let missingDays = [
             TestSupport.makeDate(2026, 4, 27),

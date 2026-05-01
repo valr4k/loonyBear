@@ -140,8 +140,9 @@ struct CoreDataPillRepository: PillRepository {
             details: pillObject.stringValue(forKey: "detailsText"),
             startDate: startDate,
             historyMode: historyMode,
-            scheduleSummary: latestSchedule?.weekdays.summary ?? "No days selected",
-            scheduleDays: latestSchedule?.weekdays ?? .daily,
+            scheduleSummary: latestSchedule?.rule.summary ?? "No days selected",
+            scheduleDays: latestSchedule?.rule.weeklyDays ?? .daily,
+            scheduleRule: latestSchedule?.rule ?? .weekly(.daily),
             reminderEnabled: reminderEnabled,
             reminderTime: reminderTime,
             totalTakenDays: takenDays.count,
@@ -205,7 +206,7 @@ struct CoreDataPillRepository: PillRepository {
             let schedule = NSEntityDescription.insertNewObject(forEntityName: "PillScheduleVersion", into: context)
             schedule.setValue(UUID(), forKey: "id")
             schedule.setValue(pillID, forKey: "pillID")
-            schedule.setValue(Int16(draft.scheduleDays.rawValue), forKey: "weekdayMask")
+            CoreDataScheduleSupport.apply(draft.scheduleRule, to: schedule)
             schedule.setValue(calendar.startOfDay(for: draft.startDate), forKey: "effectiveFrom")
             schedule.setValue(now, forKey: "createdAt")
             schedule.setValue(Int32(1), forKey: "version")
@@ -260,12 +261,12 @@ struct CoreDataPillRepository: PillRepository {
             pill.setValue(now, forKey: "updatedAt")
 
             let currentSchedule = loadLatestScheduleObject(for: pill)
-            let currentWeekdayMask = currentSchedule?.int16Value(forKey: "weekdayMask") ?? 0
-            if currentWeekdayMask != draft.scheduleDays.rawValue {
+            let currentRule = currentSchedule.flatMap(CoreDataScheduleSupport.rule)
+            if currentRule != draft.scheduleRule {
                 let schedule = NSEntityDescription.insertNewObject(forEntityName: "PillScheduleVersion", into: context)
                 schedule.setValue(UUID(), forKey: "id")
                 schedule.setValue(draft.id, forKey: "pillID")
-                schedule.setValue(Int16(draft.scheduleDays.rawValue), forKey: "weekdayMask")
+                CoreDataScheduleSupport.apply(draft.scheduleRule, to: schedule)
                 schedule.setValue(
                     updatedScheduleEffectiveFrom(
                         now: now,
@@ -285,6 +286,7 @@ struct CoreDataPillRepository: PillRepository {
             )
             let scheduledEditableSet = HistoryScheduleApplicability.pastScheduledEditableDays(
                 in: editableSet,
+                startDate: draft.startDate,
                 schedules: loadSchedules(for: pill, pillID: draft.id),
                 today: normalizedToday,
                 calendar: calendar
@@ -579,7 +581,7 @@ struct CoreDataPillRepository: PillRepository {
 
     private func shouldGenerateInitialIntake(on day: Date, for draft: PillDraft) -> Bool {
         guard draft.useScheduleForHistory else { return true }
-        return draft.scheduleDays.contains(calendar.weekdaySet(for: day))
+        return draft.scheduleRule.isScheduled(on: day, anchorDate: draft.startDate, calendar: calendar)
     }
 
     private func loadIntakes(for pillObject: NSManagedObject, pillID: UUID) -> [PillIntake] {
@@ -623,11 +625,11 @@ struct CoreDataPillRepository: PillRepository {
         CoreDataRelationshipLoadingSupport.compactScheduleModels(
             from: pillObject,
             relationshipKey: "scheduleVersions"
-        ) { scheduleID, weekdayMask, effectiveFrom, createdAt, version in
+        ) { scheduleID, rule, effectiveFrom, createdAt, version in
             PillScheduleVersion(
                 id: scheduleID,
                 pillID: pillID,
-                weekdays: WeekdaySet(rawValue: weekdayMask),
+                rule: rule,
                 effectiveFrom: effectiveFrom,
                 createdAt: createdAt,
                 version: version
@@ -647,11 +649,11 @@ struct CoreDataPillRepository: PillRepository {
             missingFieldsMessage: "Pill schedule row is missing required fields.",
             invalidMaskMessage: "Pill schedule row contains invalid weekdayMask.",
             report: &report
-        ) { scheduleID, weekdayMask, effectiveFrom, createdAt, version in
+        ) { scheduleID, rule, effectiveFrom, createdAt, version in
             PillScheduleVersion(
                 id: scheduleID,
                 pillID: pillID,
-                weekdays: WeekdaySet(rawValue: weekdayMask),
+                rule: rule,
                 effectiveFrom: effectiveFrom,
                 createdAt: createdAt,
                 version: version
@@ -723,11 +725,12 @@ struct CoreDataPillRepository: PillRepository {
             return nil
         }
         let reminderText = validatedReminderTime?.formatted
-        let isScheduledToday = HistoryScheduleApplicability.effectiveWeekdays(
+        let isScheduledToday = HistoryScheduleApplicability.isScheduled(
             on: today,
+            startDate: startDate,
             from: schedules,
             calendar: calendar
-        )?.contains(calendar.weekdaySet(for: today)) ?? false
+        )
         let activeOverdueDay = ScheduledOverdueState.activeOverdueDay(
             startDate: startDate,
             schedules: schedules,
@@ -742,7 +745,7 @@ struct CoreDataPillRepository: PillRepository {
             id: id,
             name: name,
             dosage: dosage,
-            scheduleSummary: latestSchedule?.weekdays.summary ?? "No days selected",
+            scheduleSummary: latestSchedule?.rule.summary ?? "No days selected",
             totalTakenDays: takenDays.count,
             reminderText: reminderText,
             reminderHour: validatedReminderTime?.hour,
@@ -823,12 +826,12 @@ struct CoreDataPillRepository: PillRepository {
 
         let schedules = loadSchedules(for: pill, pillID: pillID)
         guard
-            let weekdays = HistoryScheduleApplicability.effectiveWeekdays(
+            HistoryScheduleApplicability.isScheduled(
                 on: today,
+                startDate: startDate,
                 from: schedules,
                 calendar: calendar
-            ),
-            weekdays.contains(calendar.weekdaySet(for: today))
+            )
         else {
             clearTodayAnchorIfPresent()
             return
@@ -899,6 +902,7 @@ struct CoreDataPillRepository: PillRepository {
         )
         var requiredDays = HistoryScheduleApplicability.pastScheduledEditableDays(
             in: editableDays,
+            startDate: startDate,
             schedules: schedules,
             today: today,
             calendar: calendar

@@ -23,6 +23,22 @@ enum TestSupport {
         )
     }
 
+    static func makeSchedule(
+        habitID: UUID,
+        rule: ScheduleRule,
+        effectiveFrom: Date,
+        version: Int
+    ) -> HabitScheduleVersion {
+        HabitScheduleVersion(
+            id: UUID(),
+            habitID: habitID,
+            rule: rule,
+            effectiveFrom: effectiveFrom,
+            createdAt: effectiveFrom,
+            version: version
+        )
+    }
+
     static func makeCompletion(
         habitID: UUID,
         localDate: Date,

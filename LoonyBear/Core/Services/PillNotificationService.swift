@@ -516,11 +516,11 @@ final class PillNotificationService {
             missingFieldsMessage: "Pill schedule row is missing required fields.",
             invalidMaskMessage: "Pill schedule row contains invalid weekdayMask.",
             report: &report
-        ) { scheduleID, weekdayMask, effectiveFrom, createdAt, version in
+        ) { scheduleID, rule, effectiveFrom, createdAt, version in
             PillScheduleVersion(
                 id: scheduleID,
                 pillID: pillID,
-                weekdays: WeekdaySet(rawValue: weekdayMask),
+                rule: rule,
                 effectiveFrom: effectiveFrom,
                 createdAt: createdAt,
                 version: version
@@ -757,7 +757,8 @@ final class PillNotificationService {
             )
             return nil
         }
-        let scheduleDays = latestScheduleDays(from: scheduleHistory)
+        let scheduleRule = latestScheduleRule(from: scheduleHistory)
+        let scheduleDays = scheduleRule.weeklyDays ?? .daily
         guard let intakeEntries = loadPillIntakeEntries(for: object, report: &report) else {
             report.append(
                 area: "notification",
@@ -776,6 +777,7 @@ final class PillNotificationService {
             dosage: dosage,
             startDate: startDate,
             scheduleDays: scheduleDays,
+            scheduleRule: scheduleRule,
             scheduleHistory: scheduleHistory,
             reminderEnabled: reminderEnabled,
             reminderTime: reminderTime,
@@ -875,7 +877,8 @@ final class PillNotificationService {
             )
             return nil
         }
-        let scheduleDays = latestScheduleDays(from: scheduleHistory)
+        let scheduleRule = latestScheduleRule(from: scheduleHistory)
+        let scheduleDays = scheduleRule.weeklyDays ?? .daily
 
         let reminderEnabled = object.boolValue(forKey: "reminderEnabled")
         let reminderTime = ReminderValidation.validatedReminderTime(
@@ -910,6 +913,7 @@ final class PillNotificationService {
             name: name,
             startDate: startDate,
             scheduleDays: scheduleDays,
+            scheduleRule: scheduleRule,
             scheduleHistory: scheduleHistory,
             reminderEnabled: reminderEnabled,
             reminderTime: reminderTime,
@@ -919,6 +923,10 @@ final class PillNotificationService {
     }
 
     private func latestScheduleDays<Schedule: HistoryScheduleVersionLike>(from schedules: [Schedule]) -> WeekdaySet {
+        latestScheduleRule(from: schedules).weeklyDays ?? WeekdaySet(rawValue: 0)
+    }
+
+    private func latestScheduleRule<Schedule: HistoryScheduleVersionLike>(from schedules: [Schedule]) -> ScheduleRule {
         schedules.sorted { lhs, rhs in
             if lhs.effectiveFrom != rhs.effectiveFrom {
                 return lhs.effectiveFrom > rhs.effectiveFrom
@@ -927,7 +935,7 @@ final class PillNotificationService {
                 return lhs.version > rhs.version
             }
             return lhs.createdAt > rhs.createdAt
-        }.first?.weekdays ?? WeekdaySet(rawValue: 0)
+        }.first?.rule ?? .weekly(WeekdaySet(rawValue: 0))
     }
 
     private func loadHabitSchedules(
@@ -942,11 +950,11 @@ final class PillNotificationService {
             missingFieldsMessage: "Habit schedule row is missing required fields.",
             invalidMaskMessage: "Habit schedule row contains invalid weekdayMask.",
             report: &report
-        ) { scheduleID, weekdayMask, effectiveFrom, createdAt, version in
+        ) { scheduleID, rule, effectiveFrom, createdAt, version in
             HabitScheduleVersion(
                 id: scheduleID,
                 habitID: habitID,
-                weekdays: WeekdaySet(rawValue: weekdayMask),
+                rule: rule,
                 effectiveFrom: effectiveFrom,
                 createdAt: createdAt,
                 version: version
@@ -1230,6 +1238,7 @@ struct PillReminderConfiguration {
     let dosage: String
     let startDate: Date
     let scheduleDays: WeekdaySet
+    let scheduleRule: ScheduleRule
     let scheduleHistory: [PillScheduleVersion]
     let reminderEnabled: Bool
     let reminderTime: ReminderTime?
@@ -1242,6 +1251,7 @@ struct PillReminderConfiguration {
         dosage: String,
         startDate: Date,
         scheduleDays: WeekdaySet,
+        scheduleRule: ScheduleRule? = nil,
         scheduleHistory: [PillScheduleVersion] = [],
         reminderEnabled: Bool,
         reminderTime: ReminderTime?,
@@ -1253,6 +1263,7 @@ struct PillReminderConfiguration {
         self.dosage = dosage
         self.startDate = startDate
         self.scheduleDays = scheduleDays
+        self.scheduleRule = scheduleRule ?? .weekly(scheduleDays)
         self.scheduleHistory = scheduleHistory
         self.reminderEnabled = reminderEnabled
         self.reminderTime = reminderTime

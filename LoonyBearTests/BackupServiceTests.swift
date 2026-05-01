@@ -225,6 +225,34 @@ struct BackupServiceTests {
     }
 
     @Test
+    func backupScheduleVersionDefaultsLegacyScheduleFieldsToWeekly() throws {
+        let habitID = UUID()
+        let scheduleID = UUID()
+        let json = """
+        {
+          "id": "\(scheduleID.uuidString)",
+          "habitId": "\(habitID.uuidString)",
+          "weekdayMask": \(WeekdaySet.weekdays.rawValue),
+          "effectiveFrom": "2026-04-06T17:41:21Z",
+          "createdAt": "2026-04-06T17:41:21Z",
+          "version": 1
+        }
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        let schedule = try decoder.decode(BackupScheduleVersion.self, from: Data(json.utf8))
+
+        #expect(schedule.scheduleKind == ScheduleRule.Kind.weekly.rawValue)
+        #expect(schedule.intervalDays == nil)
+        #expect(ScheduleRule.make(
+            kindRaw: schedule.scheduleKind,
+            weekdayMask: schedule.weekdayMask,
+            intervalDays: schedule.intervalDays ?? ScheduleRule.defaultIntervalDays
+        ) == .weekly(.weekdays))
+    }
+
+    @Test
     func createBackupIncludesAppearanceModeAndTint() throws {
         let persistence = PersistenceController(inMemory: true)
         let context = persistence.container.viewContext
@@ -250,6 +278,54 @@ struct BackupServiceTests {
             appearanceMode: AppearanceMode.dark.rawValue,
             appTint: AppTint.green.rawValue
         ))
+    }
+
+    @Test
+    func createBackupIncludesIntervalScheduleRules() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let habitRepository = CoreDataHabitRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let pillRepository = CoreDataPillRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let defaults = try #require(UserDefaults(suiteName: "BackupServiceTests.\(UUID().uuidString)"))
+        let compressionService = CompressionService()
+        let service = BackupService(
+            context: context,
+            makeWorkContext: persistence.makeBackgroundContext,
+            defaults: defaults,
+            compressionService: compressionService
+        )
+        let folderURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+        try service.saveFolderBookmark(for: folderURL)
+
+        var habitDraft = CreateHabitDraft()
+        habitDraft.name = "Biweekly habit"
+        habitDraft.startDate = TestSupport.makeDate(2026, 5, 1)
+        habitDraft.scheduleRule = .intervalPreset(.biweekly)
+        _ = try habitRepository.createHabit(from: habitDraft)
+
+        var pillDraft = PillDraft()
+        pillDraft.name = "Custom pill"
+        pillDraft.dosage = "1 tablet"
+        pillDraft.startDate = TestSupport.makeDate(2026, 5, 1)
+        pillDraft.scheduleRule = .intervalDays(5)
+        _ = try pillRepository.createPill(from: pillDraft)
+
+        try service.createBackup()
+
+        let archive = try readArchive(from: folderURL, compressionService: compressionService)
+        let habitSchedule = try #require(archive.scheduleVersions.first)
+        let pillSchedule = try #require(archive.pillScheduleVersions.first)
+        #expect(habitSchedule.scheduleKind == ScheduleRule.Kind.biweekly.rawValue)
+        #expect(habitSchedule.intervalDays == 14)
+        #expect(pillSchedule.scheduleKind == ScheduleRule.Kind.intervalDays.rawValue)
+        #expect(pillSchedule.intervalDays == 5)
     }
 
     @Test

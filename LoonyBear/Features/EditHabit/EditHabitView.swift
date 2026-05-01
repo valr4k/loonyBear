@@ -34,7 +34,7 @@ struct EditHabitView: View {
             type: details.type,
             startDate: details.startDate,
             name: details.name,
-            scheduleDays: details.scheduleDays,
+            scheduleRule: details.scheduleRule,
             reminderEnabled: details.reminderEnabled,
             reminderTime: details.reminderTime ?? ReminderTime.default(),
             completedDays: details.completedDays,
@@ -174,14 +174,14 @@ struct EditHabitView: View {
 
     private var notificationsSection: some View {
         AppNotificationSettingsSection(
-            scheduleSummary: draft.scheduleDays.compactSummaryOrPlaceholder,
+            scheduleSummary: draft.scheduleRule.compactSummary,
             scheduleTap: dismissKeyboardForNonTextControl,
             reminderEnabled: $draft.reminderEnabled,
             reminderDate: $draft.reminderTime.dateBinding(fallback: ReminderTime.default()),
             reminderTimeTap: dismissKeyboardForNonTextControl
         ) {
             EditHabitScheduleView(
-                scheduleDays: $draft.scheduleDays,
+                scheduleRule: $draft.scheduleRule,
                 dismissKeyboardForNonTextControl: dismissKeyboardForNonTextControl
             )
         }
@@ -196,7 +196,7 @@ struct EditHabitView: View {
     }
 
     private var isFormValid: Bool {
-        !draft.trimmedName.isEmpty && draft.scheduleDays.rawValue != 0
+        !draft.trimmedName.isEmpty && draft.scheduleRule.isValidSelection
     }
 
     private var currentMissingPastDays: [Date] {
@@ -335,12 +335,12 @@ struct EditHabitView: View {
 }
 
 private struct EditHabitScheduleView: View {
-    @Binding var scheduleDays: WeekdaySet
+    @Binding var scheduleRule: ScheduleRule
     let dismissKeyboardForNonTextControl: () -> Void
 
     var body: some View {
         AppScheduleEditorPopoverContent(
-            scheduleDays: $scheduleDays,
+            scheduleRule: $scheduleRule,
             onTap: dismissKeyboardForNonTextControl
         )
     }

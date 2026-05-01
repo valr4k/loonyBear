@@ -646,15 +646,15 @@ enum NotificationConfigurationSupport {
         return configurations
     }
 
-    static func loadLatestScheduleDays(
+    static func loadLatestScheduleRule(
         for object: NSManagedObject,
         relationshipKey: String,
         rowLabel: String,
         invalidMaskMessage: String,
         report: inout IntegrityReportBuilder
-    ) -> WeekdaySet? {
+    ) -> ScheduleRule? {
         let schedules = (object.mutableSetValue(forKey: relationshipKey).allObjects as? [NSManagedObject]) ?? []
-        let validatedSchedules = schedules.compactMap { schedule -> (Date, Int32, Date, Int)? in
+        let validatedSchedules = schedules.compactMap { schedule -> (Date, Int32, Date, ScheduleRule)? in
             guard
                 let effectiveFrom = schedule.dateValue(forKey: "effectiveFrom"),
                 let createdAt = schedule.dateValue(forKey: "createdAt")
@@ -668,8 +668,7 @@ enum NotificationConfigurationSupport {
                 return nil
             }
 
-            let weekdayMask = Int(schedule.int16Value(forKey: "weekdayMask"))
-            guard WeekdayValidation.isValidMask(weekdayMask) else {
+            guard let rule = CoreDataScheduleSupport.rule(from: schedule) else {
                 report.append(
                     area: "notification",
                     entityName: schedule.entityName,
@@ -683,7 +682,7 @@ enum NotificationConfigurationSupport {
                 effectiveFrom,
                 schedule.int32Value(forKey: "version", default: 1),
                 createdAt,
-                weekdayMask
+                rule
             )
         }
 
@@ -693,10 +692,10 @@ enum NotificationConfigurationSupport {
             if $0.1 != $1.1 { return $0.1 < $1.1 }
             return $0.2 < $1.2
         }) else {
-            return WeekdaySet(rawValue: 0)
+            return .weekly(WeekdaySet(rawValue: 0))
         }
 
-        return WeekdaySet(rawValue: latest.3)
+        return latest.3
     }
 
     static func loadHistoryEntries<Source: RawRepresentable>(

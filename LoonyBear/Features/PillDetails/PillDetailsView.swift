@@ -58,7 +58,7 @@ struct PillDetailsView: View {
                     AppCard {
                         AppPlainValueRow(
                             title: "Schedule",
-                            value: details.scheduleDays.compactSummary,
+                            value: details.scheduleRule.compactSummary,
                             valueColor: AnyShapeStyle(.secondary),
                             showsChevron: true
                         )
@@ -71,7 +71,7 @@ struct PillDetailsView: View {
                             attachmentAnchor: .point(.trailing),
                             arrowEdge: .trailing
                         ) {
-                            AppReadOnlySchedulePopoverContent(scheduleDays: details.scheduleDays)
+                            AppReadOnlySchedulePopoverContent(scheduleRule: details.scheduleRule)
                                 .presentationBackground(.clear)
                         }
 

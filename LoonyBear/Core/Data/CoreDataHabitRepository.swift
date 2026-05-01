@@ -155,17 +155,23 @@ struct CoreDataHabitRepository: HabitRepository {
             name: name,
             startDate: startDate,
             historyMode: historyMode,
-            scheduleSummary: latestSchedule?.weekdays.summary ?? "No days selected",
-            scheduleDays: latestSchedule?.weekdays ?? .daily,
+            scheduleSummary: latestSchedule?.rule.summary ?? "No days selected",
+            scheduleDays: latestSchedule?.rule.weeklyDays ?? .daily,
+            scheduleRule: latestSchedule?.rule ?? .weekly(.daily),
             reminderEnabled: reminderEnabled,
             reminderTime: reminderTime,
             currentStreak: StreakEngine.currentStreak(
                 completions: successfulCompletions,
                 skippedCompletions: completions.filter { !$0.source.countsAsCompletion },
                 schedules: scheduleHistory,
+                startDate: startDate,
                 today: today
             ),
-            longestStreak: StreakEngine.longestStreak(completions: successfulCompletions, schedules: scheduleHistory),
+            longestStreak: StreakEngine.longestStreak(
+                completions: successfulCompletions,
+                schedules: scheduleHistory,
+                startDate: startDate
+            ),
             totalCompletedDays: completedDays.count,
             completedDays: completedDays,
             skippedDays: skippedDays,
@@ -227,7 +233,7 @@ struct CoreDataHabitRepository: HabitRepository {
             let schedule = NSEntityDescription.insertNewObject(forEntityName: "HabitScheduleVersion", into: context)
             schedule.setValue(UUID(), forKey: "id")
             schedule.setValue(habitID, forKey: "habitID")
-            schedule.setValue(Int16(draft.scheduleDays.rawValue), forKey: "weekdayMask")
+            CoreDataScheduleSupport.apply(draft.scheduleRule, to: schedule)
             schedule.setValue(calendar.startOfDay(for: draft.startDate), forKey: "effectiveFrom")
             schedule.setValue(now, forKey: "createdAt")
             schedule.setValue(Int32(1), forKey: "version")
@@ -345,12 +351,12 @@ struct CoreDataHabitRepository: HabitRepository {
             habit.setValue(now, forKey: "updatedAt")
 
             let currentSchedule = loadLatestScheduleObject(for: habit)
-            let currentWeekdayMask = currentSchedule?.int16Value(forKey: "weekdayMask") ?? 0
-            if currentWeekdayMask != draft.scheduleDays.rawValue {
+            let currentRule = currentSchedule.flatMap(CoreDataScheduleSupport.rule)
+            if currentRule != draft.scheduleRule {
                 let schedule = NSEntityDescription.insertNewObject(forEntityName: "HabitScheduleVersion", into: context)
                 schedule.setValue(UUID(), forKey: "id")
                 schedule.setValue(draft.id, forKey: "habitID")
-                schedule.setValue(Int16(draft.scheduleDays.rawValue), forKey: "weekdayMask")
+                CoreDataScheduleSupport.apply(draft.scheduleRule, to: schedule)
                 schedule.setValue(
                     updatedScheduleEffectiveFrom(
                         now: now,
@@ -370,6 +376,7 @@ struct CoreDataHabitRepository: HabitRepository {
             )
             let scheduledEditableSet = HistoryScheduleApplicability.pastScheduledEditableDays(
                 in: editableSet,
+                startDate: draft.startDate,
                 schedules: loadSchedules(for: habit, habitID: draft.id),
                 today: normalizedToday,
                 calendar: calendar
@@ -577,7 +584,7 @@ struct CoreDataHabitRepository: HabitRepository {
 
     private func shouldGenerateInitialCompletion(on day: Date, for draft: CreateHabitDraft) -> Bool {
         guard draft.useScheduleForHistory else { return true }
-        return draft.scheduleDays.contains(calendar.weekdaySet(for: day))
+        return draft.scheduleRule.isScheduled(on: day, anchorDate: draft.startDate, calendar: calendar)
     }
 
     private func loadCompletions(for habitObject: NSManagedObject, habitID: UUID) -> [HabitCompletion] {
@@ -621,11 +628,11 @@ struct CoreDataHabitRepository: HabitRepository {
         CoreDataRelationshipLoadingSupport.compactScheduleModels(
             from: habitObject,
             relationshipKey: "scheduleVersions"
-        ) { scheduleID, weekdayMask, effectiveFrom, createdAt, version in
+        ) { scheduleID, rule, effectiveFrom, createdAt, version in
             HabitScheduleVersion(
                 id: scheduleID,
                 habitID: habitID,
-                weekdays: WeekdaySet(rawValue: weekdayMask),
+                rule: rule,
                 effectiveFrom: effectiveFrom,
                 createdAt: createdAt,
                 version: version
@@ -645,11 +652,11 @@ struct CoreDataHabitRepository: HabitRepository {
             missingFieldsMessage: "Habit schedule row is missing required fields.",
             invalidMaskMessage: "Habit schedule row contains invalid weekdayMask.",
             report: &report
-        ) { scheduleID, weekdayMask, effectiveFrom, createdAt, version in
+        ) { scheduleID, rule, effectiveFrom, createdAt, version in
             HabitScheduleVersion(
                 id: scheduleID,
                 habitID: habitID,
-                weekdays: WeekdaySet(rawValue: weekdayMask),
+                rule: rule,
                 effectiveFrom: effectiveFrom,
                 createdAt: createdAt,
                 version: version
@@ -721,11 +728,12 @@ struct CoreDataHabitRepository: HabitRepository {
             )
             return nil
         }
-        let scheduledToday = HistoryScheduleApplicability.effectiveWeekdays(
+        let scheduledToday = HistoryScheduleApplicability.isScheduled(
             on: today,
+            startDate: startDate,
             from: scheduleHistory,
             calendar: calendar
-        )?.contains(calendar.weekdaySet(for: today)) ?? false
+        )
         let reminderText: String?
         let displayReminderHour: Int?
         let displayReminderMinute: Int?
@@ -744,6 +752,7 @@ struct CoreDataHabitRepository: HabitRepository {
             completions: successfulCompletions,
             skippedCompletions: completionModels.filter { !$0.source.countsAsCompletion },
             schedules: scheduleHistory,
+            startDate: startDate,
             today: today
         )
         let activeOverdueDay = ScheduledOverdueState.activeOverdueDay(
@@ -760,7 +769,7 @@ struct CoreDataHabitRepository: HabitRepository {
             id: id,
             type: type,
             name: name,
-            scheduleSummary: latestSchedule?.weekdays.summary ?? "No days selected",
+            scheduleSummary: latestSchedule?.rule.summary ?? "No days selected",
             currentStreak: streak,
             reminderText: reminderText,
             reminderHour: displayReminderHour,
@@ -840,12 +849,12 @@ struct CoreDataHabitRepository: HabitRepository {
 
         let schedules = loadSchedules(for: habit, habitID: habitID)
         guard
-            let weekdays = HistoryScheduleApplicability.effectiveWeekdays(
+            HistoryScheduleApplicability.isScheduled(
                 on: today,
+                startDate: startDate,
                 from: schedules,
                 calendar: calendar
-            ),
-            weekdays.contains(calendar.weekdaySet(for: today))
+            )
         else {
             clearTodayAnchorIfPresent()
             return
@@ -916,6 +925,7 @@ struct CoreDataHabitRepository: HabitRepository {
         )
         var requiredDays = HistoryScheduleApplicability.pastScheduledEditableDays(
             in: editableDays,
+            startDate: startDate,
             schedules: schedules,
             today: today,
             calendar: calendar

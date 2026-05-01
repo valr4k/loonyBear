@@ -93,7 +93,7 @@ enum ProjectedBadgeCountCalculator {
             HabitScheduleVersion(
                 id: habit.id,
                 habitID: habit.id,
-                weekdays: habit.scheduleDays,
+                rule: habit.scheduleRule,
                 effectiveFrom: habit.startDate,
                 createdAt: habit.startDate,
                 version: 1
@@ -107,7 +107,7 @@ enum ProjectedBadgeCountCalculator {
             PillScheduleVersion(
                 id: pill.id,
                 pillID: pill.id,
-                weekdays: pill.scheduleDays,
+                rule: pill.scheduleRule,
                 effectiveFrom: pill.startDate,
                 createdAt: pill.startDate,
                 version: 1

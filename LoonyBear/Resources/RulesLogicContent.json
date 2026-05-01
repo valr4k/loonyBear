@@ -55,7 +55,7 @@
         },
         {
           "title": "Creating a Habit",
-          "body": "Create Habit includes type, name, start date, reminder toggle, reminder time, selected days, and the Use schedule for history? toggle. The save button is enabled only when the habit name is not empty and at least one day is selected. If the 20-habit hard limit blocks creation, the error is shown as a dismissible floating warning banner."
+          "body": "Create Habit includes type, name, start date, reminder toggle, reminder time, a schedule rule, and the Use schedule for history? toggle. The schedule rule can be weekly weekdays or an Intervals preset: Daily, Weekdays, Weekends, Weekly, Biweekly, or Custom every 2 to 14 days. The save button is enabled only when the habit name is not empty and the schedule rule is valid. If the 20-habit hard limit blocks creation, the error is shown as a dismissible floating warning banner."
         },
         {
           "title": "Habit start date range",
@@ -71,7 +71,7 @@
         },
         {
           "title": "Editing a Habit",
-          "body": "Edit Habit shows name, read-only start date, reminder settings, selected days, an editable calendar, helper text, and a Delete button at the bottom. Missing past-day review is shown as a dismissible floating warning banner that does not take space inside the calendar layout, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a system alert with Cancel and Delete actions."
+          "body": "Edit Habit shows name, read-only start date, reminder settings, schedule rule, an editable calendar, helper text, and a Delete button at the bottom. Missing past-day review is shown as a dismissible floating warning banner that does not take space inside the calendar layout, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a system alert with Cancel and Delete actions."
         }
       ]
     },
@@ -84,11 +84,11 @@
         },
         {
           "title": "Habit history modes",
-          "body": "Habits store a history mode. Schedule-based means generated past history follows the selected schedule. Every-day means generated past history counts every day from the start date through yesterday. The selected mode is saved in the model and used later by create, details loading, backup, and restore. Dashboard cards exclude the active overdue day from history review, but Details and Edit include a past active overdue day. Missing scheduled editable past days are not auto-filled; they block saving until the user chooses a state. The current Details screen does not show a dedicated history mode row, and the Edit screen does not expose a history mode toggle."
+          "body": "Habits store a history mode. Schedule-based means generated past history follows the selected schedule rule. Every-day means generated past history counts every day from the start date through yesterday. The selected mode is saved in the model and used later by create, details loading, backup, and restore. Dashboard cards exclude the active overdue day from history review, but Details and Edit include a past active overdue day. Missing scheduled editable past days are not auto-filled; they block saving until the user chooses a state. The current Details screen does not show a dedicated history mode row, and the Edit screen does not expose a history mode toggle."
         },
         {
           "title": "Habit auto-fill on create",
-          "body": "When a Habit is created, the repository generates completed history from the start date up to yesterday. If Use schedule for history? is on, only scheduled days are generated. If it is off, every day in that range is generated. Today is not prefilled."
+          "body": "When a Habit is created, the repository generates completed history from the start date up to yesterday. If Use schedule for history? is on, only days matching the schedule rule are generated. If it is off, every day in that range is generated. Today is not prefilled."
         },
         {
           "title": "Habit reconciliation",
@@ -133,7 +133,7 @@
         },
         {
           "title": "Creating a Pill",
-          "body": "Create Pill includes name, dosage, start date, reminder toggle, reminder time, selected days, Use schedule for history?, and an optional description. Save is enabled only when the pill name is not empty, the dosage is not empty, and at least one day is selected. If the 20-pill hard limit blocks creation, the error is shown as a dismissible floating warning banner."
+          "body": "Create Pill includes name, dosage, start date, reminder toggle, reminder time, a schedule rule, Use schedule for history?, and an optional description. The schedule rule can be weekly weekdays or an Intervals preset: Daily, Weekdays, Weekends, Weekly, Biweekly, or Custom every 2 to 14 days. Save is enabled only when the pill name is not empty, the dosage is not empty, and the schedule rule is valid. If the 20-pill hard limit blocks creation, the error is shown as a dismissible floating warning banner."
         },
         {
           "title": "Pill start date range",
@@ -145,7 +145,7 @@
         },
         {
           "title": "Editing a Pill",
-          "body": "Edit Pill shows name, dosage, read-only start date, reminder settings, selected days, an editable calendar, helper text, description, and a Delete button at the bottom. Missing past-day review is shown as a dismissible floating warning banner that does not take space inside the calendar layout, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a system alert with Cancel and Delete actions."
+          "body": "Edit Pill shows name, dosage, read-only start date, reminder settings, schedule rule, an editable calendar, helper text, description, and a Delete button at the bottom. Missing past-day review is shown as a dismissible floating warning banner that does not take space inside the calendar layout, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a system alert with Cancel and Delete actions."
         }
       ]
     },
@@ -158,11 +158,11 @@
         },
         {
           "title": "Pill history modes",
-          "body": "Pills store a history mode. Schedule-based means generated past history follows the selected schedule. Every-day means generated past history counts every day from the start date through yesterday. The selected mode is saved and used later by create, details loading, backup, and restore. Dashboard cards exclude the active overdue day from history review, but Details and Edit include a past active overdue day. Missing scheduled editable past days are not auto-filled; they block saving until the user chooses a state. The current Details screen does not show a dedicated history mode row, and the Edit screen does not expose a history mode toggle."
+          "body": "Pills store a history mode. Schedule-based means generated past history follows the selected schedule rule. Every-day means generated past history counts every day from the start date through yesterday. The selected mode is saved and used later by create, details loading, backup, and restore. Dashboard cards exclude the active overdue day from history review, but Details and Edit include a past active overdue day. Missing scheduled editable past days are not auto-filled; they block saving until the user chooses a state. The current Details screen does not show a dedicated history mode row, and the Edit screen does not expose a history mode toggle."
         },
         {
           "title": "Pill prefilled taken history on create",
-          "body": "When a new Pill is created, the repository generates taken history from the start date up to yesterday. If Use schedule for history? is on, only scheduled days are generated. If it is off, every day from the start date up to yesterday is generated."
+          "body": "When a new Pill is created, the repository generates taken history from the start date up to yesterday. If Use schedule for history? is on, only days matching the schedule rule are generated. If it is off, every day from the start date up to yesterday is generated."
         },
         {
           "title": "What repository create does for Pills",
@@ -203,7 +203,7 @@
         },
         {
           "title": "When reminders are eligible",
-          "body": "A reminder candidate is created only when reminder is enabled, the local day is not before the item start date, the local day matches the current schedule, the day is not already completed or taken, the day is not already skipped, and the scheduled reminder time is still in the future."
+          "body": "A reminder candidate is created only when reminder is enabled, the local day is not before the item start date, the local day matches the current schedule rule, the day is not already completed or taken, the day is not already skipped, and the scheduled reminder time is still in the future. Reminder planning intentionally scans the next 2 local days; this is currently accepted for sparse weekly and interval schedules because the expected usage pattern is daily app opens, which trigger a fresh reschedule."
         },
         {
           "title": "What tapping a reminder does",
@@ -277,7 +277,7 @@
         },
         {
           "title": "What backup includes",
-          "body": "Backup includes Habits, Habit schedules, Habit completions, Habit ordering, Pills, Pill schedules, Pill intakes, reminder settings, stored history modes for both trackers, and app appearance settings."
+          "body": "Backup includes Habits, Habit schedule rules, Habit completions, Habit ordering, Pills, Pill schedule rules, Pill intakes, reminder settings, stored history modes for both trackers, and app appearance settings."
         },
         {
           "title": "Restore safety snapshot",
@@ -285,7 +285,7 @@
         },
         {
           "title": "Restore validation",
-          "body": "Restore validates schema version, app appearance settings when present, history mode values, schedule masks, source values, and duplicate identifiers before replacing the store."
+          "body": "Restore validates schema version, app appearance settings when present, history mode values, schedule rules, source values, and duplicate identifiers before replacing the store."
         },
         {
           "title": "What restore does after success",
@@ -339,7 +339,7 @@
         },
         {
           "title": "Schedule popovers",
-          "body": "Create and Edit screens open schedule selection in an in-place popover with full weekday names, compact row spacing, and no row dividers. Details screens open a read-only schedule popover with the same full weekday names. Schedule rows open popovers without a pressed-row visual effect. The popover content does not add an extra inner card or background layer."
+          "body": "Create and Edit screens open schedule selection in an in-place popover with Weekly and Intervals modes. Weekly mode uses full weekday names, compact row spacing, and no row dividers. Intervals mode is a single-selection list with Daily, Weekdays, Weekends, Weekly, Biweekly, and Custom rows. Custom enables a native Stepper for every 2 to 14 days only after Custom is selected. Switching between Weekly and Intervals preserves the previous choice while the Create/Edit screen remains open, but Save or Cancel does not persist unsaved picker memory. Details screens open a read-only schedule popover that shows either the weekday list or the selected interval rule. Schedule rows open popovers without a pressed-row visual effect. The popover content does not add an extra inner card or background layer."
         },
         {
           "title": "Settings navigation persistence",
@@ -363,8 +363,8 @@
           "body": "ReminderTime stores hour and minute as integers. ReminderTime.default rounds the current time up to a 5-minute boundary. If rounding reaches 60 minutes, the hour is incremented and minute becomes 0. Create/Edit reminder time rows use the native compact DatePicker when reminders are enabled, preserving system picker presentation and tint behavior. Create Start Date rows use the native compact DatePicker for date selection. Read-only Start Date rows on Edit and Details display plain trailing values without capsule backgrounds."
         },
         {
-          "title": "Weekday model",
-          "body": "WeekdaySet is an OptionSet with Monday through Sunday bit flags. It also defines weekdays, weekends, and daily. Summary text is Daily, Weekdays, Weekends, or a comma-separated ordered list from Mon through Sun."
+          "title": "Schedule model",
+          "body": "ScheduleRule supports weekly, intervalPreset, and intervalDays modes. Weekly stores a WeekdaySet OptionSet with Monday through Sunday bit flags and summaries such as Daily, Weekdays, Weekends, or an ordered Mon through Sun list. IntervalPreset stores Daily, Weekdays, Weekends, Weekly, or Biweekly. IntervalDays is Custom every N days, limited to 2 through 14 days. Initial schedules are anchored to the item start date; edited interval schedules are anchored to the active schedule version effectiveFrom."
         }
       ]
     },
@@ -373,7 +373,7 @@
       "items": [
         {
           "title": "Persistence container",
-          "body": "The persistent container name is LoonyBear. The main viewContext automatically merges parent changes and uses NSMergeByPropertyObjectTrumpMergePolicy. Background contexts use the same merge policy."
+          "body": "The persistent container name is LoonyBear. Persistent store descriptions enable automatic lightweight migration and inferred mapping models so additive model changes can migrate existing local stores. The main viewContext automatically merges parent changes and uses NSMergeByPropertyObjectTrumpMergePolicy. Background contexts use the same merge policy."
         },
         {
           "title": "Read and write coordination",
@@ -389,7 +389,7 @@
         },
         {
           "title": "Schedule applicability",
-          "body": "HistoryScheduleApplicability can compute past editable days, past scheduled editable days, and past required editable days. Effective schedule for a given day is the latest schedule version whose effectiveFrom is not later than that day, ordered by effectiveFrom, version, and createdAt."
+          "body": "HistoryScheduleApplicability can compute past editable days, past scheduled editable days, and past required editable days. Effective schedule for a given day is the latest schedule version whose effectiveFrom is not later than that day, ordered by effectiveFrom, version, and createdAt. Weekly rules and weekday/weekend presets use weekday membership. Weekly interval, Biweekly, and Custom every-N-days rules use the active schedule version effectiveFrom as the interval anchor. If today already has an explicit Completed/Taken or Skipped state when the schedule changes, repository update logic keeps the existing behavior and makes the new schedule effective tomorrow."
         }
       ]
     },
@@ -398,7 +398,7 @@
       "items": [
         {
           "title": "Create Habit validations",
-          "body": "CreateHabitUseCase requires a non-empty trimmed name and at least one schedule day. CoreDataHabitRepository also enforces a hard limit of 20 habits. Create Habit presents hard-limit errors with the shared dismissible floating warning banner."
+          "body": "CreateHabitUseCase requires a non-empty trimmed name and a valid schedule rule. CoreDataHabitRepository also enforces a hard limit of 20 habits. Create Habit presents hard-limit errors with the shared dismissible floating warning banner."
         },
         {
           "title": "Habit create storage",
@@ -406,11 +406,11 @@
         },
         {
           "title": "Habit create autofill source",
-          "body": "Habit create history generation inserts HabitCompletion rows with sourceRaw equal to auto fill. If Use schedule for history? is on, only scheduled days are generated. If it is off, every day from startDate through yesterday is generated."
+          "body": "Habit create history generation inserts HabitCompletion rows with sourceRaw equal to auto fill. If Use schedule for history? is on, only days matching the schedule rule are generated. If it is off, every day from startDate through yesterday is generated."
         },
         {
           "title": "Habit update behavior",
-          "body": "Habit update changes name, reminder fields, and optionally inserts a new HabitScheduleVersion if the weekday mask changed. If today already has an explicit stored state, the new schedule version starts tomorrow; otherwise it starts today. Editable history is normalized and written back day by day using manual edit or skipped sources. Update validation requires every past editable scheduled day to be Completed or Skipped; missing scheduled past states block save instead of being auto-filled."
+          "body": "Habit update changes name, reminder fields, and optionally inserts a new HabitScheduleVersion if the schedule rule changed. If today already has an explicit stored state, the new schedule version starts tomorrow; otherwise it starts today. Editable history is normalized and written back day by day using manual edit or skipped sources. Update validation requires every past editable scheduled day to be Completed or Skipped; missing scheduled past states block save instead of being auto-filled."
         },
         {
           "title": "Habit today actions",
@@ -427,11 +427,11 @@
       "items": [
         {
           "title": "Create Pill validations",
-          "body": "Create Pill requires a non-empty trimmed name, a non-empty trimmed dosage, and at least one schedule day. CoreDataPillRepository also enforces a hard limit of 20 pills. Create Pill presents hard-limit errors with the shared dismissible floating warning banner."
+          "body": "Create Pill requires a non-empty trimmed name, a non-empty trimmed dosage, and a valid schedule rule. CoreDataPillRepository also enforces a hard limit of 20 pills. Create Pill presents hard-limit errors with the shared dismissible floating warning banner."
         },
         {
           "title": "Create Pill day generation",
-          "body": "During repository create, initial takenDays are generated from startDate through yesterday. If Use schedule for history? is on, generation includes only days matching scheduleDays. If it is off, generation includes every day in that range."
+          "body": "During repository create, initial takenDays are generated from startDate through yesterday. If Use schedule for history? is on, generation includes only days matching the schedule rule. If it is off, generation includes every day in that range."
         },
         {
           "title": "Pill create storage",
@@ -439,7 +439,7 @@
         },
         {
           "title": "Pill update behavior",
-          "body": "Pill update changes name, dosage, details, reminder fields, and optionally inserts a new PillScheduleVersion if the weekday mask changed. If today already has an explicit stored state, the new schedule version starts tomorrow; otherwise it starts today. Editable history is normalized and written back day by day using manual edit or skipped sources. Update validation requires every past editable scheduled day to be Taken or Skipped; missing scheduled past states block save instead of being auto-filled."
+          "body": "Pill update changes name, dosage, details, reminder fields, and optionally inserts a new PillScheduleVersion if the schedule rule changed. If today already has an explicit stored state, the new schedule version starts tomorrow; otherwise it starts today. Editable history is normalized and written back day by day using manual edit or skipped sources. Update validation requires every past editable scheduled day to be Taken or Skipped; missing scheduled past states block save instead of being auto-filled."
         },
         {
           "title": "Pill today actions",
@@ -460,15 +460,15 @@
         },
         {
           "title": "Habit notification constants",
-          "body": "Habit notifications use categoryIdentifier habit.reminder, summaryCategoryIdentifier habit.reminder.summary, action identifiers habit.complete and habit.skip, schedulingWindowDays 2, and aggregationThreshold 3."
+          "body": "Habit notifications use categoryIdentifier habit.reminder, summaryCategoryIdentifier habit.reminder.summary, action identifiers habit.complete and habit.skip, schedulingWindowDays 2, and aggregationThreshold 3. The 2-day planning window is accepted for now for both weekly and interval schedules because lifecycle refreshes are expected daily."
         },
         {
           "title": "Pill notification constants",
-          "body": "Pill notifications use categoryIdentifier pill.reminder, summaryCategoryIdentifier pill.reminder.summary, action identifiers pill.take, pill.skip, and pill.remind_later, schedulingWindowDays 2, aggregationThreshold 3, and remindLaterInterval 600 seconds with accepted minute-level trigger precision."
+          "body": "Pill notifications use categoryIdentifier pill.reminder, summaryCategoryIdentifier pill.reminder.summary, action identifiers pill.take, pill.skip, and pill.remind_later, schedulingWindowDays 2, aggregationThreshold 3, and remindLaterInterval 600 seconds with accepted minute-level trigger precision. The 2-day planning window is accepted for now for both weekly and interval schedules because lifecycle refreshes are expected daily."
         },
         {
           "title": "Reminder candidate rules",
-          "body": "Both Habit and Pill reminder services build candidates only when reminder is enabled, reminderTime exists, the local day is not before startDate, the local day matches the schedule, the local day is not already completed or taken, the local day is not skipped, and the scheduled reminder time is still in the future."
+          "body": "Both Habit and Pill reminder services build candidates only when reminder is enabled, reminderTime exists, the local day is not before startDate, the local day matches the active schedule rule, the local day is not already completed or taken, the local day is not skipped, and the scheduled reminder time is still in the future."
         },
         {
           "title": "Default tap routing",
@@ -485,11 +485,11 @@
       "items": [
         {
           "title": "Backup schema and files",
-          "body": "Backup schemaVersion is 1. The main backup file is LoonyBear.json.gz. The previous backup file is LoonyBear.previous.json.gz. The restore snapshot file is LoonyBear.restore-snapshot.json.gz."
+          "body": "Backup schemaVersion is 1. The main backup file is LoonyBear.json.gz. The previous backup file is LoonyBear.previous.json.gz. The restore snapshot file is LoonyBear.restore-snapshot.json.gz. New builds can restore older v1 backups that do not contain scheduleKind or intervalDays. New interval schedule payloads still use schemaVersion 1 by product decision; restoring new backups into older app builds is not supported."
         },
         {
           "title": "Backup payload contents",
-          "body": "BackupArchive contains habits, habit schedule versions, habit completion records, habit ordering, optional app settings, pills, pill schedule versions, and pill intake records. BackupHabit and BackupPill both carry stored historyMode values. BackupAppSettings carries appearanceMode and appTint."
+          "body": "BackupArchive contains habits, habit schedule versions with schedule kind, weekday mask, and interval days, habit completion records, habit ordering, optional app settings, pills, pill schedule versions with schedule kind, weekday mask, and interval days, and pill intake records. Schedule kind can represent weekly, interval presets, or custom interval days. BackupHabit and BackupPill both carry stored historyMode values. BackupAppSettings carries appearanceMode and appTint."
         },
         {
           "title": "Backup file state",
@@ -497,7 +497,7 @@
         },
         {
           "title": "Restore safety and validation",
-          "body": "Restore first attempts to create a compressed snapshot of the current store. If snapshot payload creation fails with a DataIntegrityError, restore continues. If snapshot encoding, compression, or file writing fails, restore aborts. Restore validates schema version, app settings when present, history modes, reminder times, weekday masks, source values, foreign key references, and duplicate identifiers before replacing the store."
+          "body": "Restore first attempts to create a compressed snapshot of the current store. If snapshot payload creation fails with a DataIntegrityError, restore continues. If snapshot encoding, compression, or file writing fails, restore aborts. Restore validates schema version, app settings when present, history modes, reminder times, schedule rules, source values, foreign key references, and duplicate identifiers before replacing the store."
         },
         {
           "title": "Reliability layer",

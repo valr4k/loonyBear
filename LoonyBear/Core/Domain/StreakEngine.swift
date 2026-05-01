@@ -5,6 +5,7 @@ enum StreakEngine {
         completions: [HabitCompletion],
         skippedCompletions: [HabitCompletion] = [],
         schedules: [HabitScheduleVersion],
+        startDate: Date? = nil,
         today: Date,
         calendar: Calendar = .current
     ) -> Int {
@@ -12,6 +13,7 @@ enum StreakEngine {
             completions: completions,
             skippedCompletions: skippedCompletions,
             schedules: schedules,
+            startDate: startDate,
             today: today,
             calendar: calendar
         ).current
@@ -20,6 +22,7 @@ enum StreakEngine {
     static func longestStreak(
         completions: [HabitCompletion],
         schedules: [HabitScheduleVersion],
+        startDate: Date? = nil,
         calendar: Calendar = .current
     ) -> Int {
         let latestCompletion = completions
@@ -30,6 +33,7 @@ enum StreakEngine {
             completions: completions,
             skippedCompletions: [],
             schedules: schedules,
+            startDate: startDate,
             today: latestCompletion,
             calendar: calendar
         ).longest
@@ -39,6 +43,7 @@ enum StreakEngine {
         completions: [HabitCompletion],
         skippedCompletions: [HabitCompletion],
         schedules: [HabitScheduleVersion],
+        startDate: Date?,
         today: Date,
         calendar: Calendar
     ) -> (current: Int, longest: Int) {
@@ -72,8 +77,10 @@ enum StreakEngine {
         while cursor <= normalizedToday {
             let hasCompletion = completionDays.contains(cursor)
             let hasSkip = skippedDays.contains(cursor)
-            let isScheduled = weekdays(on: cursor, from: normalizedSchedules, calendar: calendar)?
-                .contains(cursor.weekdayMask(calendar: calendar)) ?? false
+            let activeSchedule = schedule(on: cursor, from: normalizedSchedules, calendar: calendar)
+            let isScheduled = activeSchedule.map {
+                $0.rule.isScheduled(on: cursor, anchorDate: $0.effectiveFrom, calendar: calendar)
+            } ?? false
 
             if hasCompletion {
                 running += 1
@@ -116,29 +123,15 @@ enum StreakEngine {
         )
     }
 
-    private static func weekdays(
+    private static func schedule(
         on day: Date,
         from schedules: [HabitScheduleVersion],
         calendar: Calendar
-    ) -> WeekdaySet? {
+    ) -> HabitScheduleVersion? {
         let normalizedDay = calendar.startOfDay(for: day)
 
         return schedules.last {
             calendar.startOfDay(for: $0.effectiveFrom) <= normalizedDay
-        }?.weekdays
-    }
-}
-
-private extension Date {
-    func weekdayMask(calendar: Calendar) -> WeekdaySet {
-        switch calendar.component(.weekday, from: self) {
-        case 2: return .monday
-        case 3: return .tuesday
-        case 4: return .wednesday
-        case 5: return .thursday
-        case 6: return .friday
-        case 7: return .saturday
-        default: return .sunday
         }
     }
 }

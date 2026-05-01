@@ -202,7 +202,7 @@ enum AppStartupHealthCheck {
                     continue
                 }
 
-                guard NotificationConfigurationSupport.loadLatestScheduleDays(
+                guard NotificationConfigurationSupport.loadLatestScheduleRule(
                     for: object,
                     relationshipKey: "scheduleVersions",
                     rowLabel: "Habit schedule",
@@ -267,7 +267,7 @@ enum AppStartupHealthCheck {
                     continue
                 }
 
-                guard NotificationConfigurationSupport.loadLatestScheduleDays(
+                guard NotificationConfigurationSupport.loadLatestScheduleRule(
                     for: object,
                     relationshipKey: "scheduleVersions",
                     rowLabel: "Pill schedule",
