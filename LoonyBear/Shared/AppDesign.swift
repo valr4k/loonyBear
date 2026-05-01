@@ -20,13 +20,8 @@ enum AppTint: String, CaseIterable, Identifiable {
 
     case blue
     case indigo
-    case cyan
-    case teal
     case green
-    case brown
     case amber
-    case red
-    case white
 
     var id: String { rawValue }
 
@@ -36,20 +31,10 @@ enum AppTint: String, CaseIterable, Identifiable {
             return "Blue"
         case .indigo:
             return "Indigo"
-        case .cyan:
-            return "Cyan"
-        case .teal:
-            return "Teal"
         case .green:
             return "Green"
-        case .brown:
-            return "Brown"
         case .amber:
             return "Amber"
-        case .red:
-            return "Red"
-        case .white:
-            return "White"
         }
     }
 
@@ -58,34 +43,19 @@ enum AppTint: String, CaseIterable, Identifiable {
     }
 
     var accentUIColor: UIColor {
-        switch self {
-        case .white:
-            return .label
-        case .blue, .indigo, .cyan, .teal, .green, .brown, .amber, .red:
-            return uiColor
-        }
+        uiColor
     }
 
     var uiColor: UIColor {
         switch self {
-        case .white:
-            return .white
         case .blue:
             return .systemBlue
         case .indigo:
             return .systemIndigo
-        case .cyan:
-            return .systemCyan
-        case .teal:
-            return .systemTeal
         case .green:
             return .systemGreen
-        case .brown:
-            return .systemBrown
         case .amber:
             return .systemOrange
-        case .red:
-            return .systemRed
         }
     }
 
@@ -94,21 +64,11 @@ enum AppTint: String, CaseIterable, Identifiable {
     }
 
     var swatchCheckmarkColor: Color {
-        switch self {
-        case .white:
-            return .black
-        case .blue, .indigo, .cyan, .teal, .green, .brown, .amber, .red:
-            return .white
-        }
+        .white
     }
 
-    func calendarPositiveForeground(for colorScheme: ColorScheme) -> Color {
-        switch self {
-        case .white:
-            return colorScheme == .dark ? .black : .white
-        case .blue, .indigo, .cyan, .teal, .green, .brown, .amber, .red:
-            return .white
-        }
+    func calendarPositiveForeground(for _: ColorScheme) -> Color {
+        .white
     }
 
     func backgroundWashOpacity(for colorScheme: ColorScheme) -> Double {
@@ -124,17 +84,23 @@ enum AppTint: String, CaseIterable, Identifiable {
 
     static func stored(rawValue: String) -> AppTint {
         switch rawValue {
-        case "default":
+        case "default", "gray", "yellow", "cyan", "teal", "brown", "red", "white":
             return .blue
-        case "gray", "yellow":
-            return .brown
         default:
             return AppTint(rawValue: rawValue) ?? .blue
         }
     }
 
     static func isValidStoredRawValue(_ rawValue: String) -> Bool {
-        AppTint(rawValue: rawValue) != nil || rawValue == "default" || rawValue == "gray" || rawValue == "yellow"
+        AppTint(rawValue: rawValue) != nil
+            || rawValue == "default"
+            || rawValue == "gray"
+            || rawValue == "yellow"
+            || rawValue == "cyan"
+            || rawValue == "teal"
+            || rawValue == "brown"
+            || rawValue == "red"
+            || rawValue == "white"
     }
 }
 
@@ -151,6 +117,15 @@ private struct AppAccentForegroundModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content.foregroundStyle(AppTint.stored(rawValue: appTintRawValue).accentColor)
+    }
+}
+
+private struct AppToolbarActionTintModifier: ViewModifier {
+    let isDisabled: Bool
+    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
+
+    func body(content: Content) -> some View {
+        content.tint(AppTint.stored(rawValue: appTintRawValue).accentColor)
     }
 }
 
@@ -219,6 +194,10 @@ extension View {
 
     func appAccentForeground() -> some View {
         modifier(AppAccentForegroundModifier())
+    }
+
+    func appToolbarActionTint(isDisabled: Bool) -> some View {
+        modifier(AppToolbarActionTintModifier(isDisabled: isDisabled))
     }
 
     func appTintedBackButton() -> some View {

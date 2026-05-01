@@ -60,6 +60,7 @@ This file describes the behavioral rules that are currently implemented in code.
 - Habit card trailing swipe exposes Edit and Info. Edit uses system blue, Info uses system indigo, and Delete is not available from card swipe actions.
 - Habit Details shows the same dismissible floating warning banner while any past scheduled day is missing. If the only missing day is the active overdue day, the warning asks the user to open Edit and choose `Completed` or `Skipped` for the overdue scheduled day.
 - Saving Edit Habit does not auto-fill missing past days; the user must choose the state.
+- Edit Habit delete confirmation uses a system alert with `Cancel` and destructive `Delete` actions.
 - If today's state is already finalized and the schedule is changed, the new schedule takes effect from tomorrow instead of rewriting today's schedule meaning.
 
 ## Habit Streak Rules
@@ -125,6 +126,7 @@ This file describes the behavioral rules that are currently implemented in code.
 - Pill card trailing swipe exposes Edit and Info. Edit uses system blue, Info uses system indigo, and Delete is not available from card swipe actions.
 - Pill Details shows the same dismissible floating warning banner while any past scheduled day is missing. If the only missing day is the active overdue day, the warning asks the user to open Edit and choose `Taken` or `Skipped` for the overdue scheduled day.
 - Saving Edit Pill does not auto-fill missing past days; the user must choose the state.
+- Edit Pill delete confirmation uses a system alert with `Cancel` and destructive `Delete` actions.
 - If today's state is already finalized and the schedule is changed, the new schedule takes effect from tomorrow instead of rewriting today's schedule meaning.
 
 ## Schedule Rules
@@ -200,6 +202,7 @@ This file describes the behavioral rules that are currently implemented in code.
 - Backup screen shows `Last backup`, `Total size`, and `Folder`.
 - `Last backup` uses the same color as its cloud status icon: green when a readable backup exists and red when it does not.
 - Backup actions are full-width capsule buttons. Create Backup uses the primary label color, and Restore Backup stays system red.
+- Create Backup and Restore Backup confirmations use system alerts, not popover confirmation dialogs. Alert action labels are shortened to `Backup` and `Restore`.
 - Choosing a folder does not restore data automatically.
 - Backup screen derives its action notice from the actual selected folder state, not from a temporary screen session flag.
 - Each readable backup file is fingerprinted from its compressed data.
@@ -215,13 +218,11 @@ This file describes the behavioral rules that are currently implemented in code.
 ## Appearance Rules
 
 - Settings supports theme mode selection: System, Light, and Dark.
-- Settings supports app color selection: Blue, Indigo, Cyan, Teal, Green, Brown, Amber, Red, and White.
+- Settings supports app color selection: Blue, Indigo, Green, and Amber.
 - Blue is the default app tint and appears first in the palette.
-- White uses adaptive contrast for active controls: black in Light mode and white in Dark mode.
 - Tints apply to supported app accent surfaces.
 - Page backgrounds stay on the system grouped background; the tint background wash is currently disabled.
-- Legacy stored tint value `default` is treated as Blue.
-- Legacy stored tint values `gray` and `yellow` are treated as Brown.
+- Legacy stored tint values `default`, `gray`, `yellow`, `cyan`, `teal`, `brown`, `red`, and `white` are treated as Blue.
 - Editable schedule checkmarks, Settings app-row icons, and Calendar Taken/Completed markers use the selected app color.
 - Read-only schedule checkmarks, skipped markers, overdue/warning colors, card Edit/Info swipe actions, backup action rows, toggles, and segmented picker selection remain fixed system colors.
 

@@ -83,14 +83,6 @@ struct EditHabitView: View {
             .controlSize(.large)
             .frame(maxWidth: .infinity)
             .disabled(isSaving)
-            .confirmationDialog("Delete Habit?", isPresented: $isShowingDeleteConfirmation, titleVisibility: .visible) {
-                Button("Yes", role: .destructive) {
-                    deleteHabit()
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This habit will be permanently deleted.")
-            }
 
             if let validationMessage {
                 AppValidationBanner(message: validationMessage)
@@ -106,6 +98,15 @@ struct EditHabitView: View {
         .navigationTitle(draft.type.sectionTitle)
         .navigationBarTitleDisplayMode(.inline)
         .scrollDismissesKeyboard(.immediately)
+        .alert("Delete Habit?", isPresented: $isShowingDeleteConfirmation) {
+            Button("Delete", role: .destructive) {
+                deleteHabit()
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This habit will be permanently deleted.")
+        }
         .toolbar {
             if showsCloseButton {
                 ToolbarItem(placement: .cancellationAction) {
@@ -124,7 +125,7 @@ struct EditHabitView: View {
                 } label: {
                     AppToolbarIconLabel("Save", systemName: "checkmark")
                 }
-                .appAccentTint()
+                .appToolbarActionTint(isDisabled: !isFormValid || hasMissingPastDays || isSaving)
                 .fontWeight(.semibold)
                 .disabled(!isFormValid || hasMissingPastDays || isSaving)
             }

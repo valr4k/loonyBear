@@ -94,14 +94,6 @@ struct EditPillView: View {
                 .controlSize(.large)
                 .frame(maxWidth: .infinity)
                 .disabled(isSaving)
-                .confirmationDialog("Delete Pill?", isPresented: $isShowingDeleteConfirmation, titleVisibility: .visible) {
-                    Button("Yes", role: .destructive) {
-                        deletePill()
-                    }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text("This pill will be permanently deleted.")
-                }
 
                 if let validationMessage {
                     AppValidationBanner(message: validationMessage)
@@ -118,6 +110,15 @@ struct EditPillView: View {
             .navigationTitle(draft.name.isEmpty ? "Edit Pill" : draft.name)
             .navigationBarTitleDisplayMode(.inline)
             .scrollDismissesKeyboard(.immediately)
+            .alert("Delete Pill?", isPresented: $isShowingDeleteConfirmation) {
+                Button("Delete", role: .destructive) {
+                    deletePill()
+                }
+
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This pill will be permanently deleted.")
+            }
             .safeAreaInset(edge: .bottom) {
                 Color.clear
                     .frame(height: shouldShowDescriptionInset ? 36 : 0)
@@ -140,7 +141,7 @@ struct EditPillView: View {
                     } label: {
                         AppToolbarIconLabel("Save", systemName: "checkmark")
                     }
-                    .appAccentTint()
+                    .appToolbarActionTint(isDisabled: !isFormValid || hasMissingPastDays || isSaving)
                     .fontWeight(.semibold)
                     .disabled(!isFormValid || hasMissingPastDays || isSaving)
                 }

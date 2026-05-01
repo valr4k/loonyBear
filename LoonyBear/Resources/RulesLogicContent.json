@@ -30,7 +30,7 @@
         },
         {
           "title": "App tint",
-          "body": "Settings stores an app color: Blue, Indigo, Cyan, Teal, Green, Brown, Amber, Red, or White. Blue is the default app color and appears first in the palette. White uses adaptive contrast for active controls: black in Light mode and white in Dark mode. App colors apply to supported accent surfaces, while page backgrounds remain the system grouped background. Brown uses the iOS system brown color; Amber uses the iOS system orange color. Editable schedule checkmarks, Settings app-row icons, and Calendar Taken/Completed markers use the selected app color. Read-only schedule checkmarks, toggles, segmented picker selection, skipped markers, overdue and warning colors, card Edit/Info swipe actions, and Backup action rows remain fixed system colors."
+          "body": "Settings stores an app color: Blue, Indigo, Green, or Amber. Blue is the default app color and appears first in the palette. App colors apply to supported accent surfaces, while page backgrounds remain the system grouped background. Amber uses the iOS system orange color. Legacy stored tint values default, gray, yellow, cyan, teal, brown, red, and white are treated as Blue. Editable schedule checkmarks, Settings app-row icons, and Calendar Taken/Completed markers use the selected app color. Read-only schedule checkmarks, toggles, segmented picker selection, skipped markers, overdue and warning colors, card Edit/Info swipe actions, and Backup action rows remain fixed system colors."
         },
         {
           "title": "Badge refresh cadence",
@@ -71,7 +71,7 @@
         },
         {
           "title": "Editing a Habit",
-          "body": "Edit Habit shows name, read-only start date, reminder settings, selected days, an editable calendar, helper text, and a Delete button at the bottom. Missing past-day review is shown as a dismissible floating warning banner that does not take space inside the calendar layout, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a confirmation dialog."
+          "body": "Edit Habit shows name, read-only start date, reminder settings, selected days, an editable calendar, helper text, and a Delete button at the bottom. Missing past-day review is shown as a dismissible floating warning banner that does not take space inside the calendar layout, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a system alert with Cancel and Delete actions."
         }
       ]
     },
@@ -145,7 +145,7 @@
         },
         {
           "title": "Editing a Pill",
-          "body": "Edit Pill shows name, dosage, read-only start date, reminder settings, selected days, an editable calendar, helper text, description, and a Delete button at the bottom. Missing past-day review is shown as a dismissible floating warning banner that does not take space inside the calendar layout, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a confirmation dialog."
+          "body": "Edit Pill shows name, dosage, read-only start date, reminder settings, selected days, an editable calendar, helper text, description, and a Delete button at the bottom. Missing past-day review is shown as a dismissible floating warning banner that does not take space inside the calendar layout, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a system alert with Cancel and Delete actions."
         }
       ]
     },
@@ -257,7 +257,7 @@
       "items": [
         {
           "title": "What Backup screen shows",
-          "body": "Backup shows Last backup, Total size, and Folder. Last backup uses the same color as its cloud status icon: green when a readable backup exists and red when it does not. Create Backup and Restore Backup are full-width capsule buttons; Create uses the primary label color and Restore stays system red. Backup feedback uses dismissible floating banners that auto-hide after 4 seconds or clear when leaving the Backup screen."
+          "body": "Backup shows Last backup, Total size, and Folder. Last backup uses the same color as its cloud status icon: green when a readable backup exists and red when it does not. Create Backup and Restore Backup are full-width capsule buttons; Create uses the primary label color and Restore stays system red. Create and Restore confirmations use system alerts instead of popover confirmation dialogs; alert actions use short labels: Backup and Restore. Backup feedback uses dismissible floating banners that auto-hide after 4 seconds or clear when leaving the Backup screen."
         },
         {
           "title": "Folder with an existing backup",

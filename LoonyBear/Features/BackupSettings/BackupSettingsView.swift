@@ -56,6 +56,34 @@ struct BackupSettingsView: View {
         .onDisappear {
             dismissVisibleBanner()
         }
+        .alert("Create backup?", isPresented: $isShowingCreateBackupConfirmation) {
+            Button("Backup") {
+                Task {
+                    await Task.yield()
+                    await viewModel.confirmCreateBackup()
+                }
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("A new backup file will be created in the selected folder.")
+        }
+        .alert("Restore backup?", isPresented: $isShowingRestoreBackupConfirmation) {
+            Button("Restore", role: .destructive) {
+                Task {
+                    await Task.yield()
+                    if await viewModel.confirmRestoreBackup() {
+                        appState.refreshDashboard()
+                        pillAppState.refreshDashboard()
+                        onRestoreComplete()
+                    }
+                }
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will replace current app data with the selected backup.")
+        }
         .sheet(isPresented: $viewModel.isShowingFolderPicker) {
             FolderPickerView { url in
                 viewModel.didPickFolder(url)
@@ -124,22 +152,6 @@ struct BackupSettingsView: View {
                     }
                 }
             )
-            .confirmationDialog(
-                "Create backup?",
-                isPresented: $isShowingCreateBackupConfirmation,
-                titleVisibility: .visible
-            ) {
-                Button("Create Backup") {
-                    Task {
-                        await Task.yield()
-                        await viewModel.confirmCreateBackup()
-                    }
-                }
-
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("A new backup file will be created in the selected folder.")
-            }
 
             BackupActionButton(
                 icon: "arrow.counterclockwise",
@@ -153,26 +165,6 @@ struct BackupSettingsView: View {
                     }
                 }
             )
-            .confirmationDialog(
-                "Restore backup?",
-                isPresented: $isShowingRestoreBackupConfirmation,
-                titleVisibility: .visible
-            ) {
-                Button("Restore Backup", role: .destructive) {
-                    Task {
-                        await Task.yield()
-                        if await viewModel.confirmRestoreBackup() {
-                            appState.refreshDashboard()
-                            pillAppState.refreshDashboard()
-                            onRestoreComplete()
-                        }
-                    }
-                }
-
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This will replace current app data with the selected backup.")
-            }
         }
     }
 
@@ -290,9 +282,7 @@ private struct BackupActionButton: View {
             HStack(spacing: 10) {
                 Group {
                     if isLoading {
-                        ProgressView()
-                            .tint(tint)
-                            .controlSize(.small)
+                        BackupProgressIcon(tint: tint)
                     } else {
                         Image(systemName: icon)
                             .imageScale(.medium)
@@ -311,6 +301,25 @@ private struct BackupActionButton: View {
         .controlSize(.large)
         .frame(maxWidth: .infinity)
         .disabled(!isEnabled)
+    }
+}
+
+private struct BackupProgressIcon: View {
+    let tint: Color
+    @State private var isRotating = false
+
+    var body: some View {
+        Image(systemName: "progress.indicator")
+            .imageScale(.medium)
+            .foregroundStyle(tint)
+            .rotationEffect(.degrees(isRotating ? 360 : 0))
+            .animation(.linear(duration: 0.85).repeatForever(autoreverses: false), value: isRotating)
+            .onAppear {
+                isRotating = true
+            }
+            .onDisappear {
+                isRotating = false
+            }
     }
 }
 

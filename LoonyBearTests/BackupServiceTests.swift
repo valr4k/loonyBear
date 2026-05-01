@@ -230,7 +230,7 @@ struct BackupServiceTests {
         let context = persistence.container.viewContext
         let defaults = try #require(UserDefaults(suiteName: "BackupServiceTests.\(UUID().uuidString)"))
         defaults.set(AppearanceMode.dark.rawValue, forKey: AppearanceMode.storageKey)
-        defaults.set(AppTint.red.rawValue, forKey: AppTint.storageKey)
+        defaults.set(AppTint.green.rawValue, forKey: AppTint.storageKey)
         let compressionService = CompressionService()
         let service = BackupService(
             context: context,
@@ -248,7 +248,7 @@ struct BackupServiceTests {
         let archive = try readArchive(from: folderURL, compressionService: compressionService)
         #expect(archive.settings == BackupAppSettings(
             appearanceMode: AppearanceMode.dark.rawValue,
-            appTint: AppTint.red.rawValue
+            appTint: AppTint.green.rawValue
         ))
     }
 
@@ -281,7 +281,7 @@ struct BackupServiceTests {
         let context = persistence.container.viewContext
         let defaults = try #require(UserDefaults(suiteName: "BackupServiceTests.\(UUID().uuidString)"))
         defaults.set(AppearanceMode.light.rawValue, forKey: AppearanceMode.storageKey)
-        defaults.set(AppTint.white.rawValue, forKey: AppTint.storageKey)
+        defaults.set(AppTint.indigo.rawValue, forKey: AppTint.storageKey)
         let service = BackupService(
             context: context,
             makeWorkContext: persistence.makeBackgroundContext,
@@ -300,6 +300,31 @@ struct BackupServiceTests {
 
         #expect(defaults.string(forKey: AppearanceMode.storageKey) == AppearanceMode.dark.rawValue)
         #expect(defaults.string(forKey: AppTint.storageKey) == AppTint.green.rawValue)
+    }
+
+    @Test
+    func restoreArchiveMigratesRemovedTintToBlue() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let defaults = try #require(UserDefaults(suiteName: "BackupServiceTests.\(UUID().uuidString)"))
+        defaults.set(AppTint.amber.rawValue, forKey: AppTint.storageKey)
+        let service = BackupService(
+            context: context,
+            makeWorkContext: persistence.makeBackgroundContext,
+            defaults: defaults,
+            compressionService: CompressionService()
+        )
+
+        try service.restoreArchive(
+            makeValidArchive(
+                settings: BackupAppSettings(
+                    appearanceMode: AppearanceMode.system.rawValue,
+                    appTint: "white"
+                )
+            )
+        )
+
+        #expect(defaults.string(forKey: AppTint.storageKey) == AppTint.blue.rawValue)
     }
 
     @Test

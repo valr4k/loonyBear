@@ -63,7 +63,7 @@ struct CreatePillView: View {
                     } label: {
                         AppToolbarIconLabel("Save", systemName: "checkmark")
                     }
-                    .appAccentTint()
+                    .appToolbarActionTint(isDisabled: !isFormValid || isSaving)
                     .fontWeight(.semibold)
                     .disabled(!isFormValid || isSaving)
                 }

@@ -37,7 +37,7 @@ The current app supports:
 - badge count derived from overdue items
 - local backup and restore
 - appearance mode and adaptive app tint settings, included in new backups
-- Blue/Indigo/Cyan/Teal/Green/Brown/Amber/Red/White app color palette with Blue as the default
+- Blue/Indigo/Green/Amber app color palette with Blue as the default
 - in-place schedule popovers for Create/Edit and Details screens
 - portrait-only orientation on iPhone
 - Rules & Logic in-app reference content

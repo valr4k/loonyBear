@@ -280,6 +280,7 @@ Delete is not available from card swipe actions.
 - Edit Habit includes a past active overdue day in save validation and disables Save until it is resolved
 - Edit Habit surfaces missing past-day review through the dismissible `AppFloatingWarningBanner`; if only the active overdue day is missing, the banner uses overdue-specific copy
 - Habit Details computes missing past days from `requiredPastScheduledDays`; it shows the same floating banner with active-overdue-specific copy when the only missing day is the active overdue day, otherwise it asks the user to open Edit and resolve the missing scheduled days
+- Edit Habit delete confirmation uses a system alert with `Cancel` and destructive `Delete` actions
 - missing past-day warning copy intentionally omits the date list; the validation error still carries the missing dates for logic/tests
 - rewrites rows day by day using `manual edit` or `skipped`
 - removes duplicate history rows for the same day except the primary latest row
@@ -380,6 +381,7 @@ Delete is not available from card swipe actions.
 - Edit Pill includes a past active overdue day in save validation and disables Save until it is resolved
 - Edit Pill surfaces missing past-day review through the dismissible `AppFloatingWarningBanner`; if only the active overdue day is missing, the banner uses overdue-specific copy
 - Pill Details computes missing past days from `requiredPastScheduledDays`; it shows the same floating banner with active-overdue-specific copy when the only missing day is the active overdue day, otherwise it asks the user to open Edit and resolve the missing scheduled days
+- Edit Pill delete confirmation uses a system alert with `Cancel` and destructive `Delete` actions
 - missing past-day warning copy intentionally omits the date list; the validation error still carries the missing dates for logic/tests
 - rewrites rows day by day using `manual edit` or `skipped`
 - removes duplicate history rows for the same day except the primary latest row
@@ -645,6 +647,7 @@ UI behavior:
 - `Create Backup` and `Restore Backup` are full-width capsule buttons
 - `Create Backup` uses the primary label color
 - `Restore Backup` stays system red
+- create and restore confirmation prompts use system alerts instead of popover-style confirmation dialogs; action labels are shortened to `Backup` and `Restore`
 - Folder selection only grants access and reloads backup metadata; it never applies the backup automatically
 - `BackupStatus.fileState` describes the selected folder as `none`, `available`, `created`, `restored`, or `unreadable`
 - readable backup files are fingerprinted from their compressed file data using SHA-256
@@ -732,7 +735,7 @@ Defined in `LoonyBear/Features/Settings/SettingsView.swift`.
 
 Contains:
 - Appearance segmented picker
-- Color palette with `Blue`, `Indigo`, `Cyan`, `Teal`, `Green`, `Brown`, `Amber`, `Red`, and `White`
+- Color palette with `Blue`, `Indigo`, `Green`, and `Amber`
 - Backup navigation
 - Rules & Logic navigation
 - app version and build footer
@@ -742,11 +745,10 @@ Navigation behavior:
 
 Appearance behavior:
 - `Blue` is the default app tint and appears first in the palette.
-- `White` uses adaptive `UIColor.label` contrast for active controls: black in Light mode and white in Dark mode.
-- `Blue`, `Indigo`, `Cyan`, `Teal`, `Green`, `Brown`, `Amber`, `Red`, and `White` use system colors. `Brown` maps to `UIColor.systemBrown`; `Amber` maps to `UIColor.systemOrange`.
+- `Blue`, `Indigo`, `Green`, and `Amber` use system colors. `Amber` maps to `UIColor.systemOrange`.
 - Tints apply to supported accent surfaces.
 - Page backgrounds remain `systemGroupedBackground`; the app tint background wash is currently disabled in `AppBackground`.
-- Legacy stored tint value `default` is migrated to `Blue`; legacy stored tint values `gray` and `yellow` are treated as `Brown`.
+- Legacy stored tint values `default`, `gray`, `yellow`, `cyan`, `teal`, `brown`, `red`, and `white` are migrated to `Blue`.
 - The root `TabView` is not globally tinted; tab item colors refresh through `UITabBarAppearance` so tint does not leak into child controls.
 - `LoonyBearApp` also updates visible `UITabBar` and `UINavigationBar` instances when app tint or appearance mode changes, so current screens update without requiring a tab switch.
 - Editable schedule checkmarks, Settings app-row icons, and Calendar Taken/Completed markers use the selected app tint.

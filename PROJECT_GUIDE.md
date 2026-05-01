@@ -118,14 +118,15 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
 - Pills do not use streak logic.
 - Notifications are scheduled only for the next 2 days.
 - Pill `Remind me in 10 mins` survives global regular pill reschedules.
-- Settings supports System/Light/Dark appearance and Blue/Indigo/Cyan/Teal/Green/Brown/Amber/Red/White app color selection; Blue is the default and first palette option.
+- Settings supports System/Light/Dark appearance and Blue/Indigo/Green/Amber app color selection; Blue is the default and first palette option.
 - App tint colors supported accent surfaces, while page backgrounds stay on the system grouped background.
 - Backup includes the selected appearance mode and app tint, while legacy backups without those settings keep the current appearance.
 - Custom calendars use arrow-only month navigation, without horizontal swipe paging.
 - Custom calendar blocks keep a stable six-week footprint when changing months.
 - Missing past-day review warnings use a dismissible floating red material banner on Edit and Details screens; they do not list dates and do not take space inside the calendar layout.
 - Schedule selection opens as a popover with full weekday names and no row dividers on Create/Edit and Details surfaces.
-- Backup actions are full-width capsule buttons; `Last backup` follows the cloud status icon color.
+- Edit Habit and Edit Pill delete confirmations use system alerts with `Cancel` and destructive `Delete` actions.
+- Backup actions are full-width capsule buttons; `Last backup` follows the cloud status icon color; backup action confirmations use system alerts with short action labels.
 - Backup action notices are floating banners derived from folder contents and remembered backup fingerprints, so already created/restored backups do not show restore-needed notices after reopening the screen. Backup success feedback uses green floating banners.
 - Settings child screens keep the custom tinted back button and preserve the native left-edge swipe-back gesture.
 - Reminder permission denial is handled with an alert that can open iOS Settings; the inline permission error banner is no longer used.

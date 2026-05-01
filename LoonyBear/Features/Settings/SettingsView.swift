@@ -104,7 +104,12 @@ struct SettingsView: View {
     }
 
     private var tintRow: some View {
-        HStack {
+        HStack(spacing: 14) {
+            Text("Tint color")
+                .foregroundStyle(.primary)
+
+            Spacer(minLength: 12)
+
             HStack(spacing: 8) {
                 ForEach(AppTint.allCases) { tint in
                     Button {
@@ -119,7 +124,6 @@ struct SettingsView: View {
                     .accessibilityLabel(tint.title)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .center)
         }
         .padding(.horizontal, AppLayout.rowHorizontalPadding)
         .padding(.vertical, AppLayout.rowVerticalPadding)
