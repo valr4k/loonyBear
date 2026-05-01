@@ -240,28 +240,16 @@ enum AppCopy {
     static let habitHistoryHint = "Today: None, Completed, or Skipped.\nPast days: Completed or Skipped only.\nYou can edit the last 30 days.\nDays before the start date can’t be edited"
     static let pillHistoryHint = "Today: None, Taken, or Skipped.\nPast days: Taken or Skipped only.\nYou can edit the last 30 days.\nDays before the start date can’t be edited"
 
-    static func overdueScheduledDayEditMessage(actionLabel: String, days: [Date]) -> String {
-        "Choose \(actionLabel) or Skipped for the overdue scheduled day before saving. Missing: \(formattedDays(days))."
+    static func overdueScheduledDayEditMessage(actionLabel: String) -> String {
+        "Choose \(actionLabel) or Skipped for the overdue scheduled day before saving."
     }
 
-    static func overdueScheduledDayDetailsMessage(actionLabel: String, days: [Date]) -> String {
-        "Open Edit and choose \(actionLabel) or Skipped for the overdue scheduled day. Missing: \(formattedDays(days))."
+    static func overdueScheduledDayDetailsMessage(actionLabel: String) -> String {
+        "Open Edit and choose \(actionLabel) or Skipped for the overdue scheduled day."
     }
 
-    static func missingScheduledDaysDetailsMessage(actionLabel: String, days: [Date]) -> String {
-        "Open Edit and choose \(actionLabel) or Skipped for every past scheduled day. Missing: \(formattedDays(days))."
-    }
-
-    private static func formattedDays(_ days: [Date]) -> String {
-        let sortedDays = days.sorted()
-        let visibleDays = sortedDays.prefix(3).map {
-            $0.formatted(date: .abbreviated, time: .omitted)
-        }
-        let remainingCount = sortedDays.count - visibleDays.count
-        guard remainingCount > 0 else {
-            return visibleDays.joined(separator: ", ")
-        }
-        return "\(visibleDays.joined(separator: ", ")), and \(remainingCount) more"
+    static func missingScheduledDaysDetailsMessage(actionLabel: String) -> String {
+        "Open Edit and choose \(actionLabel) or Skipped for every past scheduled day."
     }
 }
 
@@ -1244,6 +1232,51 @@ struct AppHistoryReviewRow: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(Color.orange.opacity(0.16), lineWidth: 1)
         )
+    }
+}
+
+struct AppFloatingWarningBanner: View {
+    let message: String
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Color(uiColor: .systemRed))
+
+            Text(message)
+                .font(.footnote)
+                .foregroundStyle(.primary)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button(action: onDismiss) {
+                Label("Dismiss", systemImage: "xmark.circle.fill")
+                    .labelStyle(.iconOnly)
+                    .font(.system(size: 17, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color(uiColor: .systemRed).opacity(0.18))
+                }
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color(uiColor: .systemRed).opacity(0.28), lineWidth: 1)
+        }
+        .shadow(color: Color.black.opacity(0.12), radius: 14, x: 0, y: 6)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 }
 

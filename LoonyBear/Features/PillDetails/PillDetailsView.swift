@@ -12,6 +12,7 @@ struct PillDetailsView: View {
     @State private var needsReloadOnAppear = false
     @State private var isShowingEdit = false
     @State private var isShowingSchedulePopover = false
+    @State private var isCalendarWarningDismissed = false
     @State private var displayedMonth: Date = {
         var calendar = Calendar.autoupdatingCurrent
         calendar.firstWeekday = 2
@@ -93,10 +94,6 @@ struct PillDetailsView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     AppFormSectionHeader(title: "Calendar")
 
-                    if let calendarReviewMessage = calendarReviewMessage(for: details) {
-                        AppHistoryReviewRow(message: calendarReviewMessage)
-                    }
-
                     AppCard {
                         PillReadOnlyMonthCalendarView(
                             month: displayedMonth,
@@ -138,6 +135,9 @@ struct PillDetailsView: View {
                 )
             }
         }
+        .overlay(alignment: .bottom) {
+            floatingCalendarWarningBanner
+        }
         .navigationTitle("Pill Details")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -174,6 +174,13 @@ struct PillDetailsView: View {
         .onReceive(NotificationCenter.default.publisher(for: .pillStoreDidChange)) { _ in
             reloadDetails()
         }
+        .onChange(of: floatingCalendarWarningMessage) { _, message in
+            if message == nil {
+                isCalendarWarningDismissed = false
+            }
+        }
+        .animation(.easeInOut(duration: 0.18), value: floatingCalendarWarningMessage)
+        .animation(.easeInOut(duration: 0.18), value: isCalendarWarningDismissed)
     }
 
     @ViewBuilder
@@ -198,6 +205,23 @@ struct PillDetailsView: View {
                 description: Text("This pill is no longer available.")
             )
         }
+    }
+
+    @ViewBuilder
+    private var floatingCalendarWarningBanner: some View {
+        if let message = floatingCalendarWarningMessage, !isCalendarWarningDismissed {
+            AppFloatingWarningBanner(message: message) {
+                isCalendarWarningDismissed = true
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 14)
+            .zIndex(1)
+        }
+    }
+
+    private var floatingCalendarWarningMessage: String? {
+        guard let details else { return nil }
+        return calendarReviewMessage(for: details)
     }
 
     private func reloadDetails() {
@@ -232,9 +256,9 @@ struct PillDetailsView: View {
         guard !missingPastDays.isEmpty else { return nil }
 
         if isOnlyActiveOverdueMissing(missingPastDays, activeOverdueDay: details.activeOverdueDay) {
-            return AppCopy.overdueScheduledDayDetailsMessage(actionLabel: "Taken", days: missingPastDays)
+            return AppCopy.overdueScheduledDayDetailsMessage(actionLabel: "Taken")
         }
-        return AppCopy.missingScheduledDaysDetailsMessage(actionLabel: "Taken", days: missingPastDays)
+        return AppCopy.missingScheduledDaysDetailsMessage(actionLabel: "Taken")
     }
 
     private func isOnlyActiveOverdueMissing(_ missingPastDays: [Date], activeOverdueDay: Date?) -> Bool {

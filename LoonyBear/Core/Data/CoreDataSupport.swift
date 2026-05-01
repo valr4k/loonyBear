@@ -228,33 +228,15 @@ enum EditableHistoryValidationError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .missingHabitPastDays(let days):
-            return Self.message(
-                actionLabel: "Completed",
-                days: days
-            )
-        case .missingPillPastDays(let days):
-            return Self.message(
-                actionLabel: "Taken",
-                days: days
-            )
+        case .missingHabitPastDays:
+            return Self.message(actionLabel: "Completed")
+        case .missingPillPastDays:
+            return Self.message(actionLabel: "Taken")
         }
     }
 
-    private static func message(actionLabel: String, days: [Date]) -> String {
-        "Choose \(actionLabel) or Skipped for every past scheduled day before saving. Missing: \(formattedDays(days))."
-    }
-
-    private static func formattedDays(_ days: [Date]) -> String {
-        let sortedDays = days.sorted()
-        let visibleDays = sortedDays.prefix(3).map {
-            $0.formatted(date: .abbreviated, time: .omitted)
-        }
-        let remainingCount = sortedDays.count - visibleDays.count
-        guard remainingCount > 0 else {
-            return visibleDays.joined(separator: ", ")
-        }
-        return "\(visibleDays.joined(separator: ", ")), and \(remainingCount) more"
+    private static func message(actionLabel: String) -> String {
+        "Choose \(actionLabel) or Skipped for every past scheduled day before saving."
     }
 }
 

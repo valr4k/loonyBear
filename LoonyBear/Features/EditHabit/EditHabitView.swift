@@ -16,6 +16,7 @@ struct EditHabitView: View {
     @State private var isSaving = false
     @State private var isShowingDeleteConfirmation = false
     @State private var isShowingNotificationSettingsAlert = false
+    @State private var isHistoryWarningDismissed = false
 
     init(
         details: HabitDetailsProjection,
@@ -50,12 +51,6 @@ struct EditHabitView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 AppFormSectionHeader(title: "Calendar")
-
-                if let currentHistoryReviewMessage {
-                    AppHistoryReviewRow(message: currentHistoryReviewMessage)
-                } else if let historyValidationMessage {
-                    AppCompactValidationBanner(message: historyValidationMessage)
-                }
 
                 AppCard {
                     HabitHistoryCalendarView(
@@ -100,6 +95,9 @@ struct EditHabitView: View {
             if let validationMessage {
                 AppValidationBanner(message: validationMessage)
             }
+        }
+        .overlay(alignment: .bottom) {
+            floatingHistoryWarningBanner
         }
         .contentShape(Rectangle())
         .onTapGesture {
@@ -150,8 +148,15 @@ struct EditHabitView: View {
         .onChange(of: draft.skippedDays) { _, _ in
             historyValidationMessage = nil
         }
+        .onChange(of: hasMissingPastDays) { _, hasMissingPastDays in
+            if !hasMissingPastDays {
+                isHistoryWarningDismissed = false
+            }
+        }
         .animation(.easeInOut(duration: 0.18), value: validationMessage)
         .animation(.easeInOut(duration: 0.18), value: historyValidationMessage)
+        .animation(.easeInOut(duration: 0.18), value: floatingHistoryWarningMessage)
+        .animation(.easeInOut(duration: 0.18), value: isHistoryWarningDismissed)
     }
 
     private var nameSection: some View {
@@ -210,6 +215,22 @@ struct EditHabitView: View {
         let missingPastDays = currentMissingPastDays
         guard !missingPastDays.isEmpty else { return nil }
         return historyReviewMessage(for: missingPastDays)
+    }
+
+    private var floatingHistoryWarningMessage: String? {
+        currentHistoryReviewMessage ?? historyValidationMessage
+    }
+
+    @ViewBuilder
+    private var floatingHistoryWarningBanner: some View {
+        if let message = floatingHistoryWarningMessage, !isHistoryWarningDismissed {
+            AppFloatingWarningBanner(message: message) {
+                isHistoryWarningDismissed = true
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 14)
+            .zIndex(1)
+        }
     }
 
     private var shouldShowNameValidation: Bool {
@@ -283,7 +304,7 @@ struct EditHabitView: View {
 
     private func historyReviewMessage(for missingPastDays: [Date]) -> String {
         if isOnlyActiveOverdueMissing(missingPastDays) {
-            return AppCopy.overdueScheduledDayEditMessage(actionLabel: "Completed", days: missingPastDays)
+            return AppCopy.overdueScheduledDayEditMessage(actionLabel: "Completed")
         }
         return EditableHistoryValidationError.missingHabitPastDays(missingPastDays).localizedDescription
     }

@@ -19,6 +19,7 @@ struct EditPillView: View {
     @State private var isDismissingKeyboardForNonTextControl = false
     @State private var isShowingDeleteConfirmation = false
     @State private var isShowingNotificationSettingsAlert = false
+    @State private var isHistoryWarningDismissed = false
 
     private enum Field: Hashable {
         case description
@@ -59,12 +60,6 @@ struct EditPillView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     AppFormSectionHeader(title: "Calendar")
-
-                    if let currentHistoryReviewMessage {
-                        AppHistoryReviewRow(message: currentHistoryReviewMessage)
-                    } else if let historyValidationMessage {
-                        AppCompactValidationBanner(message: historyValidationMessage)
-                    }
 
                     AppCard {
                         PillHistoryCalendarView(
@@ -111,6 +106,9 @@ struct EditPillView: View {
                 if let validationMessage {
                     AppValidationBanner(message: validationMessage)
                 }
+            }
+            .overlay(alignment: .bottom) {
+                floatingHistoryWarningBanner
             }
             .contentShape(Rectangle())
             .onTapGesture {
@@ -175,6 +173,11 @@ struct EditPillView: View {
             .onChange(of: draft.skippedDays) { _, _ in
                 historyValidationMessage = nil
             }
+            .onChange(of: hasMissingPastDays) { _, hasMissingPastDays in
+                if !hasMissingPastDays {
+                    isHistoryWarningDismissed = false
+                }
+            }
             .onChange(of: focusedField) { _, field in
                 guard field == .description else { return }
                 isDismissingKeyboardForNonTextControl = false
@@ -188,6 +191,8 @@ struct EditPillView: View {
             }
             .animation(.easeInOut(duration: 0.18), value: validationMessage)
             .animation(.easeInOut(duration: 0.18), value: historyValidationMessage)
+            .animation(.easeInOut(duration: 0.18), value: floatingHistoryWarningMessage)
+            .animation(.easeInOut(duration: 0.18), value: isHistoryWarningDismissed)
         }
     }
 
@@ -257,6 +262,22 @@ struct EditPillView: View {
         let missingPastDays = currentMissingPastDays
         guard !missingPastDays.isEmpty else { return nil }
         return historyReviewMessage(for: missingPastDays)
+    }
+
+    private var floatingHistoryWarningMessage: String? {
+        currentHistoryReviewMessage ?? historyValidationMessage
+    }
+
+    @ViewBuilder
+    private var floatingHistoryWarningBanner: some View {
+        if let message = floatingHistoryWarningMessage, !isHistoryWarningDismissed {
+            AppFloatingWarningBanner(message: message) {
+                isHistoryWarningDismissed = true
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 14)
+            .zIndex(1)
+        }
     }
 
     private var shouldShowDescriptionInset: Bool {
@@ -334,7 +355,7 @@ struct EditPillView: View {
 
     private func historyReviewMessage(for missingPastDays: [Date]) -> String {
         if isOnlyActiveOverdueMissing(missingPastDays) {
-            return AppCopy.overdueScheduledDayEditMessage(actionLabel: "Taken", days: missingPastDays)
+            return AppCopy.overdueScheduledDayEditMessage(actionLabel: "Taken")
         }
         return EditableHistoryValidationError.missingPillPastDays(missingPastDays).localizedDescription
     }
