@@ -7,6 +7,7 @@ struct CreateHabitView: View {
     @State private var draft = CreateHabitDraft()
     @State private var validationMessage: String?
     @State private var isSaving = false
+    @State private var isShowingNotificationSettingsAlert = false
 
     var body: some View {
         AppScreen(backgroundStyle: .habits, topPadding: 8) {
@@ -19,25 +20,32 @@ struct CreateHabitView: View {
                     AppValidationBanner(message: validationMessage)
                 }
             }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                AppDescriptionFieldSupport.dismissKeyboard()
+            }
         }
         .navigationTitle("Create Habit")
         .navigationBarTitleDisplayMode(.inline)
+        .scrollDismissesKeyboard(.immediately)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
+            ToolbarItem(placement: .cancellationAction) {
                 Button {
                     dismiss()
                 } label: {
-                    Image(systemName: "xmark")
+                    AppToolbarIconLabel(systemName: "xmark")
                 }
+                .appAccentTint()
                 .accessibilityLabel("Close")
             }
 
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .confirmationAction) {
                 Button {
                     saveHabit()
                 } label: {
-                    Image(systemName: "checkmark")
+                    AppToolbarIconLabel(systemName: "checkmark")
                 }
+                .appAccentTint()
                 .fontWeight(.semibold)
                 .accessibilityLabel("Save")
                 .disabled(!isFormValid || isSaving)
@@ -53,11 +61,13 @@ struct CreateHabitView: View {
             Task {
                 let granted = await appState.requestNotificationAuthorizationIfNeeded()
                 if !granted {
-                    validationMessage = AppCopy.notificationsRequired
+                    validationMessage = nil
+                    isShowingNotificationSettingsAlert = true
                     draft.reminderEnabled = false
                 }
             }
         }
+        .appNotificationSettingsAlert(isPresented: $isShowingNotificationSettingsAlert)
         .animation(.easeInOut(duration: 0.18), value: validationMessage)
     }
 
@@ -83,7 +93,8 @@ struct CreateHabitView: View {
         AppFormCardSection(title: "History") {
             AppStartDatePickerRow(
                 date: $draft.startDate,
-                range: selectableStartDateRange
+                range: selectableStartDateRange,
+                onTap: dismissKeyboardForNonTextControl
             )
         }
     }
@@ -91,12 +102,15 @@ struct CreateHabitView: View {
     private var notificationsSection: some View {
         AppNotificationSettingsSection(
             scheduleSummary: draft.scheduleDays.compactSummaryOrPlaceholder,
+            scheduleTap: dismissKeyboardForNonTextControl,
             reminderEnabled: $draft.reminderEnabled,
-            reminderDate: $draft.reminderTime.dateBinding(fallback: ReminderTime(hour: 20, minute: 0))
+            reminderDate: $draft.reminderTime.dateBinding(fallback: ReminderTime(hour: 20, minute: 0)),
+            reminderTimeTap: dismissKeyboardForNonTextControl
         ) {
             CreateHabitScheduleView(
                 scheduleDays: $draft.scheduleDays,
-                useScheduleForHistory: $draft.useScheduleForHistory
+                useScheduleForHistory: $draft.useScheduleForHistory,
+                dismissKeyboardForNonTextControl: dismissKeyboardForNonTextControl
             )
         }
     }
@@ -139,6 +153,10 @@ struct CreateHabitView: View {
             }
         }
     }
+
+    private func dismissKeyboardForNonTextControl() {
+        AppDescriptionFieldSupport.dismissKeyboard()
+    }
 }
 
 #Preview {
@@ -149,11 +167,12 @@ struct CreateHabitView: View {
 private struct CreateHabitScheduleView: View {
     @Binding var scheduleDays: WeekdaySet
     @Binding var useScheduleForHistory: Bool
+    let dismissKeyboardForNonTextControl: () -> Void
 
     var body: some View {
-        AppScheduleEditorScreen(
-            backgroundStyle: .habits,
+        AppScheduleEditorPopoverContent(
             scheduleDays: $scheduleDays,
+            onTap: dismissKeyboardForNonTextControl,
             useScheduleForHistory: $useScheduleForHistory,
             helperText: useScheduleForHistory
                 ? AppCopy.habitHistoryFollowsSchedule

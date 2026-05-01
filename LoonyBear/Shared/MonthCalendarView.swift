@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MonthCalendarView<DayContent: View>: View {
     private let calendarSpacing: CGFloat = 6
+    private let fullMonthWeekCount: CGFloat = 6
     private let weekdayRowHeight: CGFloat = 20
 
     let month: Date
@@ -37,14 +38,14 @@ struct MonthCalendarView<DayContent: View>: View {
 
                 Spacer()
 
-                HStack(spacing: 18) {
+                HStack(spacing: 28) {
                     Button {
                         changeMonth(step: -1)
                     } label: {
                         Image(systemName: "chevron.left")
                             .font(.title3.weight(.semibold))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(MonthCalendarArrowButtonStyle())
                     .disabled(!canGoBackward)
                     .foregroundStyle(canGoBackward ? AnyShapeStyle(.primary) : AnyShapeStyle(.tertiary))
 
@@ -54,7 +55,7 @@ struct MonthCalendarView<DayContent: View>: View {
                         Image(systemName: "chevron.right")
                             .font(.title3.weight(.semibold))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(MonthCalendarArrowButtonStyle())
                     .disabled(!canGoForward)
                     .foregroundStyle(canGoForward ? AnyShapeStyle(.primary) : AnyShapeStyle(.tertiary))
                 }
@@ -71,19 +72,22 @@ struct MonthCalendarView<DayContent: View>: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
 
-                ForEach(dayRows.indices, id: \.self) { rowIndex in
-                    HStack(spacing: calendarSpacing) {
-                        ForEach(dayRows[rowIndex], id: \.id) { day in
-                            if let date = day.date {
-                                dayContent(date, cellSize)
-                            } else {
-                                Color.clear
-                                    .frame(width: cellSize, height: cellSize)
+                VStack(spacing: weekRowSpacing) {
+                    ForEach(dayRows.indices, id: \.self) { rowIndex in
+                        HStack(spacing: calendarSpacing) {
+                            ForEach(dayRows[rowIndex], id: \.id) { day in
+                                if let date = day.date {
+                                    dayContent(date, cellSize)
+                                } else {
+                                    Color.clear
+                                        .frame(width: cellSize, height: cellSize)
+                                }
                             }
                         }
+                        .frame(maxWidth: .infinity, alignment: .center)
                     }
-                    .frame(maxWidth: .infinity, alignment: .center)
                 }
+                .frame(height: fixedDayGridHeight)
             }
         }
         .contentShape(Rectangle())
@@ -96,16 +100,6 @@ struct MonthCalendarView<DayContent: View>: View {
         .onPreferenceChange(MonthCalendarWidthPreferenceKey.self) { width in
             availableWidth = width
         }
-        .gesture(
-            DragGesture(minimumDistance: 24)
-                .onEnded { value in
-                    if value.translation.width < -50 {
-                        changeMonth(step: 1)
-                    } else if value.translation.width > 50 {
-                        changeMonth(step: -1)
-                    }
-                }
-        )
     }
 
     private var dayRows: [[MonthCalendarCell]] {
@@ -120,6 +114,18 @@ struct MonthCalendarView<DayContent: View>: View {
         guard availableWidth > 0 else { return 40 }
         let raw = floor((availableWidth - calendarSpacing * 6) / 7)
         return min(max(raw, 35), 40)
+    }
+
+    private var fixedDayGridHeight: CGFloat {
+        cellSize * fullMonthWeekCount + calendarSpacing * (fullMonthWeekCount - 1)
+    }
+
+    private var weekRowSpacing: CGFloat {
+        let visibleRows = CGFloat(max(dayRows.count, 1))
+        guard visibleRows > 1 else { return 0 }
+
+        let remainingHeight = fixedDayGridHeight - cellSize * visibleRows
+        return max(0, remainingHeight / (visibleRows - 1))
     }
 
     private var canGoBackward: Bool {
@@ -137,6 +143,12 @@ struct MonthCalendarView<DayContent: View>: View {
         let nextIndex = currentIndex + step
         guard availableMonths.indices.contains(nextIndex) else { return }
         onMonthChange(availableMonths[nextIndex])
+    }
+}
+
+private struct MonthCalendarArrowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
     }
 }
 

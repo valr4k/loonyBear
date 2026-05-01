@@ -5,21 +5,242 @@ enum AppLayout {
     static let screenSpacing: CGFloat = 24
     static let rowHorizontalPadding: CGFloat = 18
     static let rowVerticalPadding: CGFloat = 18
+    static let schedulePopoverRowVerticalPadding: CGFloat = 12
     static let inlinePadding: CGFloat = 4
     static let cardCornerRadius: CGFloat = 22
     static let insetCardCornerRadius: CGFloat = 18
     static let listIconWidth: CGFloat = 22
     static let listIconSize: CGFloat = 18
     static let actionIconSize: CGFloat = 20
+    static let tintSwatchSize: CGFloat = 26
+}
+
+enum AppTint: String, CaseIterable, Identifiable {
+    static let storageKey = "app_tint"
+
+    case blue
+    case indigo
+    case cyan
+    case teal
+    case green
+    case brown
+    case amber
+    case red
+    case white
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .blue:
+            return "Blue"
+        case .indigo:
+            return "Indigo"
+        case .cyan:
+            return "Cyan"
+        case .teal:
+            return "Teal"
+        case .green:
+            return "Green"
+        case .brown:
+            return "Brown"
+        case .amber:
+            return "Amber"
+        case .red:
+            return "Red"
+        case .white:
+            return "White"
+        }
+    }
+
+    var accentColor: Color {
+        Color(uiColor: accentUIColor)
+    }
+
+    var accentUIColor: UIColor {
+        switch self {
+        case .white:
+            return .label
+        case .blue, .indigo, .cyan, .teal, .green, .brown, .amber, .red:
+            return uiColor
+        }
+    }
+
+    var uiColor: UIColor {
+        switch self {
+        case .white:
+            return .white
+        case .blue:
+            return .systemBlue
+        case .indigo:
+            return .systemIndigo
+        case .cyan:
+            return .systemCyan
+        case .teal:
+            return .systemTeal
+        case .green:
+            return .systemGreen
+        case .brown:
+            return .systemBrown
+        case .amber:
+            return .systemOrange
+        case .red:
+            return .systemRed
+        }
+    }
+
+    var swatchColor: Color {
+        Color(uiColor: uiColor)
+    }
+
+    var swatchCheckmarkColor: Color {
+        switch self {
+        case .white:
+            return .black
+        case .blue, .indigo, .cyan, .teal, .green, .brown, .amber, .red:
+            return .white
+        }
+    }
+
+    func calendarPositiveForeground(for colorScheme: ColorScheme) -> Color {
+        switch self {
+        case .white:
+            return colorScheme == .dark ? .black : .white
+        case .blue, .indigo, .cyan, .teal, .green, .brown, .amber, .red:
+            return .white
+        }
+    }
+
+    func backgroundWashOpacity(for colorScheme: ColorScheme) -> Double {
+        switch colorScheme {
+        case .dark:
+            return 0.1
+        case .light:
+            return 0.075
+        @unknown default:
+            return 0.075
+        }
+    }
+
+    static func stored(rawValue: String) -> AppTint {
+        switch rawValue {
+        case "default":
+            return .blue
+        case "gray", "yellow":
+            return .brown
+        default:
+            return AppTint(rawValue: rawValue) ?? .blue
+        }
+    }
+
+    static func isValidStoredRawValue(_ rawValue: String) -> Bool {
+        AppTint(rawValue: rawValue) != nil || rawValue == "default" || rawValue == "gray" || rawValue == "yellow"
+    }
+}
+
+private struct AppTintModifier: ViewModifier {
+    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
+
+    func body(content: Content) -> some View {
+        content.tint(AppTint.stored(rawValue: appTintRawValue).accentColor)
+    }
+}
+
+private struct AppAccentForegroundModifier: ViewModifier {
+    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
+
+    func body(content: Content) -> some View {
+        content.foregroundStyle(AppTint.stored(rawValue: appTintRawValue).accentColor)
+    }
+}
+
+private struct AppBackButtonModifier: ViewModifier {
+    @Environment(\.dismiss) private var dismiss
+
+    func body(content: Content) -> some View {
+        content
+            .navigationBarBackButtonHidden(true)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        AppToolbarIconLabel(systemName: "chevron.left")
+                    }
+                    .appAccentTint()
+                    .accessibilityLabel("Back")
+                }
+            }
+    }
+}
+
+struct AppToolbarIconLabel: View {
+    let systemName: String
+
+    var body: some View {
+        Image(systemName: systemName)
+            .frame(width: 56, height: 56)
+            .contentShape(Circle())
+    }
+}
+
+struct AppToolbarTextLabel: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .frame(minWidth: 64, minHeight: 52)
+            .contentShape(Capsule())
+    }
+}
+
+extension View {
+    func appAccentTint() -> some View {
+        modifier(AppTintModifier())
+    }
+
+    func appAccentForeground() -> some View {
+        modifier(AppAccentForegroundModifier())
+    }
+
+    func appTintedBackButton() -> some View {
+        modifier(AppBackButtonModifier())
+    }
+
+    func appNotificationSettingsAlert(isPresented: Binding<Bool>) -> some View {
+        modifier(AppNotificationSettingsAlertModifier(isPresented: isPresented))
+    }
+}
+
+private struct AppNotificationSettingsAlertModifier: ViewModifier {
+    @Binding var isPresented: Bool
+    @Environment(\.openURL) private var openURL
+
+    func body(content: Content) -> some View {
+        content
+            .alert("Notifications are off", isPresented: $isPresented) {
+                Button("Open Settings") {
+                    openAppSettings()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(AppCopy.notificationsRequired)
+            }
+    }
+
+    private func openAppSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        openURL(url)
+    }
 }
 
 enum AppCopy {
     static let chooseAtLeastOneDay = "Choose at least one day."
     static let notificationsRequired = "Turn on notifications in Settings to use reminders."
     static let backupFolderHint = "Backups stay in the selected Files folder even if the app is deleted. After reinstalling, choose the same folder again before restoring."
-    static let pillHistoryFollowsSchedule = "History follows your selected schedule from the start date."
+    static let pillHistoryFollowsSchedule = "History follows schedule from start date."
     static let pillHistoryCountsEveryDay = "History counts every day from the start date."
-    static let habitHistoryFollowsSchedule = "History follows your selected schedule from the start date."
+    static let habitHistoryFollowsSchedule = "History follows schedule from start date."
     static let habitHistoryCountsEveryDay = "History counts every day from the start date."
     static let pillDescriptionPlaceholder = "Notes (optional)"
     static let habitHistoryHint = "Today: None, Completed, or Skipped.\nPast days: Completed or Skipped only.\nYou can edit the last 30 days.\nDays before the start date can’t be edited"
@@ -78,6 +299,7 @@ struct AppScreen<Content: View>: View {
 struct AppBackground: View {
     let style: AppBackgroundStyle
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
 
     init(style: AppBackgroundStyle = .default) {
         self.style = style
@@ -94,11 +316,15 @@ struct AppBackground: View {
     }
 
     private var tintColor: Color {
-        .clear
+        Color(uiColor: appTint.uiColor)
     }
 
     private var tintOpacity: Double {
         0
+    }
+
+    private var appTint: AppTint {
+        AppTint.stored(rawValue: appTintRawValue)
     }
 }
 
@@ -156,6 +382,7 @@ struct AppValueRow: View {
     let value: String
     var valueColor: AnyShapeStyle = AnyShapeStyle(.secondary)
     var showsChevron = false
+    var usesTintedChevron = false
 
     var body: some View {
         HStack(spacing: 16) {
@@ -164,17 +391,12 @@ struct AppValueRow: View {
 
             Spacer()
 
-            HStack(spacing: 7) {
-                Text(value)
-                    .foregroundStyle(valueColor)
-                    .multilineTextAlignment(.trailing)
-
-                if showsChevron {
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                }
-            }
+            AppReadOnlyValueCapsule(
+                text: value,
+                valueColor: valueColor,
+                showsChevron: showsChevron,
+                usesTintedChevron: usesTintedChevron
+            )
         }
         .padding(.horizontal, AppLayout.rowHorizontalPadding)
         .padding(.vertical, AppLayout.rowVerticalPadding)
@@ -182,38 +404,166 @@ struct AppValueRow: View {
     }
 }
 
-struct AppSchedulePickerRow<Destination: View>: View {
+private struct AppReadOnlyValueCapsule: View {
+    let text: String
+    var valueColor: AnyShapeStyle = AnyShapeStyle(.secondary)
+    var showsChevron = false
+    var usesTintedChevron = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(text)
+                .foregroundStyle(valueColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .multilineTextAlignment(.trailing)
+
+            if showsChevron {
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .modifier(AppChevronForegroundStyle(usesTint: usesTintedChevron))
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 7)
+        .background {
+            Capsule()
+                .fill(Color(uiColor: .tertiarySystemFill))
+        }
+    }
+}
+
+private struct AppChevronForegroundStyle: ViewModifier {
+    let usesTint: Bool
+
+    func body(content: Content) -> some View {
+        if usesTint {
+            content.appAccentForeground()
+        } else {
+            content.foregroundStyle(.tertiary)
+        }
+    }
+}
+
+private struct AppPickerValueCapsule: View {
+    let text: String
+    var showsChevron = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(text)
+                .multilineTextAlignment(.trailing)
+
+            if showsChevron {
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+            }
+        }
+        .appAccentForeground()
+        .padding(.horizontal, 14)
+        .padding(.vertical, 7)
+        .background {
+            Capsule()
+                .fill(Color(uiColor: .tertiarySystemFill))
+        }
+    }
+}
+
+@MainActor
+private enum AppDatePickerPopoverPrewarmer {
+    private static var didWarmUp = false
+    private static var isWarmingUp = false
+    private static var retainedWarmUpView: UIView?
+
+    static func warmUpDeferred() async {
+        guard !didWarmUp, !isWarmingUp else { return }
+        isWarmingUp = true
+        try? await Task.sleep(nanoseconds: 180_000_000)
+
+        guard !Task.isCancelled else {
+            isWarmingUp = false
+            return
+        }
+
+        warmUpNow()
+        isWarmingUp = false
+    }
+
+    private static func warmUpNow() {
+        guard !didWarmUp else { return }
+        didWarmUp = true
+
+        let container = UIView(frame: CGRect(x: 0, y: 0, width: 340, height: 260))
+        container.alpha = 0
+        container.isUserInteractionEnabled = false
+
+        let datePicker = UIDatePicker(frame: CGRect(x: 0, y: 0, width: 320, height: 260))
+        datePicker.datePickerMode = .date
+        datePicker.preferredDatePickerStyle = .inline
+
+        let timePicker = UIDatePicker(frame: CGRect(x: 0, y: 0, width: 220, height: 180))
+        timePicker.datePickerMode = .time
+        timePicker.preferredDatePickerStyle = .wheels
+
+        container.addSubview(datePicker)
+        container.addSubview(timePicker)
+        container.setNeedsLayout()
+        container.layoutIfNeeded()
+
+        retainedWarmUpView = container
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            retainedWarmUpView = nil
+        }
+    }
+}
+
+struct AppSchedulePickerRow<PopoverContent: View>: View {
     let value: String
     let onTap: (() -> Void)?
-    @ViewBuilder let destination: Destination
+    @ViewBuilder let popoverContent: PopoverContent
+    @State private var isShowingPopover = false
 
     init(
         value: String,
         onTap: (() -> Void)? = nil,
-        @ViewBuilder destination: () -> Destination
+        @ViewBuilder popoverContent: () -> PopoverContent
     ) {
         self.value = value
         self.onTap = onTap
-        self.destination = destination()
+        self.popoverContent = popoverContent()
     }
 
     var body: some View {
-        NavigationLink {
-            destination
-        } label: {
-            rowContent
+        rowContent
+            .contentShape(Rectangle())
+            .onTapGesture {
+                AppDescriptionFieldSupport.dismissKeyboard()
+                onTap?()
+                isShowingPopover = true
+            }
+        .popover(
+            isPresented: $isShowingPopover,
+            attachmentAnchor: .point(.trailing),
+            arrowEdge: .trailing
+        ) {
+            popoverContent
+                .presentationCompactAdaptation(.popover)
+                .presentationBackground(.clear)
         }
-        .buttonStyle(.plain)
-        .appTapAction(onTap)
     }
 
     private var rowContent: some View {
-        AppValueRow(
-            title: "Schedule",
-            value: value,
-            valueColor: AnyShapeStyle(.secondary),
-            showsChevron: true
-        )
+        HStack(spacing: 16) {
+            Text("Schedule")
+                .foregroundStyle(.primary)
+
+            Spacer()
+
+            AppPickerValueCapsule(text: value, showsChevron: true)
+        }
+        .padding(.horizontal, AppLayout.rowHorizontalPadding)
+        .padding(.vertical, AppLayout.rowVerticalPadding)
     }
 }
 
@@ -221,6 +571,7 @@ struct AppReminderTimeRows: View {
     @Binding var isEnabled: Bool
     @Binding var reminderDate: Date
     let onTimeTap: (() -> Void)?
+    @State private var isShowingTimePicker = false
 
     init(
         isEnabled: Binding<Bool>,
@@ -242,6 +593,9 @@ struct AppReminderTimeRows: View {
 
                 Toggle("", isOn: $isEnabled)
                     .labelsHidden()
+                    .simultaneousGesture(TapGesture().onEnded {
+                        dismissKeyboardForNonTextControl()
+                    })
             }
             .padding(.horizontal, AppLayout.rowHorizontalPadding)
             .padding(.vertical, AppLayout.rowVerticalPadding)
@@ -251,15 +605,50 @@ struct AppReminderTimeRows: View {
                 timePickerRow
             }
         }
+        .task {
+            await AppDatePickerPopoverPrewarmer.warmUpDeferred()
+        }
     }
 
     @ViewBuilder
     private var timePickerRow: some View {
-        DatePicker("Time", selection: $reminderDate, displayedComponents: .hourAndMinute)
-            .datePickerStyle(.compact)
-            .appTapAction(onTimeTap)
-            .padding(.horizontal, AppLayout.rowHorizontalPadding)
-            .padding(.vertical, AppLayout.rowVerticalPadding)
+        HStack(spacing: 16) {
+            Text("Time")
+                .foregroundStyle(.primary)
+
+            Spacer()
+
+            AppPickerValueCapsule(text: formattedTime)
+        }
+        .padding(.horizontal, AppLayout.rowHorizontalPadding)
+        .padding(.vertical, AppLayout.rowVerticalPadding)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            dismissKeyboardForNonTextControl()
+            isShowingTimePicker = true
+        }
+        .popover(
+            isPresented: $isShowingTimePicker,
+            attachmentAnchor: .point(.trailing),
+            arrowEdge: .trailing
+        ) {
+            DatePicker("", selection: $reminderDate, displayedComponents: .hourAndMinute)
+                .datePickerStyle(.wheel)
+                .labelsHidden()
+                .appAccentTint()
+                .frame(width: 220, height: 180)
+                .presentationCompactAdaptation(.popover)
+        }
+    }
+
+    private var formattedTime: String {
+        let components = Calendar.current.dateComponents([.hour, .minute], from: reminderDate)
+        return String(format: "%02d:%02d", components.hour ?? 0, components.minute ?? 0)
+    }
+
+    private func dismissKeyboardForNonTextControl() {
+        AppDescriptionFieldSupport.dismissKeyboard()
+        onTimeTap?()
     }
 }
 
@@ -267,6 +656,7 @@ struct AppStartDatePickerRow: View {
     @Binding var date: Date
     let range: ClosedRange<Date>
     let onTap: (() -> Void)?
+    @State private var isShowingDatePicker = false
 
     init(
         date: Binding<Date>,
@@ -279,16 +669,47 @@ struct AppStartDatePickerRow: View {
     }
 
     var body: some View {
-        DatePicker(
-            "Start Date",
-            selection: $date,
-            in: range,
-            displayedComponents: .date
-        )
-        .datePickerStyle(.compact)
-        .appTapAction(onTap)
+        HStack(spacing: 16) {
+            Text("Start Date")
+                .foregroundStyle(.primary)
+
+            Spacer()
+
+            AppPickerValueCapsule(text: formattedDate)
+        }
         .padding(.horizontal, AppLayout.rowHorizontalPadding)
         .padding(.vertical, AppLayout.rowVerticalPadding)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            AppDescriptionFieldSupport.dismissKeyboard()
+            onTap?()
+            isShowingDatePicker = true
+        }
+        .popover(
+            isPresented: $isShowingDatePicker,
+            attachmentAnchor: .point(.trailing),
+            arrowEdge: .trailing
+        ) {
+            DatePicker(
+                "",
+                selection: $date,
+                in: range,
+                displayedComponents: .date
+            )
+            .datePickerStyle(.graphical)
+            .labelsHidden()
+            .appAccentTint()
+            .frame(width: 320)
+            .padding(8)
+            .presentationCompactAdaptation(.popover)
+        }
+        .task {
+            await AppDatePickerPopoverPrewarmer.warmUpDeferred()
+        }
+    }
+
+    private var formattedDate: String {
+        date.formatted(date: .abbreviated, time: .omitted)
     }
 }
 
@@ -303,13 +724,13 @@ struct AppStartDateValueRow: View {
     }
 }
 
-struct AppNotificationSettingsSection<Destination: View>: View {
+struct AppNotificationSettingsSection<PopoverContent: View>: View {
     let scheduleSummary: String
     let scheduleTap: (() -> Void)?
     @Binding var reminderEnabled: Bool
     @Binding var reminderDate: Date
     let reminderTimeTap: (() -> Void)?
-    @ViewBuilder let scheduleDestination: Destination
+    @ViewBuilder let schedulePopoverContent: PopoverContent
 
     init(
         scheduleSummary: String,
@@ -317,14 +738,14 @@ struct AppNotificationSettingsSection<Destination: View>: View {
         reminderEnabled: Binding<Bool>,
         reminderDate: Binding<Date>,
         reminderTimeTap: (() -> Void)? = nil,
-        @ViewBuilder scheduleDestination: () -> Destination
+        @ViewBuilder schedulePopoverContent: () -> PopoverContent
     ) {
         self.scheduleSummary = scheduleSummary
         self.scheduleTap = scheduleTap
         _reminderEnabled = reminderEnabled
         _reminderDate = reminderDate
         self.reminderTimeTap = reminderTimeTap
-        self.scheduleDestination = scheduleDestination()
+        self.schedulePopoverContent = schedulePopoverContent()
     }
 
     var body: some View {
@@ -337,7 +758,7 @@ struct AppNotificationSettingsSection<Destination: View>: View {
                         value: scheduleSummary,
                         onTap: scheduleTap
                     ) {
-                        scheduleDestination
+                        schedulePopoverContent
                     }
 
                     AppSectionDivider()
@@ -372,6 +793,10 @@ extension Binding where Value == ReminderTime {
 }
 
 enum AppDescriptionFieldSupport {
+    static func dismissKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
     static func shouldShowInset<Field: Equatable>(
         focusedField: Field?,
         descriptionField: Field,
@@ -407,11 +832,11 @@ enum AppDescriptionFieldSupport {
         setFocusedField: @escaping (Field?) -> Void,
         setIsDismissingKeyboardForNonTextControl: @escaping (Bool) -> Void
     ) {
+        dismissKeyboard()
         guard focusedField == descriptionField else { return }
 
         setIsDismissingKeyboardForNonTextControl(true)
         setFocusedField(nil)
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             setIsDismissingKeyboardForNonTextControl(false)
@@ -539,46 +964,131 @@ struct AppScheduleEditorScreen: View {
     var body: some View {
         AppScreen(backgroundStyle: backgroundStyle, topPadding: 8) {
             VStack(alignment: .leading, spacing: 8) {
-                AppCard {
-                    VStack(alignment: .leading, spacing: 0) {
-                        InlineDaysSelector(selection: $scheduleDays)
-                            .appTapAction(onTap)
-
-                        if let useScheduleForHistory {
-                            AppSectionDivider()
-
-                            HStack(spacing: 16) {
-                                Text("Use schedule for history?")
-                                    .foregroundStyle(.primary)
-
-                                Spacer()
-
-                                Toggle("", isOn: useScheduleForHistory)
-                                    .labelsHidden()
-                            }
-                            .padding(.horizontal, AppLayout.rowHorizontalPadding)
-                            .padding(.vertical, AppLayout.rowVerticalPadding)
-                            .appTapAction(onTap)
-                        }
-
-                        if scheduleDays.rawValue == 0 {
-                            HStack {
-                                AppInlineErrorText(text: AppCopy.chooseAtLeastOneDay)
-                                Spacer()
-                            }
-                            .padding(.horizontal, AppLayout.rowHorizontalPadding)
-                            .padding(.bottom, 16)
-                        }
-                    }
-                }
-
-                if let helperText {
-                    AppHelperText(text: helperText)
-                }
+                AppScheduleEditorSectionContent(
+                    scheduleDays: $scheduleDays,
+                    onTap: onTap,
+                    useScheduleForHistory: useScheduleForHistory,
+                    helperText: helperText
+                )
             }
         }
         .navigationTitle("Schedule")
         .navigationBarTitleDisplayMode(.inline)
+        .appTintedBackButton()
+    }
+}
+
+struct AppScheduleEditorPopoverContent: View {
+    @Binding var scheduleDays: WeekdaySet
+    let onTap: (() -> Void)?
+    let useScheduleForHistory: Binding<Bool>?
+    let helperText: String?
+
+    init(
+        scheduleDays: Binding<WeekdaySet>,
+        onTap: (() -> Void)? = nil,
+        useScheduleForHistory: Binding<Bool>? = nil,
+        helperText: String? = nil
+    ) {
+        _scheduleDays = scheduleDays
+        self.onTap = onTap
+        self.useScheduleForHistory = useScheduleForHistory
+        self.helperText = helperText
+    }
+
+    var body: some View {
+        AppScheduleEditorPopoverBody(
+            scheduleDays: $scheduleDays,
+            onTap: onTap,
+            useScheduleForHistory: useScheduleForHistory,
+            helperText: helperText
+        )
+    }
+}
+
+private struct AppScheduleEditorSectionContent: View {
+    @Binding var scheduleDays: WeekdaySet
+    let onTap: (() -> Void)?
+    let useScheduleForHistory: Binding<Bool>?
+    let helperText: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            AppCard {
+                AppScheduleEditorListContent(
+                    scheduleDays: $scheduleDays,
+                    onTap: onTap,
+                    useScheduleForHistory: useScheduleForHistory
+                )
+            }
+
+            if let helperText {
+                AppHelperText(text: helperText)
+            }
+        }
+    }
+}
+
+private struct AppScheduleEditorPopoverBody: View {
+    @Binding var scheduleDays: WeekdaySet
+    let onTap: (() -> Void)?
+    let useScheduleForHistory: Binding<Bool>?
+    let helperText: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            AppScheduleEditorListContent(
+                scheduleDays: $scheduleDays,
+                onTap: onTap,
+                useScheduleForHistory: useScheduleForHistory
+            )
+
+            if let helperText {
+                AppHelperText(text: helperText)
+                    .padding(.horizontal, 12)
+                    .padding(.top, -18)
+                    .padding(.bottom, 12)
+            }
+        }
+        .frame(width: 340)
+    }
+}
+
+private struct AppScheduleEditorListContent: View {
+    @Binding var scheduleDays: WeekdaySet
+    let onTap: (() -> Void)?
+    let useScheduleForHistory: Binding<Bool>?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            InlineDaysSelector(selection: $scheduleDays)
+                .appTapAction(onTap)
+
+            if let useScheduleForHistory {
+                HStack(spacing: 16) {
+                    Text("Use schedule for history?")
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer(minLength: 12)
+
+                    Toggle("", isOn: useScheduleForHistory)
+                        .labelsHidden()
+                }
+                .padding(.horizontal, AppLayout.rowHorizontalPadding)
+                .padding(.vertical, AppLayout.rowVerticalPadding)
+                .appTapAction(onTap)
+            }
+
+            if scheduleDays.rawValue == 0 {
+                HStack {
+                    AppInlineErrorText(text: AppCopy.chooseAtLeastOneDay)
+                    Spacer()
+                }
+                .padding(.horizontal, AppLayout.rowHorizontalPadding)
+                .padding(.bottom, 16)
+            }
+        }
     }
 }
 
@@ -587,6 +1097,7 @@ private struct CenteredInputTextField: UIViewRepresentable {
     let placeholder: String
     let capitalization: UITextAutocapitalizationType
     let autocorrectionType: UITextAutocorrectionType
+    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
 
     func makeCoordinator() -> Coordinator {
         Coordinator(text: $text)
@@ -604,7 +1115,7 @@ private struct CenteredInputTextField: UIViewRepresentable {
         textField.enablesReturnKeyAutomatically = false
         textField.font = .systemFont(ofSize: 20, weight: .semibold)
         textField.textColor = .label
-        textField.tintColor = .systemBlue
+        textField.tintColor = AppTint.stored(rawValue: appTintRawValue).accentUIColor
         textField.textAlignment = .center
         textField.contentHorizontalAlignment = .center
         textField.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -624,6 +1135,7 @@ private struct CenteredInputTextField: UIViewRepresentable {
         if uiView.text != text {
             uiView.text = text
         }
+        uiView.tintColor = AppTint.stored(rawValue: appTintRawValue).accentUIColor
     }
 
     final class Coordinator: NSObject, UITextFieldDelegate {
@@ -805,23 +1317,46 @@ struct AppReadOnlyScheduleView: View {
 
     var body: some View {
         AppScreen(backgroundStyle: backgroundStyle, topPadding: 8) {
-            AppCard {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(WeekdaySet.orderedDays.enumerated()), id: \.offset) { index, day in
-                        AppReadOnlyScheduleRow(
-                            title: day.0,
-                            isSelected: scheduleDays.contains(day.1)
-                        )
-
-                        if index < WeekdaySet.orderedDays.count - 1 {
-                            AppSectionDivider()
-                        }
-                    }
-                }
-            }
+            AppReadOnlyScheduleCard(scheduleDays: scheduleDays)
         }
         .navigationTitle("Schedule")
         .navigationBarTitleDisplayMode(.inline)
+        .appTintedBackButton()
+    }
+}
+
+struct AppReadOnlySchedulePopoverContent: View {
+    let scheduleDays: WeekdaySet
+
+    var body: some View {
+        AppReadOnlyScheduleList(scheduleDays: scheduleDays)
+            .frame(width: 280)
+            .presentationCompactAdaptation(.popover)
+    }
+}
+
+private struct AppReadOnlyScheduleCard: View {
+    let scheduleDays: WeekdaySet
+
+    var body: some View {
+        AppCard {
+            AppReadOnlyScheduleList(scheduleDays: scheduleDays)
+        }
+    }
+}
+
+private struct AppReadOnlyScheduleList: View {
+    let scheduleDays: WeekdaySet
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(WeekdayDisplay.fullNames, id: \.label) { day in
+                AppReadOnlyScheduleRow(
+                    title: day.label,
+                    isSelected: scheduleDays.contains(day.value)
+                )
+            }
+        }
     }
 }
 
@@ -843,7 +1378,7 @@ private struct AppReadOnlyScheduleRow: View {
             }
         }
         .padding(.horizontal, AppLayout.rowHorizontalPadding)
-        .padding(.vertical, AppLayout.rowVerticalPadding)
+        .padding(.vertical, AppLayout.schedulePopoverRowVerticalPadding)
     }
 }
 
@@ -867,7 +1402,7 @@ struct AppEmptyStateCard: View {
             VStack(spacing: 16) {
                 Image(systemName: symbol)
                     .font(.system(size: 30, weight: .regular))
-                    .foregroundStyle(.blue)
+                    .appAccentForeground()
 
                 VStack(spacing: 6) {
                     Text(title)
@@ -894,38 +1429,24 @@ struct AppEmptyStateCard: View {
 struct InlineDaysSelector: View {
     @Binding var selection: WeekdaySet
 
-    private let fullDayNames: [(String, WeekdaySet)] = [
-        ("Monday", .monday),
-        ("Tuesday", .tuesday),
-        ("Wednesday", .wednesday),
-        ("Thursday", .thursday),
-        ("Friday", .friday),
-        ("Saturday", .saturday),
-        ("Sunday", .sunday),
-    ]
-
     var body: some View {
         VStack(spacing: 0) {
-            ForEach(fullDayNames, id: \.0) { day in
+            ForEach(WeekdayDisplay.fullNames, id: \.label) { day in
                 HStack {
-                    Text(day.0)
+                    Text(day.label)
                         .foregroundStyle(.primary)
                     Spacer()
-                    if selection.contains(day.1) {
+                    if selection.contains(day.value) {
                         Image(systemName: "checkmark")
                             .font(.system(size: AppLayout.listIconSize, weight: .semibold))
-                            .foregroundStyle(.blue)
+                            .appAccentForeground()
                     }
                 }
                 .padding(.horizontal, AppLayout.rowHorizontalPadding)
-                .padding(.vertical, AppLayout.rowVerticalPadding)
+                .padding(.vertical, AppLayout.schedulePopoverRowVerticalPadding)
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    toggle(day.1)
-                }
-
-                if day.0 != fullDayNames.last?.0 {
-                    AppSectionDivider()
+                    toggle(day.value)
                 }
 
             }
@@ -941,6 +1462,18 @@ struct InlineDaysSelector: View {
         }
         selection = updatedSelection
     }
+}
+
+private enum WeekdayDisplay {
+    static let fullNames: [(label: String, value: WeekdaySet)] = [
+        ("Monday", .monday),
+        ("Tuesday", .tuesday),
+        ("Wednesday", .wednesday),
+        ("Thursday", .thursday),
+        ("Friday", .friday),
+        ("Saturday", .saturday),
+        ("Sunday", .sunday),
+    ]
 }
 
 struct AppInlineErrorText: View {
@@ -966,13 +1499,42 @@ struct AppHelperText: View {
     }
 }
 
+struct AppLegendEntry {
+    let label: String
+    let color: Color
+    let fillOpacity: Double
+    let strokeOpacity: Double
+
+    init(
+        label: String,
+        color: Color,
+        fillOpacity: Double = 0.2,
+        strokeOpacity: Double = 0.35
+    ) {
+        self.label = label
+        self.color = color
+        self.fillOpacity = fillOpacity
+        self.strokeOpacity = strokeOpacity
+    }
+}
+
 struct AppLegend: View {
-    let items: [(label: String, color: Color)]
+    let items: [AppLegendEntry]
+
+    init(items: [(label: String, color: Color)]) {
+        self.items = items.map {
+            AppLegendEntry(label: $0.label, color: $0.color)
+        }
+    }
+
+    init(items: [AppLegendEntry]) {
+        self.items = items
+    }
 
     var body: some View {
         HStack(spacing: 16) {
             ForEach(items, id: \.label) { item in
-                AppLegendItem(label: item.label, color: item.color)
+                AppLegendItem(item: item)
             }
         }
         .padding(.horizontal, AppLayout.inlinePadding)
@@ -980,20 +1542,19 @@ struct AppLegend: View {
 }
 
 private struct AppLegendItem: View {
-    let label: String
-    let color: Color
+    let item: AppLegendEntry
 
     var body: some View {
         HStack(spacing: 8) {
             Circle()
-                .fill(color.opacity(0.2))
+                .fill(item.color.opacity(item.fillOpacity))
                 .overlay {
                     Circle()
-                        .stroke(color.opacity(0.35), lineWidth: 1)
+                        .stroke(item.color.opacity(item.strokeOpacity), lineWidth: 1)
                 }
                 .frame(width: 18, height: 18)
 
-            Text(label)
+            Text(item.label)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -1002,24 +1563,36 @@ private struct AppLegendItem: View {
 
 struct AppListIcon: View {
     let symbol: String
-    var tint: Color = .blue
+    var tint: Color?
+    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
+
+    init(symbol: String, tint: Color? = nil) {
+        self.symbol = symbol
+        self.tint = tint
+    }
 
     var body: some View {
         Image(systemName: symbol)
             .font(.system(size: AppLayout.listIconSize, weight: .regular))
-            .foregroundStyle(tint)
+            .foregroundStyle(tint ?? AppTint.stored(rawValue: appTintRawValue).accentColor)
             .frame(width: AppLayout.listIconWidth)
     }
 }
 
 struct AppActionIcon: View {
     let symbol: String
-    var tint: Color = .blue
+    var tint: Color?
+    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
+
+    init(symbol: String, tint: Color? = nil) {
+        self.symbol = symbol
+        self.tint = tint
+    }
 
     var body: some View {
         Image(systemName: symbol)
             .font(.system(size: AppLayout.actionIconSize, weight: .semibold))
-            .foregroundStyle(tint)
+            .foregroundStyle(tint ?? AppTint.stored(rawValue: appTintRawValue).accentColor)
             .frame(width: AppLayout.listIconWidth, height: AppLayout.listIconWidth)
     }
 }

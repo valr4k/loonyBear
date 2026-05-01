@@ -7,6 +7,7 @@ struct BackupArchive: Codable {
     let scheduleVersions: [BackupScheduleVersion]
     let completionRecords: [BackupCompletion]
     let ordering: [BackupOrdering]
+    let settings: BackupAppSettings?
     let pills: [BackupPill]
     let pillScheduleVersions: [BackupPillScheduleVersion]
     let pillIntakeRecords: [BackupPillIntake]
@@ -18,6 +19,7 @@ struct BackupArchive: Codable {
         case scheduleVersions
         case completionRecords
         case ordering
+        case settings
         case pills
         case pillScheduleVersions
         case pillIntakeRecords
@@ -30,6 +32,7 @@ struct BackupArchive: Codable {
         scheduleVersions: [BackupScheduleVersion],
         completionRecords: [BackupCompletion],
         ordering: [BackupOrdering],
+        settings: BackupAppSettings? = nil,
         pills: [BackupPill] = [],
         pillScheduleVersions: [BackupPillScheduleVersion] = [],
         pillIntakeRecords: [BackupPillIntake] = []
@@ -40,6 +43,7 @@ struct BackupArchive: Codable {
         self.scheduleVersions = scheduleVersions
         self.completionRecords = completionRecords
         self.ordering = ordering
+        self.settings = settings
         self.pills = pills
         self.pillScheduleVersions = pillScheduleVersions
         self.pillIntakeRecords = pillIntakeRecords
@@ -53,10 +57,16 @@ struct BackupArchive: Codable {
         scheduleVersions = try container.decode([BackupScheduleVersion].self, forKey: .scheduleVersions)
         completionRecords = try container.decode([BackupCompletion].self, forKey: .completionRecords)
         ordering = try container.decode([BackupOrdering].self, forKey: .ordering)
+        settings = try container.decodeIfPresent(BackupAppSettings.self, forKey: .settings)
         pills = try container.decodeIfPresent([BackupPill].self, forKey: .pills) ?? []
         pillScheduleVersions = try container.decodeIfPresent([BackupPillScheduleVersion].self, forKey: .pillScheduleVersions) ?? []
         pillIntakeRecords = try container.decodeIfPresent([BackupPillIntake].self, forKey: .pillIntakeRecords) ?? []
     }
+}
+
+struct BackupAppSettings: Codable, Equatable {
+    let appearanceMode: String
+    let appTint: String
 }
 
 struct BackupHabit: Codable {
@@ -254,6 +264,7 @@ struct BackupStatus: Equatable {
     let hasLatestBackup: Bool
     let hasSelectedFolder: Bool
     let requiresFolderReselection: Bool
+    let fileState: BackupFileState
 
     var hasUsableFolder: Bool {
         hasSelectedFolder && !requiresFolderReselection
@@ -265,6 +276,15 @@ struct BackupStatus: Equatable {
         fileSizeText: "—",
         hasLatestBackup: false,
         hasSelectedFolder: false,
-        requiresFolderReselection: false
+        requiresFolderReselection: false,
+        fileState: .none
     )
+}
+
+enum BackupFileState: Equatable {
+    case none
+    case available
+    case created
+    case restored
+    case unreadable
 }

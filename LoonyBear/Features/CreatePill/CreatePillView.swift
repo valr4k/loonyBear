@@ -10,6 +10,7 @@ struct CreatePillView: View {
     @State private var validationMessage: String?
     @State private var isSaving = false
     @State private var isDismissingKeyboardForNonTextControl = false
+    @State private var isShowingNotificationSettingsAlert = false
 
     private enum Field: Hashable {
         case description
@@ -31,6 +32,7 @@ struct CreatePillView: View {
                 .contentShape(Rectangle())
                 .onTapGesture {
                     focusedField = nil
+                    AppDescriptionFieldSupport.dismissKeyboard()
                 }
             }
             .navigationTitle("Create Pill")
@@ -41,21 +43,23 @@ struct CreatePillView: View {
                     .frame(height: shouldShowDescriptionInset ? 36 : 0)
             }
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button {
                         dismiss()
                     } label: {
-                        Image(systemName: "xmark")
+                        AppToolbarIconLabel(systemName: "xmark")
                     }
+                    .appAccentTint()
                     .accessibilityLabel("Close")
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button {
                         savePill()
                     } label: {
-                        Image(systemName: "checkmark")
+                        AppToolbarIconLabel(systemName: "checkmark")
                     }
+                    .appAccentTint()
                     .fontWeight(.semibold)
                     .accessibilityLabel("Save")
                     .disabled(!isFormValid || isSaving)
@@ -67,11 +71,13 @@ struct CreatePillView: View {
                 Task {
                     let granted = await pillAppState.requestNotificationAuthorizationIfNeeded()
                     if !granted {
-                        validationMessage = AppCopy.notificationsRequired
+                        validationMessage = nil
+                        isShowingNotificationSettingsAlert = true
                         draft.reminderEnabled = false
                     }
                 }
             }
+            .appNotificationSettingsAlert(isPresented: $isShowingNotificationSettingsAlert)
             .onChange(of: focusedField) { _, field in
                 guard field == .description else { return }
                 isDismissingKeyboardForNonTextControl = false
@@ -129,6 +135,7 @@ struct CreatePillView: View {
     private var descriptionSection: some View {
         AppFormCardSection(title: "Description") {
             TextField(AppCopy.pillDescriptionPlaceholder, text: $draft.details, axis: .vertical)
+                .appAccentTint()
                 .focused($focusedField, equals: .description)
                 .lineLimit(3 ... 6)
                 .padding(.horizontal, 18)
@@ -211,8 +218,7 @@ private struct CreatePillScheduleView: View {
     let dismissKeyboardForNonTextControl: () -> Void
 
     var body: some View {
-        AppScheduleEditorScreen(
-            backgroundStyle: .pills,
+        AppScheduleEditorPopoverContent(
             scheduleDays: $scheduleDays,
             onTap: dismissKeyboardForNonTextControl,
             useScheduleForHistory: $useScheduleForHistory,

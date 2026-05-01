@@ -246,6 +246,8 @@ private struct PillCalendarDayView: View {
     let dayNumber: Int
     let style: PillCalendarDayStyle
     let cellSize: CGFloat
+    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ZStack {
@@ -266,7 +268,7 @@ private struct PillCalendarDayView: View {
     private var foreground: Color {
         switch style {
         case .taken:
-            return .blue
+            return appTint.calendarPositiveForeground(for: colorScheme)
         case .skipped:
             return .red
         case .available:
@@ -279,7 +281,7 @@ private struct PillCalendarDayView: View {
     private var backgroundColor: Color {
         switch style {
         case .taken:
-            return Color(uiColor: .systemBlue).opacity(0.2)
+            return appTint.accentColor
         case .skipped:
             return Color(uiColor: .systemRed).opacity(0.18)
         case .available, .disabled:
@@ -289,6 +291,10 @@ private struct PillCalendarDayView: View {
 
     private var markerSize: CGFloat {
         min(cellSize, 40)
+    }
+
+    private var appTint: AppTint {
+        AppTint.stored(rawValue: appTintRawValue)
     }
 }
 
@@ -302,6 +308,8 @@ private struct PillReadOnlyCalendarDayView: View {
     let dayNumber: Int
     let style: PillReadOnlyDayStyle
     let cellSize: CGFloat
+    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ZStack {
@@ -322,7 +330,7 @@ private struct PillReadOnlyCalendarDayView: View {
     private var foreground: Color {
         switch style {
         case .taken:
-            return .blue
+            return appTint.calendarPositiveForeground(for: colorScheme)
         case .skipped:
             return .red
         case .disabled:
@@ -333,7 +341,7 @@ private struct PillReadOnlyCalendarDayView: View {
     private var backgroundColor: Color {
         switch style {
         case .taken:
-            return Color(uiColor: .systemBlue).opacity(0.2)
+            return appTint.accentColor
         case .skipped:
             return Color(uiColor: .systemRed).opacity(0.18)
         case .disabled:
@@ -343,5 +351,9 @@ private struct PillReadOnlyCalendarDayView: View {
 
     private var markerSize: CGFloat {
         min(cellSize, 40)
+    }
+
+    private var appTint: AppTint {
+        AppTint.stored(rawValue: appTintRawValue)
     }
 }

@@ -5,10 +5,11 @@ import UIKit
 @main
 struct LoonyBearApp: App {
     private let bootstrapState = AppEnvironment.live()
-    @AppStorage("appearance_mode") private var appearanceModeRawValue = AppearanceMode.system.rawValue
+    @AppStorage(AppearanceMode.storageKey) private var appearanceModeRawValue = AppearanceMode.system.rawValue
+    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
 
     init() {
-        configureTabBarAppearance()
+        Self.configureTabBarAppearance(for: .blue)
     }
 
     var body: some Scene {
@@ -30,11 +31,20 @@ struct LoonyBearApp: App {
                 }
             }
             .preferredColorScheme(preferredColorScheme)
+            .onAppear {
+                configureTabBarAppearance()
+            }
+            .onChange(of: appTintRawValue) { _, _ in
+                configureTabBarAppearance()
+            }
+            .onChange(of: appearanceModeRawValue) { _, _ in
+                configureTabBarAppearance()
+            }
         }
     }
 
     private var preferredColorScheme: ColorScheme? {
-        switch AppearanceMode(rawValue: appearanceModeRawValue) ?? .system {
+        switch AppearanceMode.stored(rawValue: appearanceModeRawValue) {
         case .system:
             return nil
         case .light:
@@ -44,12 +54,20 @@ struct LoonyBearApp: App {
         }
     }
 
-    private func configureTabBarAppearance() {
-        let appearance = UITabBarAppearance()
-        appearance.configureWithTransparentBackground()
+    private var appTint: AppTint {
+        AppTint.stored(rawValue: appTintRawValue)
+    }
 
-        let selectedColor = UIColor.systemBlue
-        let normalColor = UIColor.label
+    private func configureTabBarAppearance() {
+        Self.configureTabBarAppearance(for: appTint)
+    }
+
+    private static func configureTabBarAppearance(for tint: AppTint) {
+        let appearance = UITabBarAppearance()
+        appearance.configureWithDefaultBackground()
+
+        let selectedColor = tint.accentUIColor
+        let normalColor = UIColor.secondaryLabel
         let itemAppearances = [
             appearance.stackedLayoutAppearance,
             appearance.inlineLayoutAppearance,
@@ -65,6 +83,55 @@ struct LoonyBearApp: App {
 
         UITabBar.appearance().standardAppearance = appearance
         UITabBar.appearance().scrollEdgeAppearance = appearance
+        UITabBar.appearance().tintColor = selectedColor
         UITabBar.appearance().unselectedItemTintColor = normalColor
+
+        updateVisibleTabBars(
+            appearance: appearance,
+            selectedColor: selectedColor,
+            normalColor: normalColor
+        )
     }
+
+    private static func updateVisibleTabBars(
+        appearance: UITabBarAppearance,
+        selectedColor: UIColor,
+        normalColor: UIColor
+    ) {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .forEach {
+                updateTabBars(
+                    in: $0,
+                    appearance: appearance,
+                    selectedColor: selectedColor,
+                    normalColor: normalColor
+                )
+            }
+    }
+
+    private static func updateTabBars(
+        in view: UIView,
+        appearance: UITabBarAppearance,
+        selectedColor: UIColor,
+        normalColor: UIColor
+    ) {
+        if let tabBar = view as? UITabBar {
+            tabBar.standardAppearance = appearance
+            tabBar.scrollEdgeAppearance = appearance
+            tabBar.tintColor = selectedColor
+            tabBar.unselectedItemTintColor = normalColor
+        }
+
+        view.subviews.forEach {
+            updateTabBars(
+                in: $0,
+                appearance: appearance,
+                selectedColor: selectedColor,
+                normalColor: normalColor
+            )
+        }
+    }
+
 }

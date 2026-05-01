@@ -10,6 +10,7 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
 - complete, skip, or clear today for habits
 - create and edit pills with dosage and optional description
 - take, skip, or clear today for pills
+- open Edit or Info quickly from trailing card swipe actions
 - configure reminder notifications
 - use pill remind-later notifications
 - create and restore local backups
@@ -117,6 +118,16 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
 - Pills do not use streak logic.
 - Notifications are scheduled only for the next 2 days.
 - Pill `Remind me in 10 mins` survives global regular pill reschedules.
+- Settings supports System/Light/Dark appearance and Blue/Indigo/Cyan/Teal/Green/Brown/Amber/Red/White app color selection; Blue is the default and first palette option.
+- App tint colors supported accent surfaces, while page backgrounds stay on the system grouped background.
+- Backup includes the selected appearance mode and app tint, while legacy backups without those settings keep the current appearance.
+- Custom calendars use arrow-only month navigation, without horizontal swipe paging.
+- Custom calendar blocks keep a stable six-week footprint when changing months.
+- Schedule selection opens as a popover with full weekday names and no row dividers on Create/Edit and Details surfaces.
+- Backup actions are full-width capsule buttons; `Last backup` follows the cloud status icon color.
+- Backup action notices are derived from folder contents and remembered backup fingerprints, so already created/restored backups do not show restore-needed or success notice rows after reopening the screen.
+- Reminder permission denial is handled with an alert that can open iOS Settings; the inline permission error banner is no longer used.
+- iPhone supports portrait orientation only. iPad keeps portrait and landscape orientations.
 
 ## Recommended Entry Files
 

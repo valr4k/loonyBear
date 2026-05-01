@@ -2,6 +2,20 @@ import Foundation
 import UIKit
 import UserNotifications
 
+protocol AppBadgeApplying {
+    func setBadgeCount(_ badgeCount: Int)
+}
+
+struct SystemAppBadgeApplier: AppBadgeApplying {
+    func setBadgeCount(_ badgeCount: Int) {
+        if #available(iOS 17.0, *) {
+            UNUserNotificationCenter.current().setBadgeCount(badgeCount, withCompletionHandler: nil)
+        } else {
+            UIApplication.shared.applicationIconBadgeNumber = badgeCount
+        }
+    }
+}
+
 enum ProjectedBadgeCountCalculator {
     static func overdueHabitCount(
         now: Date,
@@ -109,22 +123,25 @@ final class AppBadgeService {
     private let pillRepository: PillRepository
     private let calendar: Calendar
     private let clock: AppClock
+    private let badgeApplier: AppBadgeApplying
     private var lastBadgeCount: Int?
 
     init(
         loadDashboardUseCase: LoadDashboardUseCase,
         pillRepository: PillRepository,
         calendar: Calendar = .autoupdatingCurrent,
-        clock: AppClock? = nil
+        clock: AppClock? = nil,
+        badgeApplier: AppBadgeApplying? = nil
     ) {
         let resolvedClock = clock ?? AppClock(calendar: calendar)
         self.loadDashboardUseCase = loadDashboardUseCase
         self.pillRepository = pillRepository
         self.calendar = resolvedClock.calendar
         self.clock = resolvedClock
+        self.badgeApplier = badgeApplier ?? SystemAppBadgeApplier()
     }
 
-    func refreshBadge(now: Date? = nil) {
+    func refreshBadge(now: Date? = nil, forceApply: Bool = false) {
         let badgeCount: Int
         do {
             badgeCount = try overdueCount(now: now)
@@ -133,13 +150,14 @@ final class AppBadgeService {
             return
         }
 
-        applyBadgeCountIfNeeded(badgeCount)
+        applyBadgeCountIfNeeded(badgeCount, forceApply: forceApply)
     }
 
     func refreshBadge(
         habitDashboard: DashboardProjection,
         pillDashboard: PillDashboardProjection,
-        now: Date? = nil
+        now: Date? = nil,
+        forceApply: Bool = false
     ) {
         let currentDate = now ?? clock.now()
         let badgeCount = ProjectedBadgeCountCalculator.overdueCount(
@@ -149,18 +167,13 @@ final class AppBadgeService {
             calendar: calendar
         )
 
-        applyBadgeCountIfNeeded(badgeCount)
+        applyBadgeCountIfNeeded(badgeCount, forceApply: forceApply)
     }
 
-    private func applyBadgeCountIfNeeded(_ badgeCount: Int) {
-        guard lastBadgeCount != badgeCount else { return }
+    private func applyBadgeCountIfNeeded(_ badgeCount: Int, forceApply: Bool) {
+        guard forceApply || lastBadgeCount != badgeCount else { return }
         lastBadgeCount = badgeCount
-
-        if #available(iOS 17.0, *) {
-            UNUserNotificationCenter.current().setBadgeCount(badgeCount, withCompletionHandler: nil)
-        } else {
-            UIApplication.shared.applicationIconBadgeNumber = badgeCount
-        }
+        badgeApplier.setBadgeCount(badgeCount)
     }
 
     func overdueCount(now: Date? = nil) throws -> Int {

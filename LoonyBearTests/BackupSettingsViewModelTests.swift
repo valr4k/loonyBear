@@ -7,7 +7,7 @@ import Testing
 @MainActor
 struct BackupSettingsViewModelTests {
     @Test
-    func unreadableArchiveDoesNotBlockBackupActions() throws {
+    func unreadableArchiveAllowsCreateButBlocksRestore() throws {
         let persistence = PersistenceController(inMemory: true)
         let context = persistence.container.viewContext
         let defaults = try #require(UserDefaults(suiteName: "BackupSettingsViewModelTests.\(UUID().uuidString)"))
@@ -48,7 +48,10 @@ struct BackupSettingsViewModelTests {
 
         #expect(viewModel.status.hasUsableFolder)
         #expect(!viewModel.status.requiresFolderReselection)
+        #expect(viewModel.status.fileState == .unreadable)
+        #expect(viewModel.canCreateBackup)
+        #expect(!viewModel.canRestoreBackup)
         #expect(viewModel.createBackup())
-        #expect(viewModel.restoreBackup())
+        #expect(!viewModel.restoreBackup())
     }
 }

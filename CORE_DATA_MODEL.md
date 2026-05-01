@@ -156,8 +156,10 @@ Backup serializes and restores:
 - Habit
 - HabitScheduleVersion
 - HabitCompletion
+- BackupAppSettings
 - Pill
 - PillScheduleVersion
 - PillIntake
 
 Both Habit and Pill backup payloads include stored `historyMode`.
+`BackupAppSettings` stores the selected appearance mode and app tint. Legacy backups without this optional settings payload remain valid and do not overwrite the current appearance settings during restore.

@@ -35,7 +35,8 @@ final class HabitAppState: ObservableObject {
         notificationService: NotificationService,
         widgetSyncService: WidgetSyncService,
         badgeService: AppBadgeService,
-        clock: AppClock? = nil
+        clock: AppClock? = nil,
+        rescheduleAllReminderNotifications: (() -> Void)? = nil
     ) {
         let resolvedClock = clock ?? .live
         self.loadDashboardUseCase = loadDashboardUseCase
@@ -48,7 +49,8 @@ final class HabitAppState: ObservableObject {
         sideEffectCoordinator = HabitSideEffectCoordinator(
             notificationService: notificationService,
             widgetSyncService: widgetSyncService,
-            clock: resolvedClock
+            clock: resolvedClock,
+            rescheduleAllReminderNotifications: rescheduleAllReminderNotifications
         )
     }
 
@@ -178,7 +180,7 @@ final class HabitAppState: ObservableObject {
     }
 
     func prepareReminderNotifications(forHabitID habitID: UUID) async {
-        await notificationService.prepareReminderNotifications(forHabitID: habitID)
+        await sideEffectCoordinator.prepareReminderNotifications(forHabitID: habitID)
     }
 
     func syncNotificationsAfterHabitUpdate(from draft: EditHabitDraft) async {

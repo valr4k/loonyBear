@@ -29,6 +29,7 @@ struct BackupServiceTests {
         #expect(status.hasUsableFolder)
         #expect(!status.requiresFolderReselection)
         #expect(!status.hasLatestBackup)
+        #expect(status.fileState == .none)
     }
 
     @Test
@@ -54,6 +55,7 @@ struct BackupServiceTests {
         #expect(status.hasSelectedFolder)
         #expect(status.hasUsableFolder)
         #expect(status.hasLatestBackup)
+        #expect(status.fileState == .available)
     }
 
     @Test
@@ -91,6 +93,7 @@ struct BackupServiceTests {
         #expect(status.hasLatestBackup)
         #expect(status.fileSizeText != "—")
         #expect(!status.requiresFolderReselection)
+        #expect(status.fileState == .available)
     }
 
     @Test
@@ -115,6 +118,7 @@ struct BackupServiceTests {
         #expect(status.requiresFolderReselection)
         #expect(!status.hasLatestBackup)
         #expect(status.folderName == "Backups")
+        #expect(status.fileState == .none)
     }
 
     @Test
@@ -149,6 +153,7 @@ struct BackupServiceTests {
         #expect(!status.requiresFolderReselection)
         #expect(!status.hasLatestBackup)
         #expect(status.latestBackupText == "Backup unreadable")
+        #expect(status.fileState == .unreadable)
     }
 
     @Test
@@ -216,6 +221,105 @@ struct BackupServiceTests {
         #expect(archive.pills.isEmpty)
         #expect(archive.pillScheduleVersions.isEmpty)
         #expect(archive.pillIntakeRecords.isEmpty)
+        #expect(archive.settings == nil)
+    }
+
+    @Test
+    func createBackupIncludesAppearanceModeAndTint() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let defaults = try #require(UserDefaults(suiteName: "BackupServiceTests.\(UUID().uuidString)"))
+        defaults.set(AppearanceMode.dark.rawValue, forKey: AppearanceMode.storageKey)
+        defaults.set(AppTint.red.rawValue, forKey: AppTint.storageKey)
+        let compressionService = CompressionService()
+        let service = BackupService(
+            context: context,
+            makeWorkContext: persistence.makeBackgroundContext,
+            defaults: defaults,
+            compressionService: compressionService
+        )
+
+        let folderURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+        try service.saveFolderBookmark(for: folderURL)
+
+        try service.createBackup()
+
+        let archive = try readArchive(from: folderURL, compressionService: compressionService)
+        #expect(archive.settings == BackupAppSettings(
+            appearanceMode: AppearanceMode.dark.rawValue,
+            appTint: AppTint.red.rawValue
+        ))
+    }
+
+    @Test
+    func createBackupMarksCurrentArchiveAsCreated() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let defaults = try #require(UserDefaults(suiteName: "BackupServiceTests.\(UUID().uuidString)"))
+        let service = BackupService(
+            context: context,
+            makeWorkContext: persistence.makeBackgroundContext,
+            defaults: defaults,
+            compressionService: CompressionService()
+        )
+
+        let folderURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+        try service.saveFolderBookmark(for: folderURL)
+
+        try service.createBackup()
+
+        let status = try service.loadStatus()
+        #expect(status.hasLatestBackup)
+        #expect(status.fileState == .created)
+    }
+
+    @Test
+    func restoreArchiveAppliesAppearanceModeAndTint() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let defaults = try #require(UserDefaults(suiteName: "BackupServiceTests.\(UUID().uuidString)"))
+        defaults.set(AppearanceMode.light.rawValue, forKey: AppearanceMode.storageKey)
+        defaults.set(AppTint.white.rawValue, forKey: AppTint.storageKey)
+        let service = BackupService(
+            context: context,
+            makeWorkContext: persistence.makeBackgroundContext,
+            defaults: defaults,
+            compressionService: CompressionService()
+        )
+
+        try service.restoreArchive(
+            makeValidArchive(
+                settings: BackupAppSettings(
+                    appearanceMode: AppearanceMode.dark.rawValue,
+                    appTint: AppTint.green.rawValue
+                )
+            )
+        )
+
+        #expect(defaults.string(forKey: AppearanceMode.storageKey) == AppearanceMode.dark.rawValue)
+        #expect(defaults.string(forKey: AppTint.storageKey) == AppTint.green.rawValue)
+    }
+
+    @Test
+    func restoreLegacyArchiveWithoutSettingsLeavesAppearanceModeAndTintUnchanged() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let defaults = try #require(UserDefaults(suiteName: "BackupServiceTests.\(UUID().uuidString)"))
+        defaults.set(AppearanceMode.dark.rawValue, forKey: AppearanceMode.storageKey)
+        defaults.set(AppTint.amber.rawValue, forKey: AppTint.storageKey)
+        let service = BackupService(
+            context: context,
+            makeWorkContext: persistence.makeBackgroundContext,
+            defaults: defaults,
+            compressionService: CompressionService()
+        )
+
+        try service.restoreArchive(makeValidArchive())
+
+        #expect(defaults.string(forKey: AppearanceMode.storageKey) == AppearanceMode.dark.rawValue)
+        #expect(defaults.string(forKey: AppTint.storageKey) == AppTint.amber.rawValue)
     }
 
     @Test
@@ -274,6 +378,7 @@ struct BackupServiceTests {
         try service.restoreBackup()
 
         #expect(try repository.fetchDashboardHabits().count == 1)
+        #expect(try service.loadStatus().fileState == .restored)
     }
 
     @Test
@@ -1223,6 +1328,10 @@ private extension BackupServiceTests {
         )
     }
 
+    func readArchive(from folderURL: URL, compressionService: CompressionService) throws -> BackupArchive {
+        try readArchive(named: "LoonyBear.json.gz", from: folderURL, compressionService: compressionService)
+    }
+
     func makeBackupService(context: NSManagedObjectContext, persistence: PersistenceController) -> BackupService {
         BackupService(
             context: context,
@@ -1232,7 +1341,7 @@ private extension BackupServiceTests {
         )
     }
 
-    func makeValidArchive() -> BackupArchive {
+    func makeValidArchive(settings: BackupAppSettings? = nil) -> BackupArchive {
         let habitID = UUID()
         let habitScheduleID = UUID()
         let completionID = UUID()
@@ -1284,6 +1393,7 @@ private extension BackupServiceTests {
                     sortOrder: 0
                 ),
             ],
+            settings: settings,
             pills: [
                 BackupPill(
                     id: pillID,

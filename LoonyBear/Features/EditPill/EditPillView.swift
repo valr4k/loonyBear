@@ -18,6 +18,7 @@ struct EditPillView: View {
     @State private var isSaving = false
     @State private var isDismissingKeyboardForNonTextControl = false
     @State private var isShowingDeleteConfirmation = false
+    @State private var isShowingNotificationSettingsAlert = false
 
     private enum Field: Hashable {
         case description
@@ -90,7 +91,7 @@ struct EditPillView: View {
                 Button(role: .destructive) {
                     isShowingDeleteConfirmation = true
                 } label: {
-                    Text("Delete")
+                    Label("Delete", systemImage: "trash")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
@@ -114,6 +115,7 @@ struct EditPillView: View {
             .contentShape(Rectangle())
             .onTapGesture {
                 focusedField = nil
+                AppDescriptionFieldSupport.dismissKeyboard()
             }
             .navigationTitle(draft.name.isEmpty ? "Edit Pill" : draft.name)
             .navigationBarTitleDisplayMode(.inline)
@@ -124,22 +126,24 @@ struct EditPillView: View {
             }
             .toolbar {
                 if showsCloseButton {
-                    ToolbarItem(placement: .topBarLeading) {
+                    ToolbarItem(placement: .cancellationAction) {
                         Button {
                             dismiss()
                         } label: {
-                            Image(systemName: "xmark")
+                            AppToolbarIconLabel(systemName: "xmark")
                         }
+                        .appAccentTint()
                         .accessibilityLabel("Close")
                     }
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button {
                         save()
                     } label: {
-                        Image(systemName: "checkmark")
+                        AppToolbarIconLabel(systemName: "checkmark")
                     }
+                    .appAccentTint()
                     .fontWeight(.semibold)
                     .accessibilityLabel("Save")
                     .disabled(!isFormValid || hasMissingPastDays || isSaving)
@@ -160,11 +164,13 @@ struct EditPillView: View {
                 Task {
                     let granted = await pillAppState.requestNotificationAuthorizationIfNeeded()
                     if !granted {
-                        validationMessage = AppCopy.notificationsRequired
+                        validationMessage = nil
+                        isShowingNotificationSettingsAlert = true
                         draft.reminderEnabled = false
                     }
                 }
             }
+            .appNotificationSettingsAlert(isPresented: $isShowingNotificationSettingsAlert)
             .onChange(of: draft.takenDays) { _, _ in
                 historyValidationMessage = nil
             }
@@ -215,6 +221,7 @@ struct EditPillView: View {
     private var descriptionSection: some View {
         AppFormCardSection(title: "Description") {
             TextField(AppCopy.pillDescriptionPlaceholder, text: $draft.details, axis: .vertical)
+                .appAccentTint()
                 .focused($focusedField, equals: .description)
                 .lineLimit(3 ... 6)
                 .padding(.horizontal, 18)
@@ -373,8 +380,7 @@ private struct EditPillScheduleView: View {
     let dismissKeyboardForNonTextControl: () -> Void
 
     var body: some View {
-        AppScheduleEditorScreen(
-            backgroundStyle: .pills,
+        AppScheduleEditorPopoverContent(
             scheduleDays: $scheduleDays,
             onTap: dismissKeyboardForNonTextControl
         )
@@ -382,10 +388,16 @@ private struct EditPillScheduleView: View {
 }
 
 private struct PillHistoryLegend: View {
+    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
+
     var body: some View {
         AppLegend(items: [
-            (label: "Taken", color: .blue),
-            (label: "Skipped", color: .red),
+            AppLegendEntry(label: "Taken", color: appTint.accentColor, fillOpacity: 1, strokeOpacity: 0),
+            AppLegendEntry(label: "Skipped", color: .red),
         ])
+    }
+
+    private var appTint: AppTint {
+        AppTint.stored(rawValue: appTintRawValue)
     }
 }

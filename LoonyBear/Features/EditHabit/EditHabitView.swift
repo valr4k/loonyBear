@@ -15,6 +15,7 @@ struct EditHabitView: View {
     @State private var displayedMonth: Date
     @State private var isSaving = false
     @State private var isShowingDeleteConfirmation = false
+    @State private var isShowingNotificationSettingsAlert = false
 
     init(
         details: HabitDetailsProjection,
@@ -65,6 +66,9 @@ struct EditHabitView: View {
                         availableMonths: availableMonths,
                         onMonthChange: { displayedMonth = $0 }
                     )
+                    .simultaneousGesture(TapGesture().onEnded {
+                        dismissKeyboardForNonTextControl()
+                    })
                     .padding(.horizontal, 18)
                     .padding(.vertical, 18)
                 }
@@ -76,7 +80,7 @@ struct EditHabitView: View {
             Button(role: .destructive) {
                 isShowingDeleteConfirmation = true
             } label: {
-                Text("Delete")
+                Label("Delete", systemImage: "trash")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
@@ -97,26 +101,33 @@ struct EditHabitView: View {
                 AppValidationBanner(message: validationMessage)
             }
         }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            AppDescriptionFieldSupport.dismissKeyboard()
+        }
         .navigationTitle(draft.type.sectionTitle)
         .navigationBarTitleDisplayMode(.inline)
+        .scrollDismissesKeyboard(.immediately)
         .toolbar {
             if showsCloseButton {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button {
                         dismiss()
                     } label: {
-                        Image(systemName: "xmark")
+                        AppToolbarIconLabel(systemName: "xmark")
                     }
+                    .appAccentTint()
                     .accessibilityLabel("Close")
                 }
             }
 
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .confirmationAction) {
                 Button {
                     save()
                 } label: {
-                    Image(systemName: "checkmark")
+                    AppToolbarIconLabel(systemName: "checkmark")
                 }
+                .appAccentTint()
                 .fontWeight(.semibold)
                 .accessibilityLabel("Save")
                 .disabled(!isFormValid || hasMissingPastDays || isSaving)
@@ -128,11 +139,13 @@ struct EditHabitView: View {
             Task {
                 let granted = await appState.requestNotificationAuthorizationIfNeeded()
                 if !granted {
-                    validationMessage = AppCopy.notificationsRequired
+                    validationMessage = nil
+                    isShowingNotificationSettingsAlert = true
                     draft.reminderEnabled = false
                 }
             }
         }
+        .appNotificationSettingsAlert(isPresented: $isShowingNotificationSettingsAlert)
         .onChange(of: draft.completedDays) { _, _ in
             historyValidationMessage = nil
         }
@@ -158,10 +171,15 @@ struct EditHabitView: View {
     private var notificationsSection: some View {
         AppNotificationSettingsSection(
             scheduleSummary: draft.scheduleDays.compactSummaryOrPlaceholder,
+            scheduleTap: dismissKeyboardForNonTextControl,
             reminderEnabled: $draft.reminderEnabled,
-            reminderDate: $draft.reminderTime.dateBinding(fallback: ReminderTime.default())
+            reminderDate: $draft.reminderTime.dateBinding(fallback: ReminderTime.default()),
+            reminderTimeTap: dismissKeyboardForNonTextControl
         ) {
-            EditHabitScheduleView(scheduleDays: $draft.scheduleDays)
+            EditHabitScheduleView(
+                scheduleDays: $draft.scheduleDays,
+                dismissKeyboardForNonTextControl: dismissKeyboardForNonTextControl
+            )
         }
     }
 
@@ -286,6 +304,10 @@ struct EditHabitView: View {
         Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: date)) ?? date
     }
 
+    private func dismissKeyboardForNonTextControl() {
+        AppDescriptionFieldSupport.dismissKeyboard()
+    }
+
     @ViewBuilder
     private func validationText(_ text: String) -> some View {
         AppInlineErrorText(text: text)
@@ -294,11 +316,12 @@ struct EditHabitView: View {
 
 private struct EditHabitScheduleView: View {
     @Binding var scheduleDays: WeekdaySet
+    let dismissKeyboardForNonTextControl: () -> Void
 
     var body: some View {
-        AppScheduleEditorScreen(
-            backgroundStyle: .habits,
-            scheduleDays: $scheduleDays
+        AppScheduleEditorPopoverContent(
+            scheduleDays: $scheduleDays,
+            onTap: dismissKeyboardForNonTextControl
         )
     }
 }
@@ -398,6 +421,8 @@ struct HabitCalendarDayView: View {
     let dayNumber: Int
     let style: HabitCalendarDayStyle
     let cellSize: CGFloat
+    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ZStack {
@@ -418,7 +443,7 @@ struct HabitCalendarDayView: View {
     private var foreground: Color {
         switch style {
         case .completed:
-            return .blue
+            return appTint.calendarPositiveForeground(for: colorScheme)
         case .skipped:
             return .red
         case .available:
@@ -431,7 +456,7 @@ struct HabitCalendarDayView: View {
     private var backgroundColor: Color {
         switch style {
         case .completed:
-            return Color(uiColor: .systemBlue).opacity(0.2)
+            return appTint.accentColor
         case .skipped:
             return Color(uiColor: .systemRed).opacity(0.18)
         case .available, .disabled:
@@ -442,13 +467,23 @@ struct HabitCalendarDayView: View {
     private var markerSize: CGFloat {
         min(cellSize, 40)
     }
+
+    private var appTint: AppTint {
+        AppTint.stored(rawValue: appTintRawValue)
+    }
 }
 
 private struct HabitHistoryLegend: View {
+    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
+
     var body: some View {
         AppLegend(items: [
-            (label: "Completed", color: .blue),
-            (label: "Skipped", color: .red),
+            AppLegendEntry(label: "Completed", color: appTint.accentColor, fillOpacity: 1, strokeOpacity: 0),
+            AppLegendEntry(label: "Skipped", color: .red),
         ])
+    }
+
+    private var appTint: AppTint {
+        AppTint.stored(rawValue: appTintRawValue)
     }
 }

@@ -21,8 +21,16 @@
           "body": "Create, Details, and Edit screens for Habits and Pills open as sheets. They do not push deeper into the main tab navigation stack."
         },
         {
+          "title": "Device orientation",
+          "body": "On iPhone, the app supports portrait orientation only. On iPad, the app supports portrait and landscape orientations."
+        },
+        {
           "title": "Appearance modes",
           "body": "The app stores 3 appearance modes: System, Light, and Dark. The selected mode is applied at the app level."
+        },
+        {
+          "title": "App tint",
+          "body": "Settings stores an app color: Blue, Indigo, Cyan, Teal, Green, Brown, Amber, Red, or White. Blue is the default app color and appears first in the palette. White uses adaptive contrast for active controls: black in Light mode and white in Dark mode. App colors apply to supported accent surfaces, while page backgrounds remain the system grouped background. Brown uses the iOS system brown color; Amber uses the iOS system orange color. Editable schedule checkmarks, Settings app-row icons, and Calendar Taken/Completed markers use the selected app color. Read-only schedule checkmarks, toggles, segmented picker selection, skipped markers, overdue and warning colors, card Edit/Info swipe actions, and Backup action rows remain fixed system colors."
         },
         {
           "title": "Badge refresh cadence",
@@ -39,11 +47,11 @@
         },
         {
           "title": "What a Habit card shows",
-          "body": "Each Habit card shows the name, the current schedule summary, the current streak text, the reminder text if a reminder exists, and a status icon. If there is an active overdue scheduled day, the card shows a red Today, Yesterday, or Since weekday label. Active overdue is not counted as a history gap. If recent history still needs review for another required scheduled day, the card also shows an amber warning icon. Otherwise, a green checkmark circle means completed today and a red xmark circle means skipped today."
+          "body": "Each Habit card shows the name, the current schedule summary, the current streak text, the reminder text if a reminder exists, and a status icon. If there is an active overdue scheduled day, the card shows a red Today, Yesterday, or date label. Active overdue is not counted as a history gap. If recent history still needs review for another required scheduled day, the card also shows an amber warning icon. Otherwise, a green checkmark circle means completed today and a red xmark circle means skipped today."
         },
         {
           "title": "Habit swipe actions",
-          "body": "Leading swipe actions are used for day-state changes. If today is already completed or skipped, the swipe action clears today's state. If today has no state, the swipe actions are Complete and Skip. Trailing swipe currently shows only Info. Edit and Delete are not in card swipe actions."
+          "body": "Leading swipe actions are used for day-state changes. If today is already completed or skipped, the swipe action clears today's state. If today has no state, the swipe actions are Complete and Skip. Trailing swipe exposes Edit and Info. Edit uses system blue, Info uses system indigo, and Delete is not in card swipe actions."
         },
         {
           "title": "Creating a Habit",
@@ -55,7 +63,7 @@
         },
         {
           "title": "Habit reminder permission behavior",
-          "body": "If reminder is turned on during create or edit, the app requests notification authorization. If authorization is not granted, reminder is turned back off and a validation message is shown."
+          "body": "If reminder is turned on during create or edit, the app requests notification authorization. If authorization is denied, reminder is turned back off and an alert offers to open iOS Settings. iOS only shows the system notification permission prompt once, so after Don't Allow the app cannot show that prompt again."
         },
         {
           "title": "Habit details screen",
@@ -117,11 +125,11 @@
         },
         {
           "title": "What a Pill card shows",
-          "body": "Each Pill card shows the name, dosage, schedule summary, total taken days, reminder text if a reminder exists, and a status icon. If there is an active overdue scheduled day, the card shows a red Today, Yesterday, or Since weekday label. Active overdue is not counted as a history gap. If recent history still needs review for another required scheduled day, the card also shows an amber warning icon. Otherwise, a green checkmark circle means taken today and a red xmark circle means skipped today."
+          "body": "Each Pill card shows the name, dosage, schedule summary, total taken days, reminder text if a reminder exists, and a status icon. If there is an active overdue scheduled day, the card shows a red Today, Yesterday, or date label. Active overdue is not counted as a history gap. If recent history still needs review for another required scheduled day, the card also shows an amber warning icon. Otherwise, a green checkmark circle means taken today and a red xmark circle means skipped today."
         },
         {
           "title": "Pill swipe actions",
-          "body": "Leading swipe actions are used for day-state changes. If today is already taken or skipped, the swipe action clears today's state. If today has no state, the swipe actions are Taken and Skip. Trailing swipe currently shows only Info. Edit and Delete are not in card swipe actions."
+          "body": "Leading swipe actions are used for day-state changes. If today is already taken or skipped, the swipe action clears today's state. If today has no state, the swipe actions are Taken and Skip. Trailing swipe exposes Edit and Info. Edit uses system blue, Info uses system indigo, and Delete is not in card swipe actions."
         },
         {
           "title": "Creating a Pill",
@@ -249,7 +257,19 @@
       "items": [
         {
           "title": "What Backup screen shows",
-          "body": "Backup shows Latest backup, Folder, and Total size. It also provides Create Backup and Restore Backup actions."
+          "body": "Backup shows Last backup, Total size, and Folder. Last backup uses the same color as its cloud status icon: green when a readable backup exists and red when it does not. Create Backup and Restore Backup are full-width capsule buttons; Create uses the primary label color and Restore stays system red."
+        },
+        {
+          "title": "Folder with an existing backup",
+          "body": "Choosing a folder never restores data automatically. Backup action notices are derived from the selected folder state and remembered backup fingerprints, not from a temporary screen session. If the folder contains a readable backup that has not been created or restored by this app install, the Backup screen shows Backup found. Tap Restore Backup to apply it. as a blue informational notice under the Actions header and disables Create Backup. If the same backup was already created or restored by this app install, no restore-needed or success notice row is shown."
+        },
+        {
+          "title": "Folder without a backup",
+          "body": "If the selected folder has no readable backup, Backup shows No backup found. Tap Create Backup to save one. under the Actions header. Create Backup stays available and Restore Backup is disabled."
+        },
+        {
+          "title": "Unreadable backup files",
+          "body": "If backup files exist but cannot be read, Backup shows Backup file can’t be read. Choose another folder or create a new backup. Restore Backup is disabled."
         },
         {
           "title": "Backup file names",
@@ -257,7 +277,7 @@
         },
         {
           "title": "What backup includes",
-          "body": "Backup includes Habits, Habit schedules, Habit completions, Habit ordering, Pills, Pill schedules, Pill intakes, reminder settings, and stored history modes for both trackers."
+          "body": "Backup includes Habits, Habit schedules, Habit completions, Habit ordering, Pills, Pill schedules, Pill intakes, reminder settings, stored history modes for both trackers, and app appearance settings."
         },
         {
           "title": "Restore safety snapshot",
@@ -265,11 +285,11 @@
         },
         {
           "title": "Restore validation",
-          "body": "Restore validates schema version, history mode values, schedule masks, source values, and duplicate identifiers before replacing the store."
+          "body": "Restore validates schema version, app appearance settings when present, history mode values, schedule masks, source values, and duplicate identifiers before replacing the store."
         },
         {
           "title": "What restore does after success",
-          "body": "After a successful restore, the app resets the read context, refreshes dashboards, and rebuilds Habit and Pill notifications from restored data."
+          "body": "After a successful restore, the app resets the read context, applies backed-up theme mode and app tint when present, refreshes dashboards, and rebuilds Habit and Pill notifications from restored data. Legacy backups without app settings keep the current theme and tint."
         },
         {
           "title": "Folder access",
@@ -282,7 +302,7 @@
       "items": [
         {
           "title": "Settings sections",
-          "body": "Settings contains Appearance, Backup, Rules & Logic, and About. About shows the current app version and build."
+          "body": "Settings contains an Appearance card with System, Light, and Dark mode plus the app color palette; an App card with Backup and Rules & Logic; and an About card. About shows the current app version and build."
         },
         {
           "title": "What Rules & Logic is",
@@ -312,6 +332,18 @@
         {
           "title": "Screen model",
           "body": "The app uses a tab root with sheet-based create, details, and edit flows. The default tab is My Pills. Sheets are identified by enum state carrying either a fixed mode or a UUID."
+        },
+        {
+          "title": "Calendar navigation",
+          "body": "Shared month calendars use header chevron buttons for month navigation. Horizontal swipe paging is disabled on Details and Edit calendar surfaces. Calendar blocks keep a stable six-week footprint and adjust vertical row spacing for shorter months."
+        },
+        {
+          "title": "Schedule popovers",
+          "body": "Create and Edit screens open schedule selection in an in-place popover with full weekday names, compact row spacing, and no row dividers. Details screens open a read-only schedule popover with the same full weekday names. Schedule rows open popovers without a pressed-row visual effect. The popover content does not add an extra inner card or background layer."
+        },
+        {
+          "title": "Settings navigation persistence",
+          "body": "Settings uses route-based navigation for Backup and Rules & Logic. The selected tab and active Settings route are stored in scene storage so restore-driven appearance changes and tint rebuilds do not drop the user out of the Backup screen."
         }
       ]
     },
@@ -328,7 +360,7 @@
         },
         {
           "title": "Reminder time rules",
-          "body": "ReminderTime stores hour and minute as integers. ReminderTime.default rounds the current time up to a 5-minute boundary. If rounding reaches 60 minutes, the hour is incremented and minute becomes 0."
+          "body": "ReminderTime stores hour and minute as integers. ReminderTime.default rounds the current time up to a 5-minute boundary. If rounding reaches 60 minutes, the hour is incremented and minute becomes 0. Create/Edit reminder time rows show a capsule value and open a wheel-style time picker popover without the compact DatePicker pressed-control effect. Editable Start Date rows use the same capsule trigger pattern and open a graphical calendar popover."
         },
         {
           "title": "Weekday model",
@@ -457,11 +489,15 @@
         },
         {
           "title": "Backup payload contents",
-          "body": "BackupArchive contains habits, habit schedule versions, habit completion records, habit ordering, pills, pill schedule versions, and pill intake records. BackupHabit and BackupPill both carry stored historyMode values."
+          "body": "BackupArchive contains habits, habit schedule versions, habit completion records, habit ordering, optional app settings, pills, pill schedule versions, and pill intake records. BackupHabit and BackupPill both carry stored historyMode values. BackupAppSettings carries appearanceMode and appTint."
+        },
+        {
+          "title": "Backup file state",
+          "body": "BackupStatus includes a fileState: none, available, created, restored, or unreadable. Readable backup files are fingerprinted from their compressed data using SHA-256. Successful create stores the last created fingerprint; successful restore stores the last restored fingerprint."
         },
         {
           "title": "Restore safety and validation",
-          "body": "Restore first attempts to create a compressed snapshot of the current store. If snapshot payload creation fails with a DataIntegrityError, restore continues. If snapshot encoding, compression, or file writing fails, restore aborts. Restore validates schema version, history modes, reminder times, weekday masks, source values, foreign key references, and duplicate identifiers before replacing the store."
+          "body": "Restore first attempts to create a compressed snapshot of the current store. If snapshot payload creation fails with a DataIntegrityError, restore continues. If snapshot encoding, compression, or file writing fails, restore aborts. Restore validates schema version, app settings when present, history modes, reminder times, weekday masks, source values, foreign key references, and duplicate identifiers before replacing the store."
         },
         {
           "title": "Reliability layer",
@@ -473,7 +509,7 @@
         },
         {
           "title": "Widget snapshot system",
-          "body": "WidgetSyncService writes a WidgetSnapshot built from the Habit dashboard only. WidgetSnapshotStore saves the snapshot into app group group.com.valr4k.LoonyBear when available, otherwise into Application Support under LoonyBear/widget-snapshot.json, and reloads all widget timelines after a successful save."
+          "body": "WidgetSyncService writes a WidgetSnapshot built from the Habit dashboard only. It skips unchanged content, writes on a utility queue, retries the same content if a previous save failed, and reloads all widget timelines only after a successful changed save. WidgetSnapshotStore saves into app group group.com.valr4k.LoonyBear when available, otherwise into Application Support under LoonyBear/widget-snapshot.json."
         }
       ]
     }

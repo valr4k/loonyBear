@@ -52,6 +52,9 @@ This rule is mandatory for local test runs and documentation examples.
 - Preserve schedule history through appended version rows.
 - Keep screen state small and move reusable side-effect sequences into coordinators or services.
 - Do not change backup schema casually without updating restore handling, validation, and tests.
+- Backup payloads include app appearance settings; preserve legacy decode behavior for backups without those settings.
+- Keep shared schedule UI in `AppDesign.swift`; Create/Edit and Details should use the shared popover components rather than drifting into separate weekday layouts.
+- App tint should be added through shared helpers (`appAccentTint`, `appAccentForeground`, `AppTint`) so fixed system colors remain intentional.
 - Keep notification payload contracts stable when changing action behavior.
 
 ## Testing Priorities

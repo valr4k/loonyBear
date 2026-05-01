@@ -1,9 +1,20 @@
 import SwiftUI
 
+enum SettingsRoute: String, Hashable {
+    case backup
+    case rulesLogic
+}
+
 struct SettingsView: View {
-    @AppStorage("appearance_mode") private var appearanceModeRawValue = AppearanceMode.system.rawValue
+    @AppStorage(AppearanceMode.storageKey) private var appearanceModeRawValue = AppearanceMode.system.rawValue
+    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
     @EnvironmentObject private var appState: HabitAppState
     @EnvironmentObject private var pillAppState: PillAppState
+    let onBackupRestoreComplete: () -> Void
+
+    init(onBackupRestoreComplete: @escaping () -> Void = {}) {
+        self.onBackupRestoreComplete = onBackupRestoreComplete
+    }
 
     private var buildVersionText: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
@@ -24,6 +35,10 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.segmented)
                     .padding(12)
+
+                    AppSectionDivider()
+
+                    tintRow
                 }
             }
 
@@ -31,14 +46,7 @@ struct SettingsView: View {
                 AppFormSectionHeader(title: "App")
 
                 AppCard {
-                    NavigationLink {
-                        BackupSettingsView(
-                            viewModel: BackupSettingsViewModel(
-                                notificationService: appState.notificationService,
-                                pillNotificationService: pillAppState.notificationService
-                            )
-                        )
-                    } label: {
+                    NavigationLink(value: SettingsRoute.backup) {
                         settingsRow(
                             icon: "arrow.trianglehead.2.clockwise.rotate.90.icloud",
                             title: "Backup",
@@ -49,9 +57,7 @@ struct SettingsView: View {
 
                     AppSectionDivider()
 
-                    NavigationLink {
-                        RulesLogicView()
-                    } label: {
+                    NavigationLink(value: SettingsRoute.rulesLogic) {
                         settingsRow(
                             icon: "list.bullet.clipboard",
                             title: "Rules & Logic",
@@ -79,6 +85,44 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("Settings")
+        .navigationDestination(for: SettingsRoute.self) { route in
+            switch route {
+            case .backup:
+                BackupSettingsView(
+                    viewModel: BackupSettingsViewModel(
+                        notificationService: appState.notificationService,
+                        pillNotificationService: pillAppState.notificationService
+                    ),
+                    onRestoreComplete: onBackupRestoreComplete
+                )
+                .appTintedBackButton()
+            case .rulesLogic:
+                RulesLogicView()
+                    .appTintedBackButton()
+            }
+        }
+    }
+
+    private var tintRow: some View {
+        HStack {
+            HStack(spacing: 8) {
+                ForEach(AppTint.allCases) { tint in
+                    Button {
+                        appTintRawValue = tint.rawValue
+                    } label: {
+                        SettingsTintSwatch(
+                            tint: tint,
+                            isSelected: AppTint.stored(rawValue: appTintRawValue) == tint
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(tint.title)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+        }
+        .padding(.horizontal, AppLayout.rowHorizontalPadding)
+        .padding(.vertical, AppLayout.rowVerticalPadding)
     }
 
     private func settingsRow(icon: String, title: String, subtitle: String) -> some View {
@@ -102,6 +146,38 @@ struct SettingsView: View {
         .padding(.horizontal, AppLayout.rowHorizontalPadding)
         .padding(.vertical, AppLayout.rowVerticalPadding)
         .contentShape(Rectangle())
+    }
+}
+
+private struct SettingsTintSwatch: View {
+    let tint: AppTint
+    let isSelected: Bool
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(tint.swatchColor)
+                .overlay {
+                    Circle()
+                        .stroke(borderColor, lineWidth: borderWidth)
+                }
+
+            if isSelected {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(tint.swatchCheckmarkColor)
+            }
+        }
+        .frame(width: AppLayout.tintSwatchSize, height: AppLayout.tintSwatchSize)
+        .contentShape(Circle())
+    }
+
+    private var borderColor: Color {
+        return isSelected ? tint.accentColor : Color(uiColor: .separator)
+    }
+
+    private var borderWidth: CGFloat {
+        return isSelected ? 2 : 1
     }
 }
 

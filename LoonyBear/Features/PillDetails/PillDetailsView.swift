@@ -11,6 +11,7 @@ struct PillDetailsView: View {
     @State private var isLoadingDetails = true
     @State private var needsReloadOnAppear = false
     @State private var isShowingEdit = false
+    @State private var isShowingSchedulePopover = false
     @State private var displayedMonth: Date = {
         var calendar = Calendar.autoupdatingCurrent
         calendar.firstWeekday = 2
@@ -54,20 +55,25 @@ struct PillDetailsView: View {
                     AppFormSectionHeader(title: "Notifications")
 
                     AppCard {
-                        NavigationLink {
-                            AppReadOnlyScheduleView(
-                                scheduleDays: details.scheduleDays,
-                                backgroundStyle: .pills
-                            )
-                        } label: {
-                            AppValueRow(
-                                title: "Schedule",
-                                value: details.scheduleDays.compactSummary,
-                                valueColor: AnyShapeStyle(.secondary),
-                                showsChevron: true
-                            )
+                        AppValueRow(
+                            title: "Schedule",
+                            value: details.scheduleDays.compactSummary,
+                            valueColor: AnyShapeStyle(.secondary),
+                            showsChevron: true,
+                            usesTintedChevron: true
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            isShowingSchedulePopover = true
                         }
-                        .buttonStyle(.plain)
+                        .popover(
+                            isPresented: $isShowingSchedulePopover,
+                            attachmentAnchor: .point(.trailing),
+                            arrowEdge: .trailing
+                        ) {
+                            AppReadOnlySchedulePopoverContent(scheduleDays: details.scheduleDays)
+                                .presentationBackground(.clear)
+                        }
 
                         AppSectionDivider()
                         AppValueRow(title: "Reminder", value: details.reminderTime?.formatted ?? "Off")
@@ -135,20 +141,24 @@ struct PillDetailsView: View {
         .navigationTitle("Pill Details")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
+            ToolbarItem(placement: .cancellationAction) {
                 Button {
                     dismiss()
                 } label: {
-                    Image(systemName: "xmark")
+                    AppToolbarIconLabel(systemName: "xmark")
                 }
+                .appAccentTint()
                 .accessibilityLabel("Close")
             }
 
             if details != nil {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Edit") {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
                         isShowingEdit = true
+                    } label: {
+                        AppToolbarTextLabel(title: "Edit")
                     }
+                    .appAccentTint()
                     .accessibilityLabel("Edit Pill")
                 }
             }
@@ -182,6 +192,7 @@ struct PillDetailsView: View {
                     dismiss()
                 }
             )
+            .appTintedBackButton()
             .environmentObject(pillAppState)
         } else {
             ContentUnavailableView(

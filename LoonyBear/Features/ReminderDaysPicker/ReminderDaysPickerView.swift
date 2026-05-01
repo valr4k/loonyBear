@@ -24,7 +24,7 @@ struct ReminderDaysPickerView: View {
                                 if draftSelection.contains(day.1) {
                                     Image(systemName: "checkmark")
                                         .font(.system(size: 18, weight: .semibold))
-                                        .foregroundStyle(.blue)
+                                        .appAccentForeground()
                                 }
                             }
                             .padding(.horizontal, 18)

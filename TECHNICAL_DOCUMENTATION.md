@@ -31,6 +31,17 @@ The default selected tab is `My Pills`.
 
 Create, Details, and Edit flows for Habits and Pills open as modal sheets.
 
+Settings uses route-based navigation:
+- `SettingsRoute.backup`
+- `SettingsRoute.rulesLogic`
+
+`RootTabView` stores the selected tab and active Settings route in `@SceneStorage` so a tint-driven root rebuild or restored appearance setting does not drop the user out of the Settings/Backup flow.
+
+### 1.4 Device Orientation
+The app is configured as portrait-only on iPhone.
+
+iPad keeps the default portrait and landscape orientations.
+
 ## 2. Persistence
 
 ### 2.1 Core Data Container
@@ -156,7 +167,7 @@ For `today`:
 For past days:
 - `positive -> skipped`
 - `skipped -> positive`
-- `none -> skipped`
+- `none -> positive`
 
 ### 4.3 EditableHistoryContract
 `EditableHistoryContract.normalizedSelection(...)`
@@ -244,7 +255,13 @@ Rules:
 `clearHabitDayStateToday(id:)`
 - deletes today's row if present
 
-Card swipe actions call the day-specific variants for `activeOverdueDay` when it is set. Otherwise they target today. History gaps cannot be repaired from the card; they must be fixed in Edit.
+Card leading swipe actions call the day-specific variants for `activeOverdueDay` when it is set. Otherwise they target today. History gaps cannot be repaired from the card; they must be fixed in Edit.
+
+Card trailing swipe actions expose:
+- Edit with system blue
+- Info with system indigo
+
+Delete is not available from card swipe actions.
 
 ### 5.8 Habit Update
 `updateHabit(from:)`:
@@ -337,7 +354,13 @@ Create flow writes:
 `clearPillDayStateToday(id:)`
 - deletes today's row if present
 
-Card swipe actions call the day-specific variants for `activeOverdueDay` when it is set. Otherwise they target today. History gaps cannot be repaired from the card; they must be fixed in Edit.
+Card leading swipe actions call the day-specific variants for `activeOverdueDay` when it is set. Otherwise they target today. History gaps cannot be repaired from the card; they must be fixed in Edit.
+
+Card trailing swipe actions expose:
+- Edit with system blue
+- Info with system indigo
+
+Delete is not available from card swipe actions.
 
 ### 6.8 Pill Update
 `updatePill(from:)`:
@@ -412,6 +435,12 @@ Includes:
 - local date identifier encoding and parsing
 
 `localDate` identifier format is `YYYYMMDD`.
+
+Create/Edit reminder permission behavior:
+- toggling Reminder on calls the shared authorization helper
+- `.notDetermined` can show the system notification permission prompt
+- `.denied` cannot show that prompt again, so the toggle is reverted and the UI shows an alert with `Open Settings`
+- the old inline notification-permission validation banner is not used for denied permissions
 
 ### 8.2 AppNotificationCoordinator
 Defined in `LoonyBear/Core/Services/AppNotificationCoordinator.swift`.
@@ -524,6 +553,8 @@ The active overdue label shown on cards is `Today`, `Yesterday`, or a date like 
 ### 9.4 Badge API
 - on iOS 17+: `UNUserNotificationCenter.setBadgeCount`
 - on older systems: `UIApplication.shared.applicationIconBadgeNumber`
+- `refreshBadge(habitDashboard:pillDashboard:now:forceApply:)` computes from already-loaded dashboard projections
+- the service caches the last badge count and skips redundant badge writes unless `forceApply` is true
 
 ## 10. Backup and Restore
 
@@ -539,9 +570,14 @@ Fields:
 - `scheduleVersions`
 - `completionRecords`
 - `ordering`
+- `settings`
 - `pills`
 - `pillScheduleVersions`
 - `pillIntakeRecords`
+
+`settings` is optional for backward compatibility and uses `BackupAppSettings`:
+- `appearanceMode`
+- `appTint`
 
 ### 10.2 BackupService
 Defined in `LoonyBear/Core/Services/BackupService.swift`.
@@ -558,6 +594,7 @@ Constants:
 `createBackup()`:
 - resolves security-scoped folder URL
 - builds archive from Core Data
+- adds current app appearance settings from `UserDefaults`
 - encodes JSON
 - gzip-compresses the payload
 - deletes old `.previous` file if present
@@ -573,11 +610,13 @@ Constants:
 - loads archive
 - validates archive
 - replaces store
+- applies backed-up app appearance settings when present
 - resets the read context after replacement
 
 ### 10.5 Restore Validation
 Validation includes:
 - schema version
+- valid app appearance mode and app tint values when `settings` is present
 - valid habit type
 - valid habit history mode
 - valid pill history mode
@@ -586,6 +625,35 @@ Validation includes:
 - valid completion and intake source values
 - foreign key existence for schedules, completions, and intakes
 - duplicate identifier detection across all backup entity arrays
+
+### 10.6 Backup Settings Screen
+Defined in `LoonyBear/Features/BackupSettings/BackupSettingsView.swift`.
+
+Status rows:
+- `Last backup`
+- `Total size`
+- `Folder`
+
+UI behavior:
+- `Last backup` uses the same color as the cloud status icon
+- green means a readable backup exists
+- red means no readable backup is available
+- `Create Backup` and `Restore Backup` are full-width capsule buttons
+- `Create Backup` uses the primary label color
+- `Restore Backup` stays system red
+- Folder selection only grants access and reloads backup metadata; it never applies the backup automatically
+- `BackupStatus.fileState` describes the selected folder as `none`, `available`, `created`, `restored`, or `unreadable`
+- readable backup files are fingerprinted from their compressed file data using SHA-256
+- after a successful create, the current fingerprint is stored as the last created backup fingerprint
+- after a successful restore, the current fingerprint is stored as the last restored backup fingerprint
+- if a selected folder contains a readable backup whose fingerprint is neither created nor restored in this app install, the screen shows `Backup found. Tap Restore Backup to apply it.` as a blue informational notice under the `Actions` header and above the action buttons
+- while that restore-available notice is visible, `Create Backup` is disabled so the next action is explicitly `Restore Backup`
+- if a selected folder contains no readable backup, the screen shows `No backup found. Tap Create Backup to save one.`
+- if the selected backup fingerprint was created or restored by this app install, no action notice is shown
+- if backup files exist but cannot be read, the screen shows `Backup file can’t be read. Choose another folder or create a new backup.`
+- successful create/restore still records the fingerprint, but success feedback is handled by the operation alert rather than a persistent green notice row
+- successful restore refreshes dashboards, rebuilds notifications, shows the restore success alert, and clears the restore-needed notice for that fingerprint
+- restore success feedback is owned by `RootTabView` and passed into `BackupSettingsView` as a callback, so the success alert survives tint/appearance restores that rebuild the Settings subtree
 
 ## 11. Reliability Support
 
@@ -646,9 +714,12 @@ Defined in `LoonyBear/Core/Services/WidgetSyncService.swift`.
 
 Behavior:
 - builds a widget snapshot from Habit dashboard only
-- saves snapshot to `WidgetSnapshotStore`
+- skips scheduling work when the same content is already saved or pending
+- saves snapshot to `WidgetSnapshotStore` on a utility queue
+- updates the saved-content cache only after a successful save attempt
+- retries the same dashboard content if a previous write failed
 - logs success or failure
-- reloads all widget timelines if `WidgetKit` is available
+- reloads all widget timelines after a successful changed save if `WidgetKit` is available
 
 ## 13. Settings and Reference Content
 
@@ -657,9 +728,22 @@ Defined in `LoonyBear/Features/Settings/SettingsView.swift`.
 
 Contains:
 - Appearance segmented picker
+- Color palette with `Blue`, `Indigo`, `Cyan`, `Teal`, `Green`, `Brown`, `Amber`, `Red`, and `White`
 - Backup navigation
 - Rules & Logic navigation
 - app version and build footer
+
+Appearance behavior:
+- `Blue` is the default app tint and appears first in the palette.
+- `White` uses adaptive `UIColor.label` contrast for active controls: black in Light mode and white in Dark mode.
+- `Blue`, `Indigo`, `Cyan`, `Teal`, `Green`, `Brown`, `Amber`, `Red`, and `White` use system colors. `Brown` maps to `UIColor.systemBrown`; `Amber` maps to `UIColor.systemOrange`.
+- Tints apply to supported accent surfaces.
+- Page backgrounds remain `systemGroupedBackground`; the app tint background wash is currently disabled in `AppBackground`.
+- Legacy stored tint value `default` is migrated to `Blue`; legacy stored tint values `gray` and `yellow` are treated as `Brown`.
+- The root `TabView` is not globally tinted; tab item colors refresh through `UITabBarAppearance` so tint does not leak into child controls.
+- `LoonyBearApp` also updates visible `UITabBar` and `UINavigationBar` instances when app tint or appearance mode changes, so current screens update without requiring a tab switch.
+- Editable schedule checkmarks, Settings app-row icons, and Calendar Taken/Completed markers use the selected app tint.
+- The following remain fixed system colors and do not follow app tint: read-only schedule checkmarks, toggles, segmented picker selection, skipped markers, overdue and warning colors, card Edit/Info swipe actions, and Backup action rows.
 
 ### 13.2 Rules & Logic Screen
 Defined in `LoonyBear/Features/Settings/RulesLogicView.swift`.
@@ -668,6 +752,50 @@ Behavior:
 - loads `RulesLogicContent.json` from bundle
 - shows loading state first
 - shows unavailable state if content cannot be loaded or decoded
+
+### 13.3 Shared Month Calendar
+Defined in `LoonyBear/Shared/MonthCalendarView.swift`.
+
+Behavior:
+- renders available months with a shared month grid
+- month navigation is controlled by the header chevron buttons
+- horizontal swipe paging is disabled
+- the day grid uses a stable six-week footprint and adjusts vertical row spacing for months with fewer visible week rows
+
+### 13.4 Shared Schedule UI
+Defined in `LoonyBear/Shared/AppDesign.swift`.
+
+Create/Edit schedule behavior:
+- schedule rows open `AppScheduleEditorPopoverContent` from `AppSchedulePickerRow`
+- schedule rows use a tap gesture instead of a visible pressed `Button` highlight
+- the popover uses full weekday names
+- day rows use compact `schedulePopoverRowVerticalPadding`
+- dividers between weekday rows are not shown
+- `Use schedule for history?` appears only when the caller supplies a binding
+- helper copy is shown inside the popover when supplied
+- the popover content has no extra inner card/background layer; the system popover bubble provides the visual container
+
+Details schedule behavior:
+- Details screens open `AppReadOnlySchedulePopoverContent`
+- Details schedule rows use a tap gesture instead of a visible pressed `Button` highlight
+- read-only schedule popovers use the same full weekday names and compact row spacing
+- selected read-only days show a neutral secondary checkmark
+
+### 13.5 Reminder Time UI
+Defined in `LoonyBear/Shared/AppDesign.swift`.
+
+Behavior:
+- Create/Edit reminder time rows render the selected time in a capsule value
+- tapping the row opens a wheel-style time picker popover
+- the visible row does not use compact `DatePicker` styling, so it does not show a pressed capsule effect
+
+### 13.6 Editable Start Date UI
+Defined in `LoonyBear/Shared/AppDesign.swift`.
+
+Behavior:
+- Create screens render the selected start date in a capsule value
+- tapping the row opens a graphical calendar popover
+- the visible row does not use compact `DatePicker` styling, so it does not show a pressed capsule effect
 
 ## 14. Startup Health Check
 

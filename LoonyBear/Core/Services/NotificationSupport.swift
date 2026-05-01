@@ -368,6 +368,10 @@ enum NotificationResponseSupport {
 }
 
 enum NotificationCleanupSupport {
+    private static let deliveredRemovalAttempts = 8
+    private static let deliveredRemovalMinimumPasses = 2
+    private static let deliveredRemovalRetryDelay: TimeInterval = 0.08
+
     struct DeliveredNotificationInfo {
         let identifier: String
         let userInfo: [AnyHashable: Any]
@@ -394,14 +398,30 @@ enum NotificationCleanupSupport {
         including notificationIdentifier: String? = nil,
         completion: (() -> Void)? = nil
     ) {
+        removeDeliveredNotifications(
+            center: center,
+            prefix: prefix,
+            on: localDate,
+            calendar: calendar,
+            including: notificationIdentifier,
+            attemptsRemaining: deliveredRemovalAttempts,
+            completedPasses: 0,
+            completion: completion
+        )
+    }
+
+    private static func removeDeliveredNotifications(
+        center: UNUserNotificationCenter,
+        prefix: String,
+        on localDate: Date,
+        calendar: Calendar,
+        including notificationIdentifier: String?,
+        attemptsRemaining: Int,
+        completedPasses: Int,
+        completion: (() -> Void)?
+    ) {
         center.getDeliveredNotifications { notifications in
-            let deliveredNotifications = notifications.map {
-                DeliveredNotificationInfo(
-                    identifier: $0.request.identifier,
-                    userInfo: $0.request.content.userInfo,
-                    deliveryDate: $0.date
-                )
-            }
+            let deliveredNotifications = deliveredNotificationInfos(from: notifications)
             let identifiers = deliveredNotificationIdentifiersToRemove(
                 from: deliveredNotifications,
                 prefix: prefix,
@@ -409,9 +429,55 @@ enum NotificationCleanupSupport {
                 calendar: calendar,
                 including: notificationIdentifier
             )
+            let matchingDeliveredIdentifiers = deliveredNotificationIdentifiersToRemove(
+                from: deliveredNotifications,
+                prefix: prefix,
+                on: localDate,
+                calendar: calendar
+            )
 
             center.removeDeliveredNotifications(withIdentifiers: identifiers)
-            completion?()
+
+            let needsMinimumRetry = notificationIdentifier != nil &&
+                completedPasses + 1 < deliveredRemovalMinimumPasses
+
+            guard attemptsRemaining > 0, (!matchingDeliveredIdentifiers.isEmpty || needsMinimumRetry) else {
+                completion?()
+                return
+            }
+
+            DispatchQueue.global().asyncAfter(deadline: .now() + deliveredRemovalRetryDelay) {
+                center.getDeliveredNotifications { remainingNotifications in
+                    let remainingIdentifiers = deliveredNotificationIdentifiersToRemove(
+                        from: deliveredNotificationInfos(from: remainingNotifications),
+                        prefix: prefix,
+                        on: localDate,
+                        calendar: calendar
+                    )
+
+                    guard needsMinimumRetry || !remainingIdentifiers.isEmpty else {
+                        completion?()
+                        return
+                    }
+
+                    if attemptsRemaining == 1, !remainingIdentifiers.isEmpty {
+                        ReliabilityLog.error(
+                            "notification.delivered.cleanup still has \(remainingIdentifiers.count) item(s)"
+                        )
+                    }
+
+                    removeDeliveredNotifications(
+                        center: center,
+                        prefix: prefix,
+                        on: localDate,
+                        calendar: calendar,
+                        including: notificationIdentifier,
+                        attemptsRemaining: attemptsRemaining - 1,
+                        completedPasses: completedPasses + 1,
+                        completion: completion
+                    )
+                }
+            }
         }
     }
 
@@ -441,6 +507,18 @@ enum NotificationCleanupSupport {
         }
 
         return Array(identifiers)
+    }
+
+    private static func deliveredNotificationInfos(
+        from notifications: [UNNotification]
+    ) -> [DeliveredNotificationInfo] {
+        notifications.map {
+            DeliveredNotificationInfo(
+                identifier: $0.request.identifier,
+                userInfo: $0.request.content.userInfo,
+                deliveryDate: $0.date
+            )
+        }
     }
 
     static func removePendingNotifications(

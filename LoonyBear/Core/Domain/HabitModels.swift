@@ -260,6 +260,8 @@ struct HabitDetailsProjection: Equatable {
 }
 
 enum AppearanceMode: String, CaseIterable, Identifiable {
+    static let storageKey = "appearance_mode"
+
     case system
     case light
     case dark
@@ -275,5 +277,9 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
         case .dark:
             return "Dark"
         }
+    }
+
+    static func stored(rawValue: String) -> AppearanceMode {
+        AppearanceMode(rawValue: rawValue) ?? .system
     }
 }

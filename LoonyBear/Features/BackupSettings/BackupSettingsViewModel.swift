@@ -67,6 +67,7 @@ final class BackupSettingsViewModel: ObservableObject {
 
     func createBackup() -> Bool {
         guard !isPerformingOperation else { return false }
+        guard status.fileState != .available else { return false }
         guard !status.requiresFolderReselection else {
             promptFolderReselection()
             return false
@@ -76,6 +77,7 @@ final class BackupSettingsViewModel: ObservableObject {
 
     func restoreBackup() -> Bool {
         guard !isPerformingOperation else { return false }
+        guard status.hasLatestBackup else { return false }
         guard !status.requiresFolderReselection else {
             promptFolderReselection()
             return false
@@ -85,6 +87,29 @@ final class BackupSettingsViewModel: ObservableObject {
 
     var isPerformingOperation: Bool {
         isCreatingBackup || isRestoringBackup
+    }
+
+    var actionNoticeKind: BackupActionNoticeKind? {
+        guard status.hasUsableFolder else { return nil }
+
+        switch status.fileState {
+        case .none:
+            return .noBackup
+        case .available:
+            return .restoreAvailable
+        case .created, .restored:
+            return nil
+        case .unreadable:
+            return .unreadable
+        }
+    }
+
+    var canCreateBackup: Bool {
+        status.hasUsableFolder && !isPerformingOperation && status.fileState != .available
+    }
+
+    var canRestoreBackup: Bool {
+        status.hasUsableFolder && status.hasLatestBackup && !isPerformingOperation
     }
 
     func confirmCreateBackup() async {
@@ -122,7 +147,6 @@ final class BackupSettingsViewModel: ObservableObject {
             pillNotificationService.rescheduleAllNotifications()
             status = updatedStatus
             await finishLoading(startedAt: start, kind: .restore)
-            alert = BackupAlert(title: "Restore Complete", message: "Your backup was restored successfully.")
             return true
         case .failure(let message):
             await finishLoading(startedAt: start, kind: .restore)
@@ -203,8 +227,23 @@ private enum BackupOperationResult {
     case failure(String)
 }
 
+enum BackupActionNoticeKind {
+    case noBackup
+    case restoreAvailable
+    case unreadable
+}
+
 struct BackupAlert: Identifiable {
     let id = UUID()
     let title: String
     let message: String
+}
+
+@MainActor
+final class BackupSettingsFeedback: ObservableObject {
+    @Published var alert: BackupAlert?
+
+    func showRestoreComplete() {
+        alert = BackupAlert(title: "Restore Complete", message: "Your backup was restored successfully.")
+    }
 }

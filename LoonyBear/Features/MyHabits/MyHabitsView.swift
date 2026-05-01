@@ -109,6 +109,13 @@ struct MyHabitsView: View {
                                     } label: {
                                         Image(systemName: "info")
                                     }
+                                    .tint(.indigo)
+
+                                    Button {
+                                        onEditHabit(habit)
+                                    } label: {
+                                        Image(systemName: "pencil")
+                                    }
                                     .tint(.blue)
                                 }
                             }
@@ -134,8 +141,9 @@ struct MyHabitsView: View {
                 Button {
                     onCreateHabit()
                 } label: {
-                    Image(systemName: "plus")
+                    AppToolbarIconLabel(systemName: "plus")
                 }
+                .appAccentTint()
                 .accessibilityLabel("Create Habit")
             }
         }

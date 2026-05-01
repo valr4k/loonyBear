@@ -108,6 +108,13 @@ struct MyPillsView: View {
                                     } label: {
                                         Image(systemName: "info")
                                     }
+                                    .tint(.indigo)
+
+                                    Button {
+                                        onEditPill(pill)
+                                    } label: {
+                                        Image(systemName: "pencil")
+                                    }
                                     .tint(.blue)
                                 }
                             }
@@ -133,8 +140,9 @@ struct MyPillsView: View {
                 Button {
                     onCreatePill()
                 } label: {
-                    Image(systemName: "plus")
+                    AppToolbarIconLabel(systemName: "plus")
                 }
+                .appAccentTint()
                 .accessibilityLabel("Create Pill")
             }
         }

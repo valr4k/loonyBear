@@ -50,7 +50,7 @@ struct EditableHistoryWindowTests {
     }
 
     @Test
-    func stateMachineDoesNotReturnPastDayToNone() {
+    func stateMachineStartsPastDayGapsWithPositiveState() {
         let today = TestSupport.makeDate(2026, 4, 30)
         let yesterday = TestSupport.makeDate(2026, 4, 29)
 
@@ -61,7 +61,7 @@ struct EditableHistoryWindowTests {
             EditableHistoryStateMachine.nextSelection(current: .skipped, for: yesterday, today: today) == .positive
         )
         #expect(
-            EditableHistoryStateMachine.nextSelection(current: .none, for: yesterday, today: today) == .skipped
+            EditableHistoryStateMachine.nextSelection(current: .none, for: yesterday, today: today) == .positive
         )
     }
 

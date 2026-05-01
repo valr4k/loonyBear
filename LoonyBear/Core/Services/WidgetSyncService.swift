@@ -7,7 +7,9 @@ final class WidgetSyncService {
     private let snapshotStore: WidgetSnapshotStore
     private let clock: AppClock
     private let saveQueue = DispatchQueue(label: "LoonyBear.WidgetSyncService.save", qos: .utility)
-    private var lastRequestedSections: [WidgetSectionSnapshot]?
+    private let stateQueue = DispatchQueue(label: "LoonyBear.WidgetSyncService.state", qos: .utility)
+    private var lastSavedSections: [WidgetSectionSnapshot]?
+    private var pendingSections: [WidgetSectionSnapshot]?
 
     init(
         snapshotStore: WidgetSnapshotStore = WidgetSnapshotStore(),
@@ -34,24 +36,43 @@ final class WidgetSyncService {
             )
         }
 
-        guard lastRequestedSections != sections else { return }
-        lastRequestedSections = sections
+        let shouldScheduleSave = stateQueue.sync { () -> Bool in
+            guard lastSavedSections != sections, pendingSections != sections else {
+                return false
+            }
+            pendingSections = sections
+            return true
+        }
+        guard shouldScheduleSave else { return }
 
         let snapshot = WidgetSnapshot(
             generatedAt: clock.now(),
             sections: sections
         )
 
-        saveQueue.async { [snapshotStore] in
+        saveQueue.async { [weak self, snapshotStore] in
             do {
                 let didWrite = try snapshotStore.saveIfChanged(snapshot)
+                self?.finishSave(for: sections, didSucceed: true)
                 guard didWrite else { return }
                 ReliabilityLog.info("widget.snapshot.save succeeded with \(snapshot.sections.count) section(s)")
                 DispatchQueue.main.async {
                     Self.reloadWidgets()
                 }
             } catch {
+                self?.finishSave(for: sections, didSucceed: false)
                 ReliabilityLog.error("widget.snapshot.save failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func finishSave(for sections: [WidgetSectionSnapshot], didSucceed: Bool) {
+        stateQueue.sync {
+            if self.pendingSections == sections {
+                self.pendingSections = nil
+            }
+            if didSucceed {
+                self.lastSavedSections = sections
             }
         }
     }

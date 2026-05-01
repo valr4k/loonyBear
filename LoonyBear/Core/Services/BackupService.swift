@@ -1,4 +1,5 @@
 import CoreData
+import CryptoKit
 import Foundation
 
 enum BackupServiceError: LocalizedError, Equatable {
@@ -44,6 +45,8 @@ final class BackupService {
     private let archiveWriter: ArchiveWriter
     private let bookmarkKey = "backup_folder_bookmark"
     private let folderNameKey = "backup_folder_name"
+    private let lastCreatedBackupFingerprintKey = "backup_last_created_fingerprint"
+    private let lastRestoredBackupFingerprintKey = "backup_last_restored_fingerprint"
     private let appName = "LoonyBear"
     private let schemaVersion = 1
 
@@ -102,7 +105,8 @@ final class BackupService {
                 fileSizeText: metadata.fileSizeText,
                 hasLatestBackup: metadata.hasLatestBackup,
                 hasSelectedFolder: true,
-                requiresFolderReselection: false
+                requiresFolderReselection: false,
+                fileState: metadata.fileState
             )
         } catch let error as BackupServiceError where error == .corruptedBackup {
             return makeArchiveUnavailableStatus(folderName: storedFolderName)
@@ -141,6 +145,7 @@ final class BackupService {
 
                 try archiveWriter(data, primaryURL)
             }
+            defaults.set(Self.fingerprint(for: data), forKey: lastCreatedBackupFingerprintKey)
             ReliabilityLog.info("backup.create succeeded")
         } catch {
             ReliabilityLog.error("backup.create failed: \(error.localizedDescription)")
@@ -184,8 +189,9 @@ final class BackupService {
                 throw error
             }
 
-            let archive = try loadPreferredArchive(in: folderURL)
-            try restoreArchive(archive)
+            let loadedArchive = try loadPreferredArchive(in: folderURL)
+            try restoreArchive(loadedArchive.archive)
+            defaults.set(Self.fingerprint(for: loadedArchive.data), forKey: lastRestoredBackupFingerprintKey)
             ReliabilityLog.info("backup.restore succeeded")
         } catch {
             ReliabilityLog.error("backup.restore failed: \(error.localizedDescription)")
@@ -207,6 +213,7 @@ final class BackupService {
         }
 
         try replaceStore(with: archive)
+        restoreAppSettings(from: archive)
         UserDefaultsOverdueAnchorStore.shared.clearAllAnchors()
         ReliabilityLog.info("backup.restore store replacement succeeded")
     }
@@ -250,7 +257,8 @@ final class BackupService {
             fileSizeText: "—",
             hasLatestBackup: false,
             hasSelectedFolder: true,
-            requiresFolderReselection: true
+            requiresFolderReselection: true,
+            fileState: .none
         )
     }
 
@@ -261,7 +269,8 @@ final class BackupService {
             fileSizeText: "—",
             hasLatestBackup: false,
             hasSelectedFolder: true,
-            requiresFolderReselection: false
+            requiresFolderReselection: false,
+            fileState: .unreadable
         )
     }
 
@@ -577,6 +586,7 @@ final class BackupService {
                 scheduleVersions: scheduleVersions,
                 completionRecords: completionRecords,
                 ordering: ordering,
+                settings: makeAppSettings(),
                 pills: backupPills,
                 pillScheduleVersions: pillScheduleVersions,
                 pillIntakeRecords: pillIntakeRecords
@@ -693,6 +703,23 @@ final class BackupService {
         }
     }
 
+    private func makeAppSettings() -> BackupAppSettings {
+        BackupAppSettings(
+            appearanceMode: AppearanceMode.stored(
+                rawValue: defaults.string(forKey: AppearanceMode.storageKey) ?? AppearanceMode.system.rawValue
+            ).rawValue,
+            appTint: AppTint.stored(
+                rawValue: defaults.string(forKey: AppTint.storageKey) ?? AppTint.blue.rawValue
+            ).rawValue
+        )
+    }
+
+    private func restoreAppSettings(from archive: BackupArchive) {
+        guard let settings = archive.settings else { return }
+        defaults.set(settings.appearanceMode, forKey: AppearanceMode.storageKey)
+        defaults.set(AppTint.stored(rawValue: settings.appTint).rawValue, forKey: AppTint.storageKey)
+    }
+
     private func validateArchive(_ archive: BackupArchive) throws {
         var report = IntegrityReportBuilder()
         appendDuplicateIdentifierIssues(
@@ -733,6 +760,26 @@ final class BackupService {
         )
         let habitIDs = Set(archive.habits.map(\.id))
         let pillIDs = Set(archive.pills.map(\.id))
+
+        if let settings = archive.settings {
+            if AppearanceMode(rawValue: settings.appearanceMode) == nil {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupAppSettings",
+                    objectIdentifier: "settings",
+                    message: "Backup settings contain invalid appearance mode."
+                )
+            }
+
+            if !AppTint.isValidStoredRawValue(settings.appTint) {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupAppSettings",
+                    objectIdentifier: "settings",
+                    message: "Backup settings contain invalid app tint."
+                )
+            }
+        }
 
         for habit in archive.habits {
             let objectIdentifier = "habit:\(habit.id.uuidString)"
@@ -971,22 +1018,23 @@ final class BackupService {
         }
     }
 
-    private func readMetadata(in folderURL: URL) throws -> (timestampText: String, fileSizeText: String, hasLatestBackup: Bool) {
+    private func readMetadata(in folderURL: URL) throws -> (timestampText: String, fileSizeText: String, hasLatestBackup: Bool, fileState: BackupFileState) {
         guard let loadedArchive = try loadPreferredArchiveFile(in: folderURL) else {
-            return ("No backups yet", "—", false)
+            return ("No backups yet", "—", false, .none)
         }
 
         let fileSize = ByteCountFormatter.string(fromByteCount: Int64(loadedArchive.data.count), countStyle: .file)
         let timestamp = loadedArchive.archive.exportedAt.formatted(.dateTime.month(.abbreviated).day().hour().minute())
-        return (timestamp, fileSize, true)
+        let fingerprint = Self.fingerprint(for: loadedArchive.data)
+        return (timestamp, fileSize, true, state(forBackupFingerprint: fingerprint))
     }
 
-    private func loadPreferredArchive(in folderURL: URL) throws -> BackupArchive {
+    private func loadPreferredArchive(in folderURL: URL) throws -> (archive: BackupArchive, data: Data) {
         guard let loadedArchive = try loadPreferredArchiveFile(in: folderURL) else {
             throw BackupServiceError.missingBackup
         }
 
-        return loadedArchive.archive
+        return loadedArchive
     }
 
     private func loadPreferredArchiveFile(in folderURL: URL) throws -> (archive: BackupArchive, data: Data)? {
@@ -1019,6 +1067,20 @@ final class BackupService {
 
             return nil
         }
+    }
+
+    private func state(forBackupFingerprint fingerprint: String) -> BackupFileState {
+        if defaults.string(forKey: lastRestoredBackupFingerprintKey) == fingerprint {
+            return .restored
+        }
+        if defaults.string(forKey: lastCreatedBackupFingerprintKey) == fingerprint {
+            return .created
+        }
+        return .available
+    }
+
+    private static func fingerprint(for data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     private func isRecoverableArchiveReadError(_ error: Error) -> Bool {

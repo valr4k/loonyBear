@@ -43,8 +43,12 @@ final class AppNotificationCoordinator: NSObject, UNUserNotificationCenterDelega
             return
         }
 
-        let finishResponse = {
+        let shouldRefreshScheduledNotifications = response.actionIdentifier != UNNotificationDefaultActionIdentifier
+        let refreshDerivedStateAndComplete = {
             _ = Task { @MainActor in
+                if shouldRefreshScheduledNotifications {
+                    await self.rescheduleAllReminderNotifications()
+                }
                 let habitDashboard = try? self.loadDashboardUseCase?.execute()
                 let pillDashboard: PillDashboardProjection?
                 if let pillRepository = self.pillRepository,
@@ -63,10 +67,11 @@ final class AppNotificationCoordinator: NSObject, UNUserNotificationCenterDelega
                 if let habitDashboard, let pillDashboard {
                     self.badgeService.refreshBadge(
                         habitDashboard: habitDashboard,
-                        pillDashboard: pillDashboard
+                        pillDashboard: pillDashboard,
+                        forceApply: true
                     )
                 } else {
-                    self.badgeService.refreshBadge()
+                    self.badgeService.refreshBadge(forceApply: true)
                 }
                 completionHandler()
             }
@@ -74,13 +79,13 @@ final class AppNotificationCoordinator: NSObject, UNUserNotificationCenterDelega
 
         if type.hasPrefix("pill") {
             pillNotificationService.handleNotificationResponse(response) { _ in
-                finishResponse()
+                refreshDerivedStateAndComplete()
             }
             return
         }
 
         habitNotificationService.handleNotificationResponse(response) { _ in
-            finishResponse()
+            refreshDerivedStateAndComplete()
         }
     }
 
@@ -98,5 +103,16 @@ final class AppNotificationCoordinator: NSObject, UNUserNotificationCenterDelega
                 pillNotificationService.notificationCategories()
         )
         center.setNotificationCategories(categories)
+    }
+
+    @MainActor
+    private func rescheduleAllReminderNotifications() async {
+        await withCheckedContinuation { continuation in
+            habitNotificationService.rescheduleAllNotifications {
+                self.pillNotificationService.rescheduleAllNotifications {
+                    continuation.resume()
+                }
+            }
+        }
     }
 }

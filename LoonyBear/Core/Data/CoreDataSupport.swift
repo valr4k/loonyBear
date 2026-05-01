@@ -183,7 +183,7 @@ enum EditableHistoryStateMachine {
         case .skipped:
             return .positive
         case .none:
-            return .skipped
+            return .positive
         }
     }
 }

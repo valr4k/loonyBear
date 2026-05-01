@@ -4,9 +4,13 @@ import SwiftUI
 struct RootTabView: View {
     @EnvironmentObject private var appState: HabitAppState
     @EnvironmentObject private var pillAppState: PillAppState
-    @State private var selectedTab: AppTab = .myPills
+    @SceneStorage("selected_tab") private var selectedTabRawValue = AppTab.myPills.rawValue
     @State private var presentedHabitSheet: HabitSheet?
     @State private var presentedPillSheet: PillSheet?
+    @SceneStorage("settings_route") private var settingsRouteRawValue = ""
+    @State private var settingsPath: [SettingsRoute] = []
+    @State private var didRestoreSettingsPath = false
+    @StateObject private var backupFeedback = BackupSettingsFeedback()
     let currentTime: Date
 
     init(currentTime: Date = Date()) {
@@ -14,7 +18,7 @@ struct RootTabView: View {
     }
 
     var body: some View {
-        TabView(selection: $selectedTab) {
+        TabView(selection: selectedTab) {
             NavigationStack {
                 MyPillsView(
                     currentTime: currentTime,
@@ -69,8 +73,10 @@ struct RootTabView: View {
                 }
                 .badge(overdueHabitCount)
 
-            NavigationStack {
-                SettingsView()
+            NavigationStack(path: $settingsPath) {
+                SettingsView {
+                    backupFeedback.showRestoreComplete()
+                }
             }
                 .tag(AppTab.settings)
                 .tabItem {
@@ -80,13 +86,54 @@ struct RootTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .openMyHabitsTab)) { _ in
             presentedPillSheet = nil
             presentedHabitSheet = nil
-            selectedTab = .myHabits
+            selectedTab.wrappedValue = .myHabits
         }
         .onReceive(NotificationCenter.default.publisher(for: .openMyPillsTab)) { _ in
             presentedHabitSheet = nil
             presentedPillSheet = nil
-            selectedTab = .myPills
+            selectedTab.wrappedValue = .myPills
         }
+        .onAppear {
+            restoreSettingsPathIfNeeded()
+        }
+        .onChange(of: settingsPath) { _, routes in
+            persistSettingsPath(routes)
+        }
+        .alert(item: $backupFeedback.alert) { alert in
+            Alert(
+                title: Text(alert.title),
+                message: Text(alert.message),
+                dismissButton: .default(Text("OK"))
+            )
+        }
+    }
+
+    private var selectedTab: Binding<AppTab> {
+        Binding(
+            get: {
+                AppTab(rawValue: selectedTabRawValue) ?? .myPills
+            },
+            set: { tab in
+                selectedTabRawValue = tab.rawValue
+            }
+        )
+    }
+
+    private func restoreSettingsPathIfNeeded() {
+        guard !didRestoreSettingsPath else { return }
+        didRestoreSettingsPath = true
+
+        guard let route = SettingsRoute(rawValue: settingsRouteRawValue) else {
+            return
+        }
+
+        settingsPath = [route]
+    }
+
+    private func persistSettingsPath(_ routes: [SettingsRoute]) {
+        let rawValue = routes.last?.rawValue ?? ""
+        guard settingsRouteRawValue != rawValue else { return }
+        settingsRouteRawValue = rawValue
     }
 
     @ViewBuilder
@@ -263,7 +310,7 @@ private enum PillEditSheetLoadState {
         .environmentObject(AppEnvironment.preview.pillAppState)
 }
 
-private enum AppTab: Hashable {
+private enum AppTab: String, Hashable {
     case myHabits
     case myPills
     case settings

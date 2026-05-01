@@ -332,6 +332,65 @@ struct AppBadgeServiceTests {
     }
 
     @Test
+    func forcedRefreshReappliesSameBadgeCountWhenSystemBadgeMayBeStale() {
+        let badgeApplier = FakeBadgeApplier()
+        let service = AppBadgeService(
+            loadDashboardUseCase: LoadDashboardUseCase(repository: FakeHabitRepository(habits: [])),
+            pillRepository: FakePillRepository(pills: []),
+            badgeApplier: badgeApplier
+        )
+
+        service.refreshBadge(
+            habitDashboard: .empty,
+            pillDashboard: .empty,
+            forceApply: true
+        )
+        service.refreshBadge(
+            habitDashboard: .empty,
+            pillDashboard: .empty,
+            forceApply: true
+        )
+
+        #expect(badgeApplier.appliedCounts == [0, 0])
+    }
+
+    @Test
+    func unforcedRefreshStillSkipsDuplicateBadgeWrites() {
+        let badgeApplier = FakeBadgeApplier()
+        let now = Calendar.current.startOfDay(for: Date())
+        let habit = HabitCardProjection(
+            id: UUID(),
+            type: .build,
+            name: "Overdue",
+            scheduleSummary: "Daily",
+            currentStreak: 0,
+            reminderText: "9:00 AM",
+            reminderHour: 9,
+            reminderMinute: 0,
+            isReminderScheduledToday: true,
+            isCompletedToday: false,
+            isSkippedToday: false,
+            activeOverdueDay: now,
+            sortOrder: 0
+        )
+        let dashboard = DashboardProjection(
+            sections: [
+                HabitSectionProjection(id: .build, title: "Build Habit", habits: [habit]),
+            ]
+        )
+        let service = AppBadgeService(
+            loadDashboardUseCase: LoadDashboardUseCase(repository: FakeHabitRepository(habits: [habit])),
+            pillRepository: FakePillRepository(pills: []),
+            badgeApplier: badgeApplier
+        )
+
+        service.refreshBadge(habitDashboard: dashboard, pillDashboard: .empty)
+        service.refreshBadge(habitDashboard: dashboard, pillDashboard: .empty)
+
+        #expect(badgeApplier.appliedCounts == [1])
+    }
+
+    @Test
     func badgeComputationFailsWhenHabitReminderHourIsMissingInsteadOfUsingMidnight() throws {
         let persistence = PersistenceController(inMemory: true)
         let habitRepository = CoreDataHabitRepository(
@@ -568,4 +627,12 @@ private struct FakePillRepository: PillRepository {
     func clearPillDayStateToday(id: UUID) throws { fatalError("Unused in tests") }
     func clearPillDayState(id: UUID, on day: Date) throws { fatalError("Unused in tests") }
     func movePills(from offsets: IndexSet, to destination: Int) throws { fatalError("Unused in tests") }
+}
+
+private final class FakeBadgeApplier: AppBadgeApplying {
+    private(set) var appliedCounts: [Int] = []
+
+    func setBadgeCount(_ badgeCount: Int) {
+        appliedCounts.append(badgeCount)
+    }
 }
