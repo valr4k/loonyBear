@@ -235,8 +235,13 @@ final class BackupService {
             throw BackupServiceError.invalidFolderAccess
         }
 
-        if isStale {
-            try saveFolderBookmark(for: url)
+        do {
+            if isStale {
+                try saveFolderBookmark(for: url)
+            }
+        } catch {
+            url.stopAccessingSecurityScopedResource()
+            throw error
         }
 
         return url

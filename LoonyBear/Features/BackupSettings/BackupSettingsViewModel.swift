@@ -73,6 +73,10 @@ final class BackupSettingsViewModel: ObservableObject {
             promptFolderReselection()
             return false
         }
+        guard status.hasUsableFolder else {
+            chooseFolder()
+            return false
+        }
         return true
     }
 

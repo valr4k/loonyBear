@@ -78,6 +78,17 @@ struct BackupSettingsViewModelTests {
         #expect(viewModel.banner?.message == "Your backup is ready in the selected folder.")
         #expect(viewModel.banner?.style == .success)
     }
+
+    @Test
+    func createBackupWithoutFolderOpensFolderPicker() throws {
+        let fixture = try makeFixture()
+        let viewModel = fixture.viewModel
+
+        viewModel.load()
+
+        #expect(!viewModel.createBackup())
+        #expect(viewModel.isShowingFolderPicker)
+    }
 }
 
 private extension BackupSettingsViewModelTests {

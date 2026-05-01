@@ -94,7 +94,7 @@ final class AppNotificationCoordinator: NSObject, UNUserNotificationCenterDelega
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        completionHandler([.banner, .sound, .list])
+        completionHandler([.banner, .sound, .list, .badge])
     }
 
     private func registerCategories() {

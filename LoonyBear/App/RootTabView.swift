@@ -1,9 +1,26 @@
 import Combine
 import SwiftUI
 
+struct HomeQuickActionRoute: Equatable {
+    let selectedTab: AppTab
+    let settingsPath: [SettingsRoute]
+}
+
+enum HomeQuickActionRouter {
+    static func route(for action: HomeQuickAction?) -> HomeQuickActionRoute? {
+        switch action {
+        case .createBackup:
+            return HomeQuickActionRoute(selectedTab: .settings, settingsPath: [.backup])
+        case nil:
+            return nil
+        }
+    }
+}
+
 struct RootTabView: View {
     @EnvironmentObject private var appState: HabitAppState
     @EnvironmentObject private var pillAppState: PillAppState
+    @ObservedObject private var quickActionCenter = HomeQuickActionCenter.shared
     @SceneStorage("selected_tab") private var selectedTabRawValue = AppTab.myPills.rawValue
     @State private var presentedHabitSheet: HabitSheet?
     @State private var presentedPillSheet: PillSheet?
@@ -92,9 +109,13 @@ struct RootTabView: View {
         }
         .onAppear {
             restoreSettingsPathIfNeeded()
+            routeQuickActionIfNeeded(quickActionCenter.pendingAction)
         }
         .onChange(of: settingsPath) { _, routes in
             persistSettingsPath(routes)
+        }
+        .onChange(of: quickActionCenter.pendingAction) { _, action in
+            routeQuickActionIfNeeded(action)
         }
     }
 
@@ -124,6 +145,16 @@ struct RootTabView: View {
         let rawValue = routes.last?.rawValue ?? ""
         guard settingsRouteRawValue != rawValue else { return }
         settingsRouteRawValue = rawValue
+    }
+
+    private func routeQuickActionIfNeeded(_ action: HomeQuickAction?) {
+        guard let route = HomeQuickActionRouter.route(for: action) else { return }
+
+        presentedHabitSheet = nil
+        presentedPillSheet = nil
+        selectedTab.wrappedValue = route.selectedTab
+        settingsPath = route.settingsPath
+        quickActionCenter.consume(.createBackup)
     }
 
     @ViewBuilder
@@ -300,7 +331,7 @@ private enum PillEditSheetLoadState {
         .environmentObject(AppEnvironment.preview.pillAppState)
 }
 
-private enum AppTab: String, Hashable {
+enum AppTab: String, Hashable {
     case myHabits
     case myPills
     case settings

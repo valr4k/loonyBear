@@ -215,7 +215,7 @@
         },
         {
           "title": "Pill remind later",
-          "body": "Remind me in 10 mins creates a separate delayed Pill reminder exactly 10 minutes from now. The delayed reminder keeps the original pillID and localDate in its payload."
+          "body": "Remind me in 10 mins creates a separate delayed Pill reminder using minute-level calendar precision. Because seconds are intentionally not preserved, the delayed reminder may fire up to 59 seconds earlier than an exact second-level 10-minute delay; this is accepted by customer requirements. The delayed reminder keeps the original pillID and localDate in its payload."
         },
         {
           "title": "Pill remind later persistence",
@@ -257,7 +257,7 @@
       "items": [
         {
           "title": "What Backup screen shows",
-          "body": "Backup shows Last backup, Total size, and Folder. Last backup uses the same color as its cloud status icon: green when a readable backup exists and red when it does not. Create Backup and Restore Backup are full-width capsule buttons; Create uses the primary label color and Restore stays system red. Create and Restore confirmations use system alerts instead of popover confirmation dialogs; alert actions use short labels: Backup and Restore. Backup feedback uses dismissible floating banners that auto-hide after 4 seconds or clear when leaving the Backup screen."
+          "body": "Backup shows Last backup, Total size, and Folder. Last backup uses the same color as its cloud status icon: green when a readable backup exists and red when it does not. Create Backup and Restore Backup are full-width capsule buttons; Create uses the primary label color and Restore stays system red. Create and Restore confirmations use system alerts instead of popover confirmation dialogs; alert actions use short labels: Backup and Restore. Backup feedback uses dismissible floating banners that auto-hide after 4 seconds or clear when leaving the Backup screen. The Home Screen app icon exposes a Create Backup quick action; choosing it opens Settings > Backup only, and backup creation still starts only after the user taps Create Backup on the Backup screen."
         },
         {
           "title": "Folder with an existing backup",
@@ -464,7 +464,7 @@
         },
         {
           "title": "Pill notification constants",
-          "body": "Pill notifications use categoryIdentifier pill.reminder, summaryCategoryIdentifier pill.reminder.summary, action identifiers pill.take, pill.skip, and pill.remind_later, schedulingWindowDays 2, aggregationThreshold 3, and remindLaterInterval 600 seconds."
+          "body": "Pill notifications use categoryIdentifier pill.reminder, summaryCategoryIdentifier pill.reminder.summary, action identifiers pill.take, pill.skip, and pill.remind_later, schedulingWindowDays 2, aggregationThreshold 3, and remindLaterInterval 600 seconds with accepted minute-level trigger precision."
         },
         {
           "title": "Reminder candidate rules",

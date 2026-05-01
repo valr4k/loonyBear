@@ -1409,6 +1409,61 @@ struct NotificationServiceTests {
     }
 
     @Test
+    func pillRemindLaterUsesCurrentPillCopyBeforeDeliveredFallback() async throws {
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = PillNotificationService(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+
+        try await clearNotifications()
+
+        let today = Calendar.current.startOfDay(for: Date())
+        var draft = PillDraft()
+        draft.name = "Old name"
+        draft.dosage = "1 tablet"
+        draft.startDate = today
+        let pillID = try repository.createPill(from: draft)
+
+        let context = persistence.container.viewContext
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Pill")
+        request.predicate = NSPredicate(format: "id == %@", pillID as CVarArg)
+        request.fetchLimit = 1
+        let pill = try #require(context.fetch(request).first)
+        pill.setValue("New name", forKey: "name")
+        pill.setValue("2 capsules", forKey: "dosage")
+        try context.save()
+
+        #expect(service.handleNotificationResponse(
+            type: "pill",
+            userInfo: [
+                "type": "pill",
+                "pillID": pillID.uuidString,
+                "localDate": LocalNotificationSupport.localDateIdentifier(for: today, calendar: .current),
+            ],
+            actionIdentifier: "pill.remind_later",
+            notificationDate: Date(),
+            fallbackTitle: "Old name",
+            fallbackBody: "Take 1 tablet."
+        ))
+
+        let requests = try await waitForPendingRequests(
+            expectedCount: 1,
+            matching: { $0.identifier.contains("remindlater_") }
+        )
+        let snoozedRequest = try #require(requests.first)
+
+        #expect(snoozedRequest.content.title == "New name")
+        #expect(snoozedRequest.content.body == "Take 2 capsules.")
+
+        try await clearNotifications()
+    }
+
+    @Test
     func pillRemindLaterSurvivesGlobalReschedule() async throws {
         let persistence = PersistenceController(inMemory: true)
         let repository = CoreDataPillRepository(

@@ -611,28 +611,28 @@ final class PillNotificationService {
         let fallbackDetails: (String, String)?
         do {
             fallbackDetails = try storeContext.performRead { context in
-            let request = NSFetchRequest<NSManagedObject>(entityName: "Pill")
-            request.predicate = NSPredicate(format: "id == %@", pillID as CVarArg)
-            request.fetchLimit = 1
-            guard let pill = try context.fetch(request).first else {
-                return nil
-            }
+                let request = NSFetchRequest<NSManagedObject>(entityName: "Pill")
+                request.predicate = NSPredicate(format: "id == %@", pillID as CVarArg)
+                request.fetchLimit = 1
+                guard let pill = try context.fetch(request).first else {
+                    return nil
+                }
 
-            guard
-                let name = pill.stringValue(forKey: "name"),
-                let dosage = pill.stringValue(forKey: "dosage")
-            else {
-                return nil
-            }
+                guard
+                    let name = pill.stringValue(forKey: "name"),
+                    let dosage = pill.stringValue(forKey: "dosage")
+                else {
+                    return nil
+                }
 
-            return (name, "Take \(dosage).")
+                return (name, "Take \(dosage).")
             }
         } catch {
             fallbackDetails = nil
         }
 
-        content.title = fallbackTitle ?? fallbackDetails?.0 ?? "Pill reminder"
-        content.body = fallbackBody ?? fallbackDetails?.1 ?? "Time to take your pill."
+        content.title = fallbackDetails?.0 ?? fallbackTitle ?? "Pill reminder"
+        content.body = fallbackDetails?.1 ?? fallbackBody ?? "Time to take your pill."
         content.sound = .default
         content.categoryIdentifier = categoryIdentifier
         content.userInfo = [

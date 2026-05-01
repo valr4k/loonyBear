@@ -4,6 +4,7 @@ import UIKit
 
 @main
 struct LoonyBearApp: App {
+    @UIApplicationDelegateAdaptor(LoonyBearAppDelegate.self) private var appDelegate
     private let bootstrapState = AppEnvironment.live()
     @AppStorage(AppearanceMode.storageKey) private var appearanceModeRawValue = AppearanceMode.system.rawValue
     @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
