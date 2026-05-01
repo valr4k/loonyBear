@@ -276,8 +276,9 @@ Delete is not available from card swipe actions.
 - validates that every past editable scheduled day is either `manual edit`/completed or `skipped`
 - throws `EditableHistoryValidationError.missingHabitPastDays` if a past editable scheduled day is empty
 - Edit Habit includes a past active overdue day in save validation and disables Save until it is resolved
-- Edit Habit surfaces missing past-day review as a persistent warning row above the calendar; if only the active overdue day is missing, the row uses overdue-specific copy
-- Habit Details computes missing past days from `requiredPastScheduledDays`; it shows active-overdue-specific copy when the only missing day is the active overdue day, otherwise it asks the user to open Edit and resolve the missing scheduled days
+- Edit Habit surfaces missing past-day review through the dismissible `AppFloatingWarningBanner`; if only the active overdue day is missing, the banner uses overdue-specific copy
+- Habit Details computes missing past days from `requiredPastScheduledDays`; it shows the same floating banner with active-overdue-specific copy when the only missing day is the active overdue day, otherwise it asks the user to open Edit and resolve the missing scheduled days
+- missing past-day warning copy intentionally omits the date list; the validation error still carries the missing dates for logic/tests
 - rewrites rows day by day using `manual edit` or `skipped`
 - removes duplicate history rows for the same day except the primary latest row
 - deletes any editable-day row whose normalized selection is none
@@ -375,8 +376,9 @@ Delete is not available from card swipe actions.
 - validates that every past editable scheduled day is either `manual edit`/taken or `skipped`
 - throws `EditableHistoryValidationError.missingPillPastDays` if a past editable scheduled day is empty
 - Edit Pill includes a past active overdue day in save validation and disables Save until it is resolved
-- Edit Pill surfaces missing past-day review as a persistent warning row above the calendar; if only the active overdue day is missing, the row uses overdue-specific copy
-- Pill Details computes missing past days from `requiredPastScheduledDays`; it shows active-overdue-specific copy when the only missing day is the active overdue day, otherwise it asks the user to open Edit and resolve the missing scheduled days
+- Edit Pill surfaces missing past-day review through the dismissible `AppFloatingWarningBanner`; if only the active overdue day is missing, the banner uses overdue-specific copy
+- Pill Details computes missing past days from `requiredPastScheduledDays`; it shows the same floating banner with active-overdue-specific copy when the only missing day is the active overdue day, otherwise it asks the user to open Edit and resolve the missing scheduled days
+- missing past-day warning copy intentionally omits the date list; the validation error still carries the missing dates for logic/tests
 - rewrites rows day by day using `manual edit` or `skipped`
 - removes duplicate history rows for the same day except the primary latest row
 - deletes any editable-day row whose normalized selection is none
@@ -744,6 +746,12 @@ Appearance behavior:
 - `LoonyBearApp` also updates visible `UITabBar` and `UINavigationBar` instances when app tint or appearance mode changes, so current screens update without requiring a tab switch.
 - Editable schedule checkmarks, Settings app-row icons, and Calendar Taken/Completed markers use the selected app tint.
 - The following remain fixed system colors and do not follow app tint: read-only schedule checkmarks, toggles, segmented picker selection, skipped markers, overdue and warning colors, card Edit/Info swipe actions, and Backup action rows.
+
+Shared warning overlay behavior:
+- `AppFloatingWarningBanner` is defined in `LoonyBear/Shared/AppDesign.swift`.
+- Edit Habit, Edit Pill, Habit Details, and Pill Details use it for missing past-day review.
+- The banner is an overlay pinned near the bottom of the visible screen, uses `ultraThinMaterial` with a fixed system-red warning tint, can be dismissed, and disappears automatically when the missing-day condition is resolved.
+- Because the banner is not part of the scroll content, resolving the final missing day does not shift the calendar upward.
 
 ### 13.2 Rules & Logic Screen
 Defined in `LoonyBear/Features/Settings/RulesLogicView.swift`.

@@ -52,11 +52,13 @@ This file describes the behavioral rules that are currently implemented in code.
 - Today can be empty, completed, or skipped.
 - Past editable scheduled Habit days must be explicitly completed or skipped before saving.
 - Save is disabled while any past editable scheduled Habit day is empty.
-- Missing past-day review is shown as a persistent warning row above the editable calendar. If the only missing day is the active overdue day, the warning asks the user to choose `Completed` or `Skipped` for the overdue scheduled day.
+- Missing past-day review is shown as a dismissible floating warning banner pinned near the bottom of Edit Habit. It does not take space in the calendar layout and disappears once all required past scheduled days are resolved.
+- If the only missing Habit day is the active overdue day, the floating warning asks the user to choose `Completed` or `Skipped` for the overdue scheduled day.
+- Missing past-day warning copy does not list the missing dates.
 - Habit cards show a warning status instead of today's completed/skipped status while recent history needs review.
 - Habit cards do not show the history warning only because of the active overdue day; they show it alongside overdue only when some other required past scheduled day is empty.
 - Habit card trailing swipe exposes Edit and Info. Edit uses system blue, Info uses system indigo, and Delete is not available from card swipe actions.
-- Habit Details shows a warning row above the calendar while any past scheduled day is missing. If the only missing day is the active overdue day, the warning asks the user to open Edit and choose `Completed` or `Skipped` for the overdue scheduled day.
+- Habit Details shows the same dismissible floating warning banner while any past scheduled day is missing. If the only missing day is the active overdue day, the warning asks the user to open Edit and choose `Completed` or `Skipped` for the overdue scheduled day.
 - Saving Edit Habit does not auto-fill missing past days; the user must choose the state.
 - If today's state is already finalized and the schedule is changed, the new schedule takes effect from tomorrow instead of rewriting today's schedule meaning.
 
@@ -115,11 +117,13 @@ This file describes the behavioral rules that are currently implemented in code.
 - Today can be empty, taken, or skipped.
 - Past editable scheduled Pill days must be explicitly taken or skipped before saving.
 - Save is disabled while any past editable scheduled Pill day is empty.
-- Missing past-day review is shown as a persistent warning row above the editable calendar. If the only missing day is the active overdue day, the warning asks the user to choose `Taken` or `Skipped` for the overdue scheduled day.
+- Missing past-day review is shown as a dismissible floating warning banner pinned near the bottom of Edit Pill. It does not take space in the calendar layout and disappears once all required past scheduled days are resolved.
+- If the only missing Pill day is the active overdue day, the floating warning asks the user to choose `Taken` or `Skipped` for the overdue scheduled day.
+- Missing past-day warning copy does not list the missing dates.
 - Pill cards show a warning status instead of today's taken/skipped status while recent history needs review.
 - Pill cards do not show the history warning only because of the active overdue day; they show it alongside overdue only when some other required past scheduled day is empty.
 - Pill card trailing swipe exposes Edit and Info. Edit uses system blue, Info uses system indigo, and Delete is not available from card swipe actions.
-- Pill Details shows a warning row above the calendar while any past scheduled day is missing. If the only missing day is the active overdue day, the warning asks the user to open Edit and choose `Taken` or `Skipped` for the overdue scheduled day.
+- Pill Details shows the same dismissible floating warning banner while any past scheduled day is missing. If the only missing day is the active overdue day, the warning asks the user to open Edit and choose `Taken` or `Skipped` for the overdue scheduled day.
 - Saving Edit Pill does not auto-fill missing past days; the user must choose the state.
 - If today's state is already finalized and the schedule is changed, the new schedule takes effect from tomorrow instead of rewriting today's schedule meaning.
 
@@ -224,6 +228,7 @@ This file describes the behavioral rules that are currently implemented in code.
 - Custom month calendars are navigated only with the left and right header arrows.
 - Custom month calendars do not support horizontal swipe paging.
 - Custom month calendars keep a stable six-week grid footprint while changing vertical spacing between week rows for shorter months.
+- History review warnings are floating overlays instead of inline calendar rows, so resolving the last missing day does not move the calendar.
 
 ## Device UI Rules
 

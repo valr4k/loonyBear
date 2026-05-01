@@ -67,11 +67,11 @@
         },
         {
           "title": "Habit details screen",
-          "body": "Habit Details shows name, schedule, reminder, start date, current streak, best streak, completed for, and a read-only calendar. If any past scheduled day needs review, a warning row above the calendar asks the user to open Edit and choose Completed or Skipped. If the only missing day is the active overdue day, the row uses overdue-specific copy. The toolbar has Close on the left and Edit on the right. Edit is shown only when details load successfully."
+          "body": "Habit Details shows name, schedule, reminder, start date, current streak, best streak, completed for, and a read-only calendar. If any past scheduled day needs review, a dismissible floating warning banner asks the user to open Edit and choose Completed or Skipped. If the only missing day is the active overdue day, the banner uses overdue-specific copy. The toolbar has Close on the left and Edit on the right. Edit is shown only when details load successfully."
         },
         {
           "title": "Editing a Habit",
-          "body": "Edit Habit shows name, read-only start date, reminder settings, selected days, an editable calendar, helper text, and a Delete button at the bottom. Missing past-day review is shown as a persistent warning row above the calendar, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a confirmation dialog."
+          "body": "Edit Habit shows name, read-only start date, reminder settings, selected days, an editable calendar, helper text, and a Delete button at the bottom. Missing past-day review is shown as a dismissible floating warning banner that does not take space inside the calendar layout, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a confirmation dialog."
         }
       ]
     },
@@ -100,7 +100,7 @@
         },
         {
           "title": "Today versus past days in Habit edit",
-          "body": "Today can still be empty, completed, or skipped. Every past editable scheduled Habit day must be Completed or Skipped before saving, including a past active overdue day. Saving Edit Habit does not auto-fill missing past scheduled days; if any past editable scheduled day is empty, the app shows a persistent warning row above the calendar and disables Save until the user chooses the state. Non-scheduled editable days may still be marked manually and count when marked. If today already has a stored state and the schedule is changed, the new schedule starts tomorrow."
+          "body": "Today can still be empty, completed, or skipped. Every past editable scheduled Habit day must be Completed or Skipped before saving, including a past active overdue day. Saving Edit Habit does not auto-fill missing past scheduled days; if any past editable scheduled day is empty, the app shows a dismissible floating warning banner without listing dates and disables Save until the user chooses the state. Non-scheduled editable days may still be marked manually and count when marked. If today already has a stored state and the schedule is changed, the new schedule starts tomorrow."
         },
         {
           "title": "Current streak",
@@ -141,11 +141,11 @@
         },
         {
           "title": "Pill details screen",
-          "body": "Pill Details shows name, dosage, start date, schedule, reminder, taken for, a read-only calendar, and description if one exists. If any past scheduled day needs review, a warning row above the calendar asks the user to open Edit and choose Taken or Skipped. If the only missing day is the active overdue day, the row uses overdue-specific copy. The toolbar has Close on the left and Edit on the right. Edit is shown only when details load successfully."
+          "body": "Pill Details shows name, dosage, start date, schedule, reminder, taken for, a read-only calendar, and description if one exists. If any past scheduled day needs review, a dismissible floating warning banner asks the user to open Edit and choose Taken or Skipped. If the only missing day is the active overdue day, the banner uses overdue-specific copy. The toolbar has Close on the left and Edit on the right. Edit is shown only when details load successfully."
         },
         {
           "title": "Editing a Pill",
-          "body": "Edit Pill shows name, dosage, read-only start date, reminder settings, selected days, an editable calendar, helper text, description, and a Delete button at the bottom. Missing past-day review is shown as a persistent warning row above the calendar, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a confirmation dialog."
+          "body": "Edit Pill shows name, dosage, read-only start date, reminder settings, selected days, an editable calendar, helper text, description, and a Delete button at the bottom. Missing past-day review is shown as a dismissible floating warning banner that does not take space inside the calendar layout, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a confirmation dialog."
         }
       ]
     },
@@ -178,7 +178,7 @@
         },
         {
           "title": "Today versus past days in Pill edit",
-          "body": "Today can still be empty, taken, or skipped. Every past editable scheduled Pill day must be Taken or Skipped before saving, including a past active overdue day. Saving Edit Pill does not auto-fill missing past scheduled days; if any past editable scheduled day is empty, the app shows a persistent warning row above the calendar and disables Save until the user chooses the state. Non-scheduled editable days may still be marked manually and count when marked. If today already has a stored state and the schedule is changed, the new schedule starts tomorrow."
+          "body": "Today can still be empty, taken, or skipped. Every past editable scheduled Pill day must be Taken or Skipped before saving, including a past active overdue day. Saving Edit Pill does not auto-fill missing past scheduled days; if any past editable scheduled day is empty, the app shows a dismissible floating warning banner without listing dates and disables Save until the user chooses the state. Non-scheduled editable days may still be marked manually and count when marked. If today already has a stored state and the schedule is changed, the new schedule starts tomorrow."
         },
         {
           "title": "Pill totals",

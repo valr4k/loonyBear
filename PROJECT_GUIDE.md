@@ -123,6 +123,7 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
 - Backup includes the selected appearance mode and app tint, while legacy backups without those settings keep the current appearance.
 - Custom calendars use arrow-only month navigation, without horizontal swipe paging.
 - Custom calendar blocks keep a stable six-week footprint when changing months.
+- Missing past-day review warnings use a dismissible floating red material banner on Edit and Details screens; they do not list dates and do not take space inside the calendar layout.
 - Schedule selection opens as a popover with full weekday names and no row dividers on Create/Edit and Details surfaces.
 - Backup actions are full-width capsule buttons; `Last backup` follows the cloud status icon color.
 - Backup action notices are derived from folder contents and remembered backup fingerprints, so already created/restored backups do not show restore-needed or success notice rows after reopening the screen.

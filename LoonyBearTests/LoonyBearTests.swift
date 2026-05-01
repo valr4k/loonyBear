@@ -28,6 +28,25 @@ struct LoonyBearTests {
     }
 
     @Test
+    func missingPastHistoryValidationMessagesDoNotListDates() {
+        let missingDays = [
+            TestSupport.makeDate(2026, 4, 27),
+            TestSupport.makeDate(2026, 4, 28),
+            TestSupport.makeDate(2026, 4, 29),
+        ]
+
+        let habitError = EditableHistoryValidationError.missingHabitPastDays(missingDays)
+        let pillError = EditableHistoryValidationError.missingPillPastDays(missingDays)
+
+        #expect(habitError.localizedDescription == "Choose Completed or Skipped for every past scheduled day before saving.")
+        #expect(pillError.localizedDescription == "Choose Taken or Skipped for every past scheduled day before saving.")
+        #expect(!habitError.localizedDescription.contains("Missing:"))
+        #expect(!pillError.localizedDescription.contains("Missing:"))
+        #expect(!habitError.localizedDescription.contains("Apr"))
+        #expect(!pillError.localizedDescription.contains("Apr"))
+    }
+
+    @Test
     func habitDetailInspectionDoesNotMutateErrorState() throws {
         let persistence = PersistenceController(inMemory: true)
         let repository = CoreDataHabitRepository(
@@ -316,7 +335,7 @@ struct LoonyBearTests {
         #expect(updatedDetails.completedDays.contains(yesterday))
         #expect(updatedDetails.completedDays.contains(twoDaysAgo))
         #expect(updatedDetails.skippedDays.isEmpty)
-        #expect(appState.actionErrorMessage?.contains("Choose Completed or Skipped") == true)
+        #expect(appState.actionErrorMessage == "Choose Completed or Skipped for every past scheduled day before saving.")
 
         let dashboardHabit = try #require(
             appState.dashboard.sections
@@ -401,7 +420,7 @@ struct LoonyBearTests {
         #expect(updatedDetails.takenDays.contains(yesterday))
         #expect(updatedDetails.takenDays.contains(twoDaysAgo))
         #expect(updatedDetails.skippedDays.isEmpty)
-        #expect(appState.actionErrorMessage?.contains("Choose Taken or Skipped") == true)
+        #expect(appState.actionErrorMessage == "Choose Taken or Skipped for every past scheduled day before saving.")
 
         let dashboardPill = try #require(appState.dashboard.pills.first { $0.id == pillID })
         #expect(dashboardPill.name == "Vitamin D")
