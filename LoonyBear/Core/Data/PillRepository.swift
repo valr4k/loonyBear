@@ -7,9 +7,9 @@ enum PillRepositoryError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .internalFailure:
-            return "Pill operation failed unexpectedly."
+            return "Something went wrong. Try again."
         case .tooManyPills:
-            return "You can create up to 20 pills."
+            return "Limit reached. You can add up to 20 pills."
         }
     }
 }

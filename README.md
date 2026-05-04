@@ -38,7 +38,8 @@ The current app supports:
 - local backup and restore
 - appearance mode and adaptive app tint settings, included in new backups
 - Blue/Indigo/Green/Amber app color palette with Blue as the default
-- in-place schedule popovers with weekday and interval-day selection
+- pushed Repeat editor with Days and Interval selection
+- End Date and separate Archive pages for completed or manually archived items
 - scheduled-day dots in Habit and Pill history calendars
 - portrait-only orientation on iPhone
 - Rules & Logic in-app reference content

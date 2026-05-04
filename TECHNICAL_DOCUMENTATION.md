@@ -211,7 +211,7 @@ Files:
 Validation rules:
 - name must not be empty after trimming
 - at least one schedule day must be selected
-- start date may be selected from the last 30 days through the end of the second next calendar month
+- start date may be selected from the last 5 years through the end of the second next calendar month
 
 Repository-level create rule:
 - maximum number of habits is `20`
@@ -225,6 +225,8 @@ Create flow writes:
 - one `Habit`
 - one initial `HabitScheduleVersion`
 - `historyModeRaw`
+- optional `endDate`
+- `isArchived = false`
 - optional reminder values
 
 After that, the repository generates initial completed days from `startDate` through yesterday and inserts one `HabitCompletion` per generated day.
@@ -237,6 +239,7 @@ Initial Habit history generation inserts `HabitCompletion` rows with source:
 Rules:
 - if `useScheduleForHistory == true`, only scheduled days are generated
 - if `useScheduleForHistory == false`, every day in the range is generated
+- current Create UI does not expose this toggle and uses the schedule-based path
 - does not overwrite existing positive completion rows
 - does not overwrite existing skipped rows
 - does not insert a row if history objects already exist for that day
@@ -272,9 +275,11 @@ Delete is not available from card swipe actions.
 `updateHabit(from:)`:
 - updates name
 - updates reminder flags and time
+- updates optional End Date (`endDate`)
 - inserts a new `HabitScheduleVersion` if the schedule rule changed
-- uses the resolved `Apply From` date shown in Edit as the new schedule version `effectiveFrom`
-- if the selected Apply From date already has an explicit state or does not match a weekly rule, it is resolved forward to the next available scheduled day; for interval rules, the resolved date becomes the new interval anchor
+- active items resolve the new schedule version `effectiveFrom` from today when the schedule rule changed: today is used only if it matches the new Repeat and has no explicit state; otherwise the first scheduled day after today is used
+- future items resolve the new schedule version `effectiveFrom` from `startDate` when the schedule rule changed
+- archived items being restored save the current edit form and use the same internal `effectiveFrom` path before unarchiving
 - preserves the persisted `historyModeRaw` already stored on the Habit
 - builds editable day set from `EditableHistoryWindow.dates(startDate:)`
 - normalizes selected days with `EditableHistoryContract.normalizedSelection(...)`
@@ -283,8 +288,9 @@ Delete is not available from card swipe actions.
 - throws `EditableHistoryValidationError.missingHabitPastDays` if a past editable scheduled day is empty
 - Edit Habit includes a past active overdue day in save validation and disables Save until it is resolved
 - Edit Habit surfaces missing past-day review through the dismissible `AppFloatingWarningBanner`; if only the active overdue day is missing, the banner uses overdue-specific copy
-- Habit Details computes missing past days from `requiredPastScheduledDays`; it shows the same floating banner with active-overdue-specific copy when the only missing day is the active overdue day, otherwise it asks the user to open Edit and resolve the missing scheduled days
+- Habit Details computes missing past days from `requiredPastScheduledDays`; it shows `Finish updating overdue days.` when the only missing day is the active overdue day, otherwise it shows `Finish updating past days.`
 - Edit Habit delete confirmation uses a system alert with `Cancel` and destructive `Delete` actions
+- Edit Habit exposes Archive or Restore below Delete; Archive confirmation is `Archive Habit?` / `This habit will move to Archived.`, and Restore confirmation is `Restore Habit?` / `Save changes and move this habit back to its active section.`
 - missing past-day warning copy intentionally omits the date list; the validation error still carries the missing dates for logic/tests
 - rewrites rows day by day using `manual edit` or `skipped`
 - removes duplicate history rows for the same day except the primary latest row
@@ -300,14 +306,18 @@ Projection fields include:
 - current streak
 - reminder text
 - reminder time hour/minute
+- end date
 - `isReminderScheduledToday`
 - `isCompletedToday`
 - `isSkippedToday`
 - `needsHistoryReview`
 - `activeOverdueDay`
+- `startsInFuture`
+- `futureStartDate`
+- `isArchived`
 - sort order
 
-If `activeOverdueDay` is set, Habit cards show a red `Today`, `Yesterday`, or date label. `activeOverdueDay` is derived from the latest due scheduled day: if that latest due day is empty, it is active overdue; if it already has completed/skipped state, there is no active overdue even if older due days are empty. `needsHistoryReview` excludes the active overdue day, so Habit cards show the amber history warning icon alongside overdue only when another required past scheduled day is empty. `HabitDetailsProjection.requiredPastScheduledDays` still includes the active overdue day for Details and Edit validation. If neither applies, the card shows today's completed/skipped status.
+If `activeOverdueDay` is set, Habit cards show a red `Today`, `Yesterday`, or `03 May 2026` style date label. Future cards show `Starts 03 May 2026` style dates. Archived cards live on the separate Habit Archive page and do not show active day actions, overdue, reminders, or history-review state. `activeOverdueDay` is derived from the latest due scheduled day: if that latest due day is empty, it is active overdue; if it already has completed/skipped state, there is no active overdue even if older due days are empty. `needsHistoryReview` excludes the active overdue day, so Habit cards show the amber history warning icon alongside overdue only when another required past scheduled day is empty. `HabitDetailsProjection.requiredPastScheduledDays` still includes the active overdue day for Details and Edit validation. If neither applies, the card shows today's completed/skipped status.
 
 ## 6. Pill Pipeline
 
@@ -324,7 +334,7 @@ Implementation: `LoonyBear/Core/Data/CoreDataPillRepository.swift`
 Create form validation rules:
 - name must not be empty after trimming
 - dosage must not be empty after trimming
-- at least one schedule day must be selected
+- a valid Repeat rule must be selected; `Never repeat` is valid for Pills
 - start date may be selected from the last 5 years through the end of the second next calendar month
 
 Repository-level create rule:
@@ -337,12 +347,15 @@ If `startDate` is in the future, no initial history rows are generated and the i
 Rules:
 - if `useScheduleForHistory == true`, only scheduled days are included
 - if `useScheduleForHistory == false`, every day in the range is included
+- current Create UI does not expose this toggle and uses the schedule-based path
 
 ### 6.5 Pill Creation
 Create flow writes:
 - one `Pill`
 - one initial `PillScheduleVersion`
 - `historyModeRaw`
+- optional `endDate`
+- `isArchived = false`
 - one `PillIntake` row per generated `takenDay` with source `manual edit`
 - today is not prefilled
 
@@ -377,9 +390,11 @@ Delete is not available from card swipe actions.
 `updatePill(from:)`:
 - updates name, dosage, details
 - updates reminder flags and time
+- updates optional End Date
 - inserts a new `PillScheduleVersion` if the schedule rule changed
-- uses the resolved `Apply From` date shown in Edit as the new schedule version `effectiveFrom`
-- if the selected Apply From date already has an explicit state or does not match a weekly rule, it is resolved forward to the next available scheduled day; for interval rules, the resolved date becomes the new interval anchor
+- active items resolve the new schedule version `effectiveFrom` from today when the schedule rule changed: today is used only if it matches the new Repeat and has no explicit state; otherwise the first scheduled day after today is used
+- future items resolve the new schedule version `effectiveFrom` from `startDate` when the schedule rule changed
+- archived items being restored save the current edit form and use the same internal `effectiveFrom` path before unarchiving
 - preserves the persisted `historyModeRaw` already stored on the Pill
 - builds editable day set from `EditableHistoryWindow.dates(startDate:)`
 - normalizes selected days with `EditableHistoryContract.normalizedSelection(...)`
@@ -388,8 +403,9 @@ Delete is not available from card swipe actions.
 - throws `EditableHistoryValidationError.missingPillPastDays` if a past editable scheduled day is empty
 - Edit Pill includes a past active overdue day in save validation and disables Save until it is resolved
 - Edit Pill surfaces missing past-day review through the dismissible `AppFloatingWarningBanner`; if only the active overdue day is missing, the banner uses overdue-specific copy
-- Pill Details computes missing past days from `requiredPastScheduledDays`; it shows the same floating banner with active-overdue-specific copy when the only missing day is the active overdue day, otherwise it asks the user to open Edit and resolve the missing scheduled days
+- Pill Details computes missing past days from `requiredPastScheduledDays`; it shows `Finish updating overdue days.` when the only missing day is the active overdue day, otherwise it shows `Finish updating past days.`
 - Edit Pill delete confirmation uses a system alert with `Cancel` and destructive `Delete` actions
+- Edit Pill exposes Archive or Restore below Delete; Archive confirmation is `Archive Pill?` / `This pill will move to Archived.`, and Restore confirmation is `Restore Pill?` / `Save changes and move this pill back to its active section.`
 - missing past-day warning copy intentionally omits the date list; the validation error still carries the missing dates for logic/tests
 - rewrites rows day by day using `manual edit` or `skipped`
 - removes duplicate history rows for the same day except the primary latest row
@@ -405,15 +421,19 @@ Projection fields include:
 - total taken days
 - reminder text
 - reminder time hour/minute
+- end date
 - `isReminderScheduledToday`
 - `isScheduledToday`
 - `isTakenToday`
 - `isSkippedToday`
 - `needsHistoryReview`
 - `activeOverdueDay`
+- `startsInFuture`
+- `futureStartDate`
+- `isArchived`
 - sort order
 
-If `activeOverdueDay` is set, Pill cards show a red `Today`, `Yesterday`, or date label. `activeOverdueDay` is derived from the latest due scheduled day: if that latest due day is empty, it is active overdue; if it already has taken/skipped state, there is no active overdue even if older due days are empty. `needsHistoryReview` excludes the active overdue day, so Pill cards show the amber history warning icon alongside overdue only when another required past scheduled day is empty. `PillDetailsProjection.requiredPastScheduledDays` still includes the active overdue day for Details and Edit validation. If neither applies, the card shows today's taken/skipped status.
+If `activeOverdueDay` is set, Pill cards show a red `Today`, `Yesterday`, or `03 May 2026` style date label. Future cards show `Starts 03 May 2026` style dates and remain in Pending. Archived cards live on the separate Pill Archive page and do not show active day actions, overdue, reminders, or history-review state. `activeOverdueDay` is derived from the latest due scheduled day: if that latest due day is empty, it is active overdue; if it already has taken/skipped state, there is no active overdue even if older due days are empty. `needsHistoryReview` excludes the active overdue day, so Pill cards show the amber history warning icon alongside overdue only when another required past scheduled day is empty. `PillDetailsProjection.requiredPastScheduledDays` still includes the active overdue day for Details and Edit validation. If neither applies, the card shows today's taken/skipped status.
 
 ## 7. Streak Engine
 
@@ -435,7 +455,22 @@ For streak, overdue, notification, history-review, and calendar indicator calcul
 - `version`
 - `createdAt`
 
-Weekly schedules use the stored weekday mask. `Every N days` schedules use the active schedule version `effectiveFrom` as the interval anchor. Legacy `daily`, `weekdays`, and `weekends` schedule kind values are read as weekly masks; new writes store those choices as `weekly`.
+Weekly schedules use the stored weekday mask. `Every N days` schedules use the active schedule version `effectiveFrom` as the interval anchor. `Never repeat` is stored as a one-time schedule and is available only for Pills. Legacy `daily`, `weekdays`, and `weekends` schedule kind values are read as weekly masks; new writes store those choices as `weekly`.
+
+When Edit saves a changed Repeat, `effectiveFrom` is computed rather than edited in the UI. Active items use today if today is valid under the new Repeat and has no explicit completed/taken/skipped state; otherwise they use the first scheduled day after today. Future items resolve from `startDate`. Archived items being restored save the current Edit form and use the same internal resolution path before unarchiving.
+
+### 7.4 End Date and Automatic Archive
+Habit and Pill root rows can store an optional `endDate`.
+
+Rules:
+- Habit and Pill UI label this field `End Date`; an empty value displays as `Never`
+- if an end date exists, the final active scheduled day is the last scheduled day on or before that date
+- after the final active scheduled day is completed/taken or skipped, the item is archived automatically without confirmation
+- if the final active scheduled day remains empty, the item remains active and can become overdue
+- archived items are excluded from notification scheduling, overdue/badge count, today actions, and missing-history review
+- manual Archive and Restore are available from Edit with system confirmation alerts
+- manual Restore saves the current Edit form before moving the item back to the active section
+- archived items are shown from separate Archive pages opened by the dashboard Archive toolbar button; Archive pages list cards without dashboard grouping sections
 
 ## 8. Notifications
 
@@ -466,7 +501,7 @@ Responsibilities:
 - act as `UNUserNotificationCenterDelegate`
 - route notification responses to Habit or Pill notification services based on payload `type`
 - refresh badge after a notification response is handled
-- present banner, sound, and list while app is foregrounded
+- present banner, sound, list, and badge while app is foregrounded
 
 ### 8.3 Habit Notification Service
 Defined in `LoonyBear/Core/Services/NotificationService.swift`.
@@ -483,7 +518,9 @@ Constants:
 Candidate rules:
 - reminder enabled
 - valid reminder time
+- item is not archived
 - day is not before start date
+- day is not after the final scheduled day when an end date exists
 - weekday matches schedule
 - day not completed
 - day not skipped
@@ -521,6 +558,7 @@ Action behavior:
 - `pill.take` creates a positive `notification` intake if needed
 - `pill.skip` creates a skipped intake if needed
 - `pill.remind_later` creates a delayed pill reminder `10` minutes from now
+- archived Pills and days after a final scheduled day are not regular reminder candidates
 
 ### 8.5 Snoozed Pill Notification Rules
 The Pill notification service distinguishes regular scheduled notifications from remind-later notifications.
@@ -564,7 +602,7 @@ A Pill is overdue when:
 
 Badge and overdue calculation do not use overdue anchors as source of truth.
 Repository reconciliation does not auto-skip missing overdue/history days.
-The active overdue label shown on cards is `Today`, `Yesterday`, or a date like `26.04.2026`.
+The active overdue label shown on cards is `Today`, `Yesterday`, or a date like `03 May 2026`.
 
 ### 9.4 Badge API
 - on iOS 17+: `UNUserNotificationCenter.setBadgeCount`
@@ -638,6 +676,7 @@ Validation includes:
 - valid pill history mode
 - valid reminder times
 - valid weekday masks
+- valid interval day ranges and one-time schedule kinds
 - valid completion and intake source values
 - foreign key existence for schedules, completions, and intakes
 - duplicate identifier detection across all backup entity arrays
@@ -652,22 +691,24 @@ Status rows:
 
 UI behavior:
 - `Last backup` uses the same color as the cloud status icon
+- `Last backup` dates use `03 May at 22:35` style formatting
 - green means a readable backup exists
 - red means no readable backup is available
 - `Create Backup` and `Restore Backup` are full-width capsule buttons
 - `Create Backup` uses the primary label color
 - `Restore Backup` stays system red
 - create and restore confirmation prompts use system alerts instead of popover-style confirmation dialogs; action labels are shortened to `Backup` and `Restore`
+- the Home Screen `Create Backup` quick action is dynamic after first launch and routes only to Settings > Backup
 - Folder selection only grants access and reloads backup metadata; it never applies the backup automatically
 - `BackupStatus.fileState` describes the selected folder as `none`, `available`, `created`, `restored`, or `unreadable`
 - readable backup files are fingerprinted from their compressed file data using SHA-256
 - after a successful create, the current fingerprint is stored as the last created backup fingerprint
 - after a successful restore, the current fingerprint is stored as the last restored backup fingerprint
-- if a selected folder contains a readable backup whose fingerprint is neither created nor restored in this app install, the screen shows `Backup found. Tap Restore Backup to apply it.` as a blue floating informational banner
+- if a selected folder contains a readable backup whose fingerprint is neither created nor restored in this app install, the screen shows `Backup available. Restore when ready.` as a blue floating informational banner
 - while that restore-available notice is visible, `Create Backup` is disabled so the next action is explicitly `Restore Backup`
-- if a selected folder contains no readable backup, the screen shows `No backup found. Tap Create Backup to save one.` as a blue floating informational banner
+- if a selected folder contains no readable backup, the screen shows `No backup found. Create one to get started.` as a blue floating informational banner
 - if the selected backup fingerprint was created or restored by this app install, no action notice is shown
-- if backup files exist but cannot be read, the screen shows `Backup file can’t be read. Choose another folder or create a new backup.` as a red floating banner
+- if backup files exist but cannot be read, the screen shows `Backup can’t be read. Choose another location or create a new one.` as a red floating banner
 - all Backup banners are dismissible overlays pinned near the bottom of the visible screen; they auto-hide after 4 seconds and clear when leaving the Backup screen
 - successful create/restore still records the fingerprint, and success feedback is shown as green floating banners: `Backup Created` and `Restore Complete`
 - successful restore refreshes dashboards, rebuilds notifications, shows the green restore success banner, and clears the restore-needed notice for that fingerprint
@@ -792,39 +833,56 @@ Behavior:
 Defined in `LoonyBear/Shared/AppDesign.swift`.
 
 Create/Edit schedule behavior:
-- schedule rows open `AppScheduleEditorPopoverContent` from `AppSchedulePickerRow`
-- schedule rows use a tap gesture instead of a visible pressed `Button` highlight
-- the popover uses full weekday names
-- the popover has no Weekly/Intervals mode switch; weekday rows and the Intervals row are shown together
-- the Intervals row uses a native Stepper for every 2 to 5 days
-- weekday summaries are canonicalized as Daily, Weekdays, Weekends, Weekly for one selected weekday, or Custom for other combinations
-- day rows use compact `schedulePopoverRowVerticalPadding`
-- dividers between weekday rows are not shown
-- `Use schedule for history?` appears only when the caller supplies a binding
-- helper copy is shown inside the popover when supplied
-- the popover content has no extra inner card/background layer; the system popover bubble provides the visual container
+- Create screens use `AppCreateScheduleSection`
+- Edit screens use `AppEditScheduleSection`
+- both sections contain Reminder, Time, Repeat, and optional End Date rows; Create also contains Start Date
+- Repeat opens `AppCreateRepeatEditorScreen` as a pushed screen inside the same sheet navigation stack
+- the Repeat screen has `Days` and `Interval` sections
+- Days shows full weekday names with checkmarks and prevents leaving the schedule empty
+- Interval supports `Every N days [Stepper]` with a native Stepper for 2 to 5 days, and for Pills only also includes `Never`
+- `Use schedule for history?` is not exposed in the UI; new items use schedule-based history generation
 
 Details schedule behavior:
-- Details screens open `AppReadOnlySchedulePopoverContent`
-- Details schedule rows use a tap gesture instead of a visible pressed `Button` highlight
-- read-only schedule popovers use the same full weekday names and compact row spacing
-- selected read-only days show a neutral secondary checkmark
+- Details screens show a read-only Schedule section
+- Repeat uses the same display text style as Dashboard cards
+- Details no longer opens any schedule picker or schedule overlay
+
+Archive page behavior:
+- My Pills and My Habits expose an Archive toolbar button beside Add
+- Archive pages show archived cards without Today/Pending or Build/Quit sections
+- archived cards do not expose day-state leading swipe actions
+- archived cards can open Edit/Info, and Restore is performed from Edit
 
 ### 13.5 Reminder Time UI
 Defined in `LoonyBear/Shared/AppDesign.swift`.
 
 Behavior:
-- Create/Edit reminder time rows render the selected time in a capsule value
-- tapping the row opens a wheel-style time picker popover
-- the visible row does not use compact `DatePicker` styling, so it does not show a pressed capsule effect
+- Create/Edit reminder time rows render the selected time with a native compact `DatePicker`
+- the system compact control opens its own time picker
+- tapping the row also dismisses keyboard focus before the control interaction
+- End Repeat option popover transitions briefly block neighboring compact pickers to avoid overlapping UIKit presentations
 
 ### 13.6 Editable Start Date UI
 Defined in `LoonyBear/Shared/AppDesign.swift`.
 
 Behavior:
-- Create screens render the selected start date in a capsule value
-- tapping the row opens a graphical calendar popover
-- the visible row does not use compact `DatePicker` styling, so it does not show a pressed capsule effect
+- Create screens render the selected start date with a native compact `DatePicker`
+- the system compact control opens its own date picker
+- tapping the row also dismisses keyboard focus before the control interaction
+- Habit and Pill Create use the same selectable range: last 5 years through the end of the second next calendar month
+- Edit screens do not expose Start Date
+
+### 13.7 End Date UI
+Defined in `LoonyBear/Shared/AppDesign.swift`.
+
+Behavior:
+- Pills and Habits label the optional final date as `End Date`
+- empty values display `Never`
+- the options popover contains `Never` and `On Date`
+- when `On Date` is selected, a date row appears below the options row with the same compact capsule display
+- the date row uses the native compact system date picker
+- the options popover transition briefly blocks neighboring compact pickers to avoid overlapping UIKit presentations
+- if Pill Repeat is `Never`, End Date is disabled and cleared
 
 ## 14. Startup Health Check
 

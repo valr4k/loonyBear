@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import SwiftUI
 
 enum HabitDetailsLoadState {
     case found(HabitDetailsProjection)
@@ -74,13 +75,13 @@ final class HabitAppState: ObservableObject {
         createHabitErrorMessage = nil
     }
 
-    func completeHabitToday(id: UUID) async {
-        await completeHabitDay(id: id, on: clock.now())
+    func completeHabitToday(id: UUID, animatedRefresh: Bool = false) async {
+        await completeHabitDay(id: id, on: clock.now(), animatedRefresh: animatedRefresh)
     }
 
-    func completeHabitDay(id: UUID, on day: Date) async {
+    func completeHabitDay(id: UUID, on day: Date, animatedRefresh: Bool = false) async {
         let didComplete = await writeCoordinator.performMutation(
-            refresh: refreshDashboard,
+            refresh: { self.refreshDashboard(animated: animatedRefresh) },
             setError: { self.actionErrorMessage = $0 }
         ) {
             try self.repository.completeHabitDay(id: id, on: day)
@@ -90,13 +91,13 @@ final class HabitAppState: ObservableObject {
         sideEffectCoordinator.handleDailyMutation(forHabitID: id, on: day)
     }
 
-    func skipHabitToday(id: UUID) async {
-        await skipHabitDay(id: id, on: clock.now())
+    func skipHabitToday(id: UUID, animatedRefresh: Bool = false) async {
+        await skipHabitDay(id: id, on: clock.now(), animatedRefresh: animatedRefresh)
     }
 
-    func skipHabitDay(id: UUID, on day: Date) async {
+    func skipHabitDay(id: UUID, on day: Date, animatedRefresh: Bool = false) async {
         let didSkip = await writeCoordinator.performMutation(
-            refresh: refreshDashboard,
+            refresh: { self.refreshDashboard(animated: animatedRefresh) },
             setError: { self.actionErrorMessage = $0 }
         ) {
             try self.repository.skipHabitDay(id: id, on: day)
@@ -106,13 +107,13 @@ final class HabitAppState: ObservableObject {
         sideEffectCoordinator.handleDailyMutation(forHabitID: id, on: day)
     }
 
-    func clearHabitDayStateToday(id: UUID) async {
-        await clearHabitDayState(id: id, on: clock.now())
+    func clearHabitDayStateToday(id: UUID, animatedRefresh: Bool = false) async {
+        await clearHabitDayState(id: id, on: clock.now(), animatedRefresh: animatedRefresh)
     }
 
-    func clearHabitDayState(id: UUID, on day: Date) async {
+    func clearHabitDayState(id: UUID, on day: Date, animatedRefresh: Bool = false) async {
         let didClearDayState = await writeCoordinator.performMutation(
-            refresh: refreshDashboard,
+            refresh: { self.refreshDashboard(animated: animatedRefresh) },
             setError: { self.actionErrorMessage = $0 }
         ) {
             try self.repository.clearHabitDayState(id: id, on: day)
@@ -132,13 +133,13 @@ final class HabitAppState: ObservableObject {
             actionErrorMessage = nil
         } catch {
             refreshDashboard()
-            actionErrorMessage = error.localizedDescription
+            actionErrorMessage = UserFacingErrorMessage.text(for: error)
         }
     }
 
     func setHabitArchived(id: UUID, isArchived: Bool) async {
         let didChange = await writeCoordinator.performMutation(
-            refresh: refreshDashboard,
+            refresh: { self.refreshDashboard(animated: true) },
             setError: { self.actionErrorMessage = $0 },
             refreshOnFailure: true
         ) {
@@ -226,12 +227,23 @@ final class HabitAppState: ObservableObject {
     }
 
     func refreshDashboard() {
+        refreshDashboard(animated: false)
+    }
+
+    private func refreshDashboard(animated: Bool) {
         do {
-            dashboard = try loadDashboardUseCase.execute()
+            let nextDashboard = try loadDashboardUseCase.execute()
+            if animated {
+                withAnimation(.smooth(duration: 0.38, extraBounce: 0)) {
+                    dashboard = nextDashboard
+                }
+            } else {
+                dashboard = nextDashboard
+            }
             sideEffectCoordinator.refreshDerivedState(with: dashboard)
             actionErrorMessage = nil
         } catch {
-            actionErrorMessage = error.localizedDescription
+            actionErrorMessage = UserFacingErrorMessage.text(for: error)
         }
     }
 

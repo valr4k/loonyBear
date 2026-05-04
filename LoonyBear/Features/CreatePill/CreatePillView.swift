@@ -258,7 +258,7 @@ struct CreatePillView: View {
                 guard savedDraft.reminderEnabled else { return }
                 await pillAppState.prepareReminderNotifications(forPillID: pillID)
             } catch {
-                let message = pillAppState.actionErrorMessage ?? error.localizedDescription
+                let message = pillAppState.actionErrorMessage ?? UserFacingErrorMessage.text(for: error)
                 if isCreateLimitError(error, message: message) {
                     showCreateLimitWarning(message)
                 } else {
@@ -352,10 +352,10 @@ struct CreatePillView: View {
 
     private var nonScheduleInvalidMessage: String? {
         if draft.trimmedName.isEmpty {
-            return "Pill name is required."
+            return "Enter a pill name."
         }
         if draft.trimmedDosage.isEmpty {
-            return "Dosage is required."
+            return "Enter a dosage."
         }
         return nil
     }

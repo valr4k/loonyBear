@@ -62,22 +62,22 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
   - name
   - start date
   - reminder settings
-  - weekday schedule
-  - `Use schedule for history?`
+  - Repeat through Days or Interval
+  - End Date
 - Habit details show:
   - name
-  - start date
-  - schedule
+  - streak metrics
+  - read-only Schedule block
+  - start date and End Date
   - reminder
-  - current streak
-  - best streak
-  - completed total
   - read-only calendar
 - Habit edit supports:
   - name
   - reminder
-  - weekday schedule
+  - Repeat through the pushed Repeat screen
+  - End Date
   - recent editable history
+  - archive / restore
   - delete
 
 ## Pill Flow Summary
@@ -89,15 +89,15 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
   - optional description
   - start date
   - reminder settings
-  - weekday schedule
-  - `Use schedule for history?`
+  - Repeat through Days or Interval
+  - End Date
 - Pill details show:
   - name
   - dosage
-  - start date
-  - schedule
+  - taken total
+  - read-only Schedule block
+  - start date and End Date
   - reminder
-  - total taken days
   - read-only calendar
   - optional description
 - Pill edit supports:
@@ -105,21 +105,25 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
   - dosage
   - description
   - reminder
-  - weekday schedule
+  - Repeat through the pushed Repeat screen
+  - End Date
   - recent editable history
+  - archive / restore
   - delete
 
 ## Important Current Rules
 
-- Habit create start date range is the last 30 days through the end of the second next calendar month.
-- Pill create start date range is the last 5 years through the end of the second next calendar month.
-- Future Habits stay in Build/Quit without today actions, overdue, notifications, or history review until their start date; future Pills appear in Pending with the same inactive behavior.
+- Habit and Pill create start date range is the last 5 years through the end of the second next calendar month.
+- Future Habits stay in Build/Quit without today actions, overdue, notifications, or history review until their start date; future Pills appear in Pending with the same inactive behavior. Future cards show `Starts 03 May 2026` style dates.
 - Editable history window is 30 days for both domains.
 - Habit current streak is reset only by missed scheduled days in the past.
 - Pills do not use streak logic.
 - Notifications are scheduled only for the next 2 days.
 - Pill `Remind me in 10 mins` survives global regular pill reschedules.
-- Schedule popovers use weekday selection plus an Intervals row for `Every N days`, limited to 2 through 5 days. Weekday summaries are canonicalized as Daily, Weekdays, Weekends, Weekly for one selected weekday, or Custom for other combinations.
+- Repeat uses a pushed editor with Days and Interval blocks. Days supports weekday combinations. Interval is `Every N days`, limited to 2 through 5 days, and for Pills only also includes `Never`. Weekday summaries are canonicalized as Daily, Weekdays, Weekends, `Weekly on Mon` for one selected weekday, or abbreviated day lists such as `Mon, Wed, Fri` for other combinations.
+- Pill Repeat can be `Never`; this means one scheduled day on Start Date. Habits do not expose `Never`.
+- Pills and Habits both use `End Date`. Empty end dates display `Never`.
+- Items can be manually archived from Edit and restored from Edit. Restore saves current edits and moves the item back to its active section. My Pills and My Habits open archived items from separate Archive pages instead of dashboard sections.
 - Settings supports System/Light/Dark appearance and Blue/Indigo/Green/Amber app color selection; Blue is the default and first palette option.
 - App tint colors supported accent surfaces, while page backgrounds stay on the system grouped background.
 - Backup includes the selected appearance mode and app tint, while legacy backups without those settings keep the current appearance.
@@ -127,9 +131,9 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
 - Custom calendar blocks keep a stable six-week footprint when changing months.
 - Habit and Pill Details/Edit calendars show a small tertiary system-gray dot under days that match the active schedule history.
 - Missing past-day review warnings use a dismissible floating red material banner on Edit and Details screens; they do not list dates and do not take space inside the calendar layout.
-- Schedule selection opens as a popover with full weekday names and no row dividers on Create/Edit and Details surfaces.
+- Create/Edit Repeat selection opens as a pushed screen inside the sheet. Details shows Repeat as read-only text and does not open a schedule picker.
 - Edit Habit and Edit Pill delete confirmations use system alerts with `Cancel` and destructive `Delete` actions.
-- Backup actions are full-width capsule buttons; `Last backup` follows the cloud status icon color; backup action confirmations use system alerts with short action labels.
+- Backup actions are full-width capsule buttons; `Last backup` follows the cloud status icon color and uses `03 May at 22:35` style dates; backup action confirmations use system alerts with short action labels.
 - Backup action notices are floating banners derived from folder contents and remembered backup fingerprints, so already created/restored backups do not show restore-needed notices after reopening the screen. Backup success feedback uses green floating banners.
 - Settings child screens keep the custom tinted back button and preserve the native left-edge swipe-back gesture.
 - Reminder permission denial is handled with an alert that can open iOS Settings; the inline permission error banner is no longer used.

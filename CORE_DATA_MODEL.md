@@ -26,6 +26,8 @@ Important fields:
 - `name`
 - `sortOrder`
 - `startDate`
+- `endDate`
+- `isArchived`
 - `historyModeRaw`
 - `reminderEnabled`
 - `reminderHour`
@@ -62,6 +64,8 @@ Important fields:
 - `id`
 - `habitID`
 - `weekdayMask`
+- `scheduleKindRaw`
+- `intervalDays`
 - `effectiveFrom`
 - `createdAt`
 - `version`
@@ -77,6 +81,8 @@ Important fields:
 - `detailsText`
 - `sortOrder`
 - `startDate`
+- `endDate`
+- `isArchived`
 - `historyModeRaw`
 - `reminderEnabled`
 - `reminderHour`
@@ -113,6 +119,8 @@ Important fields:
 - `id`
 - `pillID`
 - `weekdayMask`
+- `scheduleKindRaw`
+- `intervalDays`
 - `effectiveFrom`
 - `createdAt`
 - `version`
@@ -120,9 +128,12 @@ Important fields:
 ## Stored Model Rules
 
 - `startDate` is stored as a normalized start-of-day date.
+- `endDate` is optional and stored as a normalized start-of-day date when present.
+- `isArchived` marks items that have moved to the separate Archive pages and should not produce active today actions, overdue state, reminders, or history review.
 - Reminder times are stored as hour and minute integer components.
 - Habit and Pill history mode are stored in `historyModeRaw`.
 - Schedule changes are append-only through new version rows.
+- Schedule versions store `scheduleKindRaw`, `weekdayMask`, and `intervalDays` so both weekday rules and `Every N days` interval rules can round-trip through persistence and backup.
 - Daily state is stored explicitly through completion / intake rows.
 - Skipped days are stored explicitly, not inferred.
 
@@ -162,4 +173,6 @@ Backup serializes and restores:
 - PillIntake
 
 Both Habit and Pill backup payloads include stored `historyMode`.
+Both Habit and Pill backup payloads include `endDate` and `isArchived`.
+Schedule backup payloads include `scheduleKind` and `intervalDays` for interval and one-time repeat support.
 `BackupAppSettings` stores the selected appearance mode and app tint. Legacy backups without this optional settings payload remain valid and do not overwrite the current appearance settings during restore.

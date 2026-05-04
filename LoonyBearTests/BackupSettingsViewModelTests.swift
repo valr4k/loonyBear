@@ -75,7 +75,7 @@ struct BackupSettingsViewModelTests {
 
         #expect(viewModel.status.fileState == .created)
         #expect(viewModel.banner?.title == "Backup Created")
-        #expect(viewModel.banner?.message == "Your backup is ready in the selected folder.")
+        #expect(viewModel.banner?.message == "Backup saved to the selected folder.")
         #expect(viewModel.banner?.style == .success)
     }
 

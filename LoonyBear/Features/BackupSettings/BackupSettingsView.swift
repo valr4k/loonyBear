@@ -355,6 +355,7 @@ private struct BackupFloatingBanner: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
+            .accessibilityLabel("Dismiss")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
@@ -407,19 +408,19 @@ private extension BackupActionNoticeKind {
         switch self {
         case .noBackup:
             return BackupBanner(
-                message: "No backup found. Tap Create Backup to save one.",
+                message: "No backup found. Create one to get started.",
                 style: .info,
                 icon: "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90"
             )
         case .restoreAvailable:
             return BackupBanner(
-                message: "Backup found. Tap Restore Backup to apply it.",
+                message: "Backup available. Restore when ready.",
                 style: .info,
                 icon: "checkmark.arrow.trianglehead.counterclockwise"
             )
         case .unreadable:
             return BackupBanner(
-                message: "Backup file can’t be read. Choose another folder or create a new backup.",
+                message: "Backup can’t be read. Choose another location or create a new one.",
                 style: .failure
             )
         }

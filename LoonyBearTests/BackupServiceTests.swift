@@ -55,6 +55,7 @@ struct BackupServiceTests {
         #expect(status.hasSelectedFolder)
         #expect(status.hasUsableFolder)
         #expect(status.hasLatestBackup)
+        #expect(status.latestBackupText == "01 Apr at 00:00")
         #expect(status.fileState == .available)
     }
 

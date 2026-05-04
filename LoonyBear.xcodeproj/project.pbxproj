@@ -206,7 +206,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ -n \"${XCODE_RUNNING_FOR_PREVIEWS:-}\" ]; then\n  exit 0\nfi\n\nif [ -z \"${TARGET_BUILD_DIR:-}\" ] || [ -z \"${INFOPLIST_PATH:-}\" ]; then\n  exit 0\nfi\n\nINFO_PLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif [ ! -f \"$INFO_PLIST\" ]; then\n  exit 0\nfi\n\nBUILD_NUMBER=\"$(date -u +%Y%m%d%H%M%S)\"\n/usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $BUILD_NUMBER\" \"$INFO_PLIST\" 2>/dev/null || \\\n/usr/libexec/PlistBuddy -c \"Add :CFBundleVersion string $BUILD_NUMBER\" \"$INFO_PLIST\"\n\necho \"Auto build number: $BUILD_NUMBER\"";
+			shellScript = "if [ -n \"${XCODE_RUNNING_FOR_PREVIEWS:-}\" ]; then\n  exit 0\nfi\n\nPROJECT_FILE=\"${PROJECT_FILE_PATH:-}\"\nif [ -d \"$PROJECT_FILE\" ]; then\n  PROJECT_PBXPROJ=\"$PROJECT_FILE/project.pbxproj\"\nelse\n  PROJECT_PBXPROJ=\"${SRCROOT}/LoonyBear.xcodeproj/project.pbxproj\"\nfi\n\nif [ ! -f \"$PROJECT_PBXPROJ\" ]; then\n  exit 0\nfi\n\nCURRENT_BUILD=\"${CURRENT_PROJECT_VERSION:-}\"\ncase \"$CURRENT_BUILD\" in\n  ''|*[!0-9]*)\n    echo \"Auto build number skipped: invalid CURRENT_PROJECT_VERSION '$CURRENT_BUILD'\"\n    exit 0\n    ;;\nesac\n\nNEXT_BUILD=$((CURRENT_BUILD + 1))\n/usr/bin/perl -0pi -e \"s/CURRENT_PROJECT_VERSION = $CURRENT_BUILD;/CURRENT_PROJECT_VERSION = $NEXT_BUILD;/g\" \"$PROJECT_PBXPROJ\"\n\nif [ -n \"${TARGET_BUILD_DIR:-}\" ] && [ -n \"${INFOPLIST_PATH:-}\" ]; then\n  INFO_PLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\n  if [ -f \"$INFO_PLIST\" ]; then\n    /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $NEXT_BUILD\" \"$INFO_PLIST\" 2>/dev/null || \\\n    /usr/libexec/PlistBuddy -c \"Add :CFBundleVersion string $NEXT_BUILD\" \"$INFO_PLIST\"\n  fi\nfi\n\necho \"Auto build number: $NEXT_BUILD\"";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -364,7 +364,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = LoonyBear/LoonyBear.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1024;
+				CURRENT_PROJECT_VERSION = 1038;
 				DEVELOPMENT_TEAM = NS2UA7UTVH;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -398,7 +398,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = LoonyBear/LoonyBear.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1024;
+				CURRENT_PROJECT_VERSION = 1038;
 				DEVELOPMENT_TEAM = NS2UA7UTVH;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;

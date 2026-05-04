@@ -44,7 +44,7 @@ final class BackupSettingsViewModel: ObservableObject {
             if status.requiresFolderReselection {
                 showBanner(
                     title: "Backup Folder Unavailable",
-                    message: "The selected backup folder is no longer accessible. Choose the folder again to keep using backups.",
+                    message: "The selected folder is no longer available. Choose it again to continue using backups.",
                     style: .failure
                 )
             }
@@ -130,7 +130,7 @@ final class BackupSettingsViewModel: ObservableObject {
         case .success(let updatedStatus):
             status = updatedStatus
             await finishLoading(startedAt: start, kind: .create)
-            showBanner(title: "Backup Created", message: "Your backup is ready in the selected folder.", style: .success)
+            showBanner(title: "Backup Created", message: "Backup saved to the selected folder.", style: .success)
         case .failure(let message):
             await finishLoading(startedAt: start, kind: .create)
             showBanner(title: "Backup Failed", message: message, style: .failure)
@@ -152,7 +152,7 @@ final class BackupSettingsViewModel: ObservableObject {
             pillNotificationService.rescheduleAllNotifications()
             status = updatedStatus
             await finishLoading(startedAt: start, kind: .restore)
-            showBanner(title: "Restore Complete", message: "Your backup was restored successfully.", style: .success)
+            showBanner(title: "Restore Complete", message: "Backup restored successfully.", style: .success)
             return true
         case .failure(let message):
             await finishLoading(startedAt: start, kind: .restore)
@@ -164,7 +164,7 @@ final class BackupSettingsViewModel: ObservableObject {
     private func promptFolderReselection() {
         showBanner(
             title: "Backup Folder Unavailable",
-            message: "The selected backup folder is no longer accessible. Choose the folder again to keep using backups.",
+            message: "The selected folder is no longer available. Choose it again to continue using backups.",
             style: .failure
         )
         isShowingFolderPicker = true
@@ -219,12 +219,12 @@ final class BackupSettingsViewModel: ObservableObject {
     }
 
     private nonisolated static func createFailureMessage(for error: Error) -> String {
-        "Couldn’t create a backup. \(error.localizedDescription)"
+        "Couldn’t create backup. \(error.localizedDescription)"
     }
 
     private nonisolated static func restoreFailureMessage(for error: Error) -> String {
         let detail = error.localizedDescription
-        return "\(detail) Your current data was left unchanged."
+        return "\(detail) Your current data wasn’t changed."
     }
 }
 

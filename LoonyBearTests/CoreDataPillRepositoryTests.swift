@@ -157,7 +157,7 @@ struct CoreDataPillRepositoryTests {
             _ = try repository.createPill(from: draft)
             Issue.record("Expected pill creation to stop at 20 pills.")
         } catch let error as PillRepositoryError {
-            #expect(error.localizedDescription == "You can create up to 20 pills.")
+            #expect(error.localizedDescription == "Limit reached. You can add up to 20 pills.")
         }
 
         #expect(try repository.fetchDashboardPills().count == 20)
@@ -202,7 +202,7 @@ struct CoreDataPillRepositoryTests {
     }
 
     @Test
-    func updatePillUsesNextPlainDayAsIntervalEffectiveFromWhenSelectedDayHasState() throws {
+    func updatePillUsesSelectedEffectiveFromWhenSelectedDayHasState() throws {
         let calendar = Calendar(identifier: .gregorian)
         let now = TestSupport.makeDate(2026, 5, 3, calendar: calendar)
         let persistence = PersistenceController(inMemory: true)
@@ -246,8 +246,150 @@ struct CoreDataPillRepositoryTests {
             ($0.value(forKey: "version") as? Int32 ?? 0) < ($1.value(forKey: "version") as? Int32 ?? 0)
         })
 
-        #expect(latest.value(forKey: "effectiveFrom") as? Date == TestSupport.makeDate(2026, 5, 4, calendar: calendar))
+        #expect(latest.value(forKey: "effectiveFrom") as? Date == now)
         #expect(CoreDataScheduleSupport.rule(from: latest) == .intervalDays(3))
+    }
+
+    @Test
+    func updatePillAutomaticallyUsesTodayAsEffectiveFrom() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = TestSupport.makeDate(2026, 5, 4, calendar: calendar)
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataPillRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+
+        var createDraft = PillDraft()
+        createDraft.name = "Auto effective"
+        createDraft.dosage = "1 tablet"
+        createDraft.startDate = TestSupport.makeDate(2026, 5, 1, calendar: calendar)
+        createDraft.scheduleRule = .weekly(.daily)
+
+        let pillID = try repository.createPill(from: createDraft)
+        let details = try #require(try repository.fetchPillDetails(id: pillID))
+        let editDraft = EditPillDraft(
+            id: pillID,
+            name: details.name,
+            dosage: details.dosage,
+            details: details.details ?? "",
+            startDate: details.startDate,
+            scheduleRule: .weekly(.wednesday),
+            reminderEnabled: details.reminderEnabled,
+            reminderTime: details.reminderTime ?? ReminderTime.default(),
+            takenDays: details.takenDays,
+            skippedDays: details.skippedDays
+        )
+
+        try repository.updatePill(from: editDraft)
+
+        let request = NSFetchRequest<NSManagedObject>(entityName: "PillScheduleVersion")
+        request.predicate = NSPredicate(format: "pillID == %@", pillID as CVarArg)
+        let schedules = try context.fetch(request)
+        let latest = try #require(schedules.max {
+            ($0.value(forKey: "version") as? Int32 ?? 0) < ($1.value(forKey: "version") as? Int32 ?? 0)
+        })
+
+        #expect(latest.value(forKey: "effectiveFrom") as? Date == now)
+        #expect(CoreDataScheduleSupport.rule(from: latest) == .weekly(.wednesday))
+    }
+
+    @Test
+    func updatePillAutomaticallyKeepsTodayWhenTodayHasExplicitState() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = TestSupport.makeDate(2026, 5, 4, calendar: calendar)
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataPillRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+
+        var createDraft = PillDraft()
+        createDraft.name = "Explicit today"
+        createDraft.dosage = "1 tablet"
+        createDraft.startDate = TestSupport.makeDate(2026, 5, 1, calendar: calendar)
+        createDraft.scheduleRule = .weekly(.daily)
+
+        let pillID = try repository.createPill(from: createDraft)
+        try repository.markPillTaken(id: pillID, on: now)
+        let details = try #require(try repository.fetchPillDetails(id: pillID))
+        let editDraft = EditPillDraft(
+            id: pillID,
+            name: details.name,
+            dosage: details.dosage,
+            details: details.details ?? "",
+            startDate: details.startDate,
+            scheduleRule: .intervalDays(3),
+            reminderEnabled: details.reminderEnabled,
+            reminderTime: details.reminderTime ?? ReminderTime.default(),
+            takenDays: details.takenDays,
+            skippedDays: details.skippedDays
+        )
+
+        try repository.updatePill(from: editDraft)
+
+        let request = NSFetchRequest<NSManagedObject>(entityName: "PillScheduleVersion")
+        request.predicate = NSPredicate(format: "pillID == %@", pillID as CVarArg)
+        let schedules = try context.fetch(request)
+        let latest = try #require(schedules.max {
+            ($0.value(forKey: "version") as? Int32 ?? 0) < ($1.value(forKey: "version") as? Int32 ?? 0)
+        })
+
+        #expect(latest.value(forKey: "effectiveFrom") as? Date == now)
+        #expect(CoreDataScheduleSupport.rule(from: latest) == .intervalDays(3))
+    }
+
+    @Test
+    func updateFuturePillAutomaticallyUsesStartDateAsEffectiveFrom() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = TestSupport.makeDate(2026, 5, 4, calendar: calendar)
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataPillRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+
+        var createDraft = PillDraft()
+        createDraft.name = "Future auto effective"
+        createDraft.dosage = "1 tablet"
+        createDraft.startDate = TestSupport.makeDate(2026, 5, 11, calendar: calendar)
+        createDraft.scheduleRule = .weekly(.daily)
+
+        let pillID = try repository.createPill(from: createDraft)
+        let details = try #require(try repository.fetchPillDetails(id: pillID))
+        let editDraft = EditPillDraft(
+            id: pillID,
+            name: details.name,
+            dosage: details.dosage,
+            details: details.details ?? "",
+            startDate: details.startDate,
+            scheduleRule: .weekly(.friday),
+            reminderEnabled: details.reminderEnabled,
+            reminderTime: details.reminderTime ?? ReminderTime.default(),
+            takenDays: details.takenDays,
+            skippedDays: details.skippedDays
+        )
+
+        try repository.updatePill(from: editDraft)
+
+        let request = NSFetchRequest<NSManagedObject>(entityName: "PillScheduleVersion")
+        request.predicate = NSPredicate(format: "pillID == %@", pillID as CVarArg)
+        let schedules = try context.fetch(request)
+        let latest = try #require(schedules.max {
+            ($0.value(forKey: "version") as? Int32 ?? 0) < ($1.value(forKey: "version") as? Int32 ?? 0)
+        })
+
+        #expect(latest.value(forKey: "effectiveFrom") as? Date == TestSupport.makeDate(2026, 5, 11, calendar: calendar))
+        #expect(CoreDataScheduleSupport.rule(from: latest) == .weekly(.friday))
     }
 
     @Test
@@ -294,7 +436,7 @@ struct CoreDataPillRepositoryTests {
     }
 
     @Test
-    func updatePillRemovesFutureScheduleVersionsReplacedByEarlierApplyFrom() throws {
+    func updatePillRemovesFutureScheduleVersionsReplacedByEarlierEffectiveFrom() throws {
         let calendar = Calendar(identifier: .gregorian)
         let now = TestSupport.makeDate(2026, 5, 4, calendar: calendar)
         let persistence = PersistenceController(inMemory: true)

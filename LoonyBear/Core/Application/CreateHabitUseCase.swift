@@ -8,11 +8,11 @@ enum CreateHabitError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .emptyName:
-            return "Habit name is required."
+            return "Enter a habit name."
         case .noScheduleDays:
             return AppCopy.chooseAtLeastOneDay
         case .tooManyHabits:
-            return "You can create up to 20 habits."
+            return "Limit reached. You can add up to 20 habits."
         }
     }
 }

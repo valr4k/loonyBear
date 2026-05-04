@@ -201,5 +201,8 @@ On every `.active` scene phase:
 - Pills support reordering through `sortOrder`.
 - Backup covers both trackers and app appearance settings in one archive schema.
 - Backup owns create/restore feedback through floating banners; restore success refreshes app state and shows a green banner on the Backup screen.
+- Habit and Pill dashboards expose separate Archive pages backed by stored `isArchived` facts.
+- Schedule editing is shared through a pushed Repeat editor with Days and Interval sections.
+- End Date and Pill one-time repeat rules are stored facts; active/archive state, overdue, reminders, and calendar dots are derived from those facts at read time.
 - App tint updates are applied through SwiftUI tint helpers and visible UIKit tab/navigation bar updates.
 - Widget snapshot currently serializes Habit dashboard data only.

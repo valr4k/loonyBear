@@ -273,7 +273,6 @@ private struct PillCalendarDayView: View {
     let isScheduled: Bool
     let cellSize: CGFloat
     @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ZStack {
@@ -301,7 +300,7 @@ private struct PillCalendarDayView: View {
     private var foreground: Color {
         switch style {
         case .taken:
-            return appTint.calendarPositiveForeground(for: colorScheme)
+            return appTint.accentColor
         case .skipped:
             return .red
         case .available:
@@ -314,7 +313,7 @@ private struct PillCalendarDayView: View {
     private var backgroundColor: Color {
         switch style {
         case .taken:
-            return appTint.accentColor
+            return appTint.accentColor.opacity(0.18)
         case .skipped:
             return Color(uiColor: .systemRed).opacity(0.18)
         case .available, .disabled:
@@ -355,7 +354,6 @@ private struct PillReadOnlyCalendarDayView: View {
     let isScheduled: Bool
     let cellSize: CGFloat
     @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ZStack {
@@ -383,7 +381,7 @@ private struct PillReadOnlyCalendarDayView: View {
     private var foreground: Color {
         switch style {
         case .taken:
-            return appTint.calendarPositiveForeground(for: colorScheme)
+            return appTint.accentColor
         case .skipped:
             return .red
         case .disabled:
@@ -394,7 +392,7 @@ private struct PillReadOnlyCalendarDayView: View {
     private var backgroundColor: Color {
         switch style {
         case .taken:
-            return appTint.accentColor
+            return appTint.accentColor.opacity(0.18)
         case .skipped:
             return Color(uiColor: .systemRed).opacity(0.18)
         case .disabled:

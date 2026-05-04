@@ -77,7 +77,7 @@ struct HabitDetailsView: View {
                     DetailsCard {
                         AppPlainValueRow(title: "Start Date", value: details.startDate.formatted(date: .abbreviated, time: .omitted))
                         AppSectionDivider()
-                        AppPlainValueRow(title: "Goal Date", value: endDateText(for: details.endDate))
+                        AppPlainValueRow(title: "End Date", value: endDateText(for: details.endDate))
                     }
                 }
 
@@ -243,7 +243,7 @@ struct HabitDetailsView: View {
     }
 
     private func endDateText(for endDate: Date?) -> String {
-        endDate?.formatted(date: .abbreviated, time: .omitted) ?? "Forever"
+        endDate?.formatted(date: .abbreviated, time: .omitted) ?? "Never"
     }
 
     private func calendarReviewMessage(for details: HabitDetailsProjection) -> String? {

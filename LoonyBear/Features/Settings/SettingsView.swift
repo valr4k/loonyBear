@@ -18,7 +18,8 @@ struct SettingsView: View {
 
     private var buildVersionText: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
-        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
+        let rawBuild = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
+        let build = AppBuildVersionFormatter.displayBuild(rawBuild)
         return "Version \(version) • Build (\(build))"
     }
 
@@ -150,6 +151,17 @@ struct SettingsView: View {
         .padding(.horizontal, AppLayout.rowHorizontalPadding)
         .padding(.vertical, AppLayout.rowVerticalPadding)
         .contentShape(Rectangle())
+    }
+}
+
+enum AppBuildVersionFormatter {
+    static func displayBuild(_ rawBuild: String) -> String {
+        let trimmedBuild = rawBuild.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let buildNumber = Int(trimmedBuild) else {
+            return rawBuild
+        }
+
+        return String(format: "%06d", buildNumber)
     }
 }
 

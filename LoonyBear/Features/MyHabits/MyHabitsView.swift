@@ -2,6 +2,7 @@ import Combine
 import SwiftUI
 struct MyHabitsView: View {
     @EnvironmentObject private var appState: HabitAppState
+    @State private var isShowingArchive = false
     let currentTime: Date
     let onCreateHabit: () -> Void
     let onShowHabitInfo: (HabitCardProjection) -> Void
@@ -26,120 +27,125 @@ struct MyHabitsView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if appState.hasLoadedOnce && sections.isEmpty {
                 ContentUnavailableView(
-                    "No habits yet",
+                    allHabits.isEmpty ? "No habits yet" : "No active habits",
                     systemImage: "checklist",
-                    description: Text("Create your first habit to start tracking your progress.")
+                    description: Text(allHabits.isEmpty ? "Create your first habit to start tracking your progress." : "Archived habits live on the Archive page.")
                 )
             } else {
                 List {
-                    // Motion policy: default to system navigation and List animations.
-                    // Add manual animation only for small local state changes when the native behavior is insufficient.
-                    ForEach(sections) { section in
-                        Section {
-                            ForEach(Array(section.habits.enumerated()), id: \.element.id) { index, habit in
-                                HabitCardView(
-                                    habit: habit,
-                                    position: rowPosition(for: index, count: section.habits.count),
-                                    currentTime: currentTime
-                                )
-                                .padding(.horizontal, 10)
-                                .listRowInsets(EdgeInsets())
-	                                .listRowBackground(Color.clear)
-	                                .listRowSeparator(.hidden)
-	                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
-	                                    if habit.isArchived || habit.startsInFuture {
-	                                        EmptyView()
-	                                    } else if let overdueDay = habit.activeOverdueDay {
-                                        Button {
-                                            Task {
-                                                await appState.completeHabitDay(id: habit.id, on: overdueDay)
-                                            }
-                                        } label: {
-                                            Image(systemName: "checkmark")
-                                        }
-                                        .tint(.green)
+                    ForEach(Array(sections.enumerated()), id: \.element.id) { sectionIndex, section in
+                        sectionHeader(section.title, isFirst: sectionIndex == 0)
 
-                                        Button {
-                                            Task {
-                                                await appState.skipHabitDay(id: habit.id, on: overdueDay)
-                                            }
-                                        } label: {
-                                            Image(systemName: "xmark")
+                        ForEach(Array(section.habits.enumerated()), id: \.element.id) { index, habit in
+                            HabitCardView(
+                                habit: habit,
+                                position: rowPosition(for: index, count: section.habits.count),
+                                currentTime: currentTime
+                            )
+                            .padding(.horizontal, 10)
+                            .listRowInsets(EdgeInsets())
+	                            .listRowBackground(Color.clear)
+	                            .listRowSeparator(.hidden)
+	                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+	                                if habit.isArchived || habit.startsInFuture {
+	                                    EmptyView()
+                                } else if let overdueDay = habit.activeOverdueDay {
+                                    Button {
+                                        performSwipeAction {
+                                            await appState.completeHabitDay(id: habit.id, on: overdueDay, animatedRefresh: true)
                                         }
-                                        .tint(.red)
-                                    } else if habit.isCompletedToday {
-                                        Button {
-                                            Task {
-                                                await appState.clearHabitDayStateToday(id: habit.id)
-                                            }
-                                        } label: {
-                                            Image(systemName: "calendar.badge.minus")
-                                        }
-                                        .tint(.orange)
-                                    } else if habit.isSkippedToday {
-                                        Button {
-                                            Task {
-                                                await appState.clearHabitDayStateToday(id: habit.id)
-                                            }
-                                        } label: {
-                                            Image(systemName: "calendar.badge.minus")
-                                        }
-                                        .tint(.orange)
-                                    } else {
-                                        Button {
-                                            Task {
-                                                await appState.completeHabitToday(id: habit.id)
-                                            }
-                                        } label: {
-                                            Image(systemName: "checkmark")
-                                        }
-                                        .tint(.green)
-
-                                        Button {
-                                            Task {
-                                                await appState.skipHabitToday(id: habit.id)
-                                            }
-                                        } label: {
-                                            Image(systemName: "xmark")
-                                        }
-                                        .tint(.red)
+                                    } label: {
+                                        Image(systemName: "checkmark")
                                     }
-	                                }
-	                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-	                                    Button {
-	                                        onShowHabitInfo(habit)
-	                                    } label: {
-	                                        Image(systemName: "info")
-	                                    }
-	                                    .tint(.indigo)
+                                    .tint(.green)
 
-	                                    Button {
-	                                        onEditHabit(habit)
-	                                    } label: {
-	                                        Image(systemName: "pencil")
-	                                    }
-	                                    .tint(.blue)
+                                    Button {
+                                        performSwipeAction {
+                                            await appState.skipHabitDay(id: habit.id, on: overdueDay, animatedRefresh: true)
+                                        }
+                                    } label: {
+                                        Image(systemName: "xmark")
+                                    }
+                                    .tint(.red)
+                                } else if habit.isCompletedToday {
+                                    Button {
+                                        performSwipeAction {
+                                            await appState.clearHabitDayStateToday(id: habit.id, animatedRefresh: true)
+                                        }
+                                    } label: {
+                                        Image(systemName: "arrow.uturn.backward")
+                                    }
+                                    .tint(.orange)
+                                } else if habit.isSkippedToday {
+                                    Button {
+                                        performSwipeAction {
+                                            await appState.clearHabitDayStateToday(id: habit.id, animatedRefresh: true)
+                                        }
+                                    } label: {
+                                        Image(systemName: "arrow.uturn.backward")
+                                    }
+                                    .tint(.orange)
+                                } else {
+                                    Button {
+                                        performSwipeAction {
+                                            await appState.completeHabitToday(id: habit.id, animatedRefresh: true)
+                                        }
+                                    } label: {
+                                        Image(systemName: "checkmark")
+                                    }
+                                    .tint(.green)
+
+                                    Button {
+                                        performSwipeAction {
+                                            await appState.skipHabitToday(id: habit.id, animatedRefresh: true)
+                                        }
+                                    } label: {
+                                        Image(systemName: "xmark")
+                                    }
+                                    .tint(.red)
+                                }
+	                            }
+	                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+	                                Button {
+	                                    onShowHabitInfo(habit)
+	                                } label: {
+	                                    Image(systemName: "info")
 	                                }
-                            }
-                        } header: {
-                            Text(section.title)
-                                .font(.title3.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .textCase(nil)
-                                .padding(.horizontal, 20)
-                                .padding(.bottom, 10)
+	                                .tint(.indigo)
+
+	                                Button {
+	                                    onEditHabit(habit)
+	                                } label: {
+	                                    Image(systemName: "pencil")
+	                                }
+	                                .tint(.blue)
+	                            }
                         }
                     }
                 }
                 .listStyle(.plain)
                 .contentMargins(.horizontal, 10, for: .scrollContent)
-                .listSectionSpacing(24)
                 .scrollContentBackground(.hidden)
             }
         }
         .background(AppBackground(style: .habits))
+        .navigationDestination(isPresented: $isShowingArchive) {
+            ArchivedHabitsView(
+                currentTime: currentTime,
+                onShowHabitInfo: onShowHabitInfo,
+                onEditHabit: onEditHabit
+            )
+            .environmentObject(appState)
+        }
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button {
+                    isShowingArchive = true
+                } label: {
+                    AppToolbarIconLabel("Archived Habits", systemName: "archivebox")
+                }
+                .appAccentTint()
+
                 Button {
                     onCreateHabit()
                 } label: {
@@ -157,6 +163,19 @@ struct MyHabitsView: View {
         }
     }
 
+    private func sectionHeader(_ title: String, isFirst: Bool) -> some View {
+        Text(title)
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 20)
+            .padding(.top, isFirst ? 0 : 14)
+            .padding(.bottom, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+    }
+
     private var actionErrorAlertBinding: Binding<Bool> {
         Binding(
             get: { appState.actionErrorMessage != nil },
@@ -168,8 +187,93 @@ struct MyHabitsView: View {
         )
     }
 
+    private var allHabits: [HabitCardProjection] {
+        appState.dashboard.sections.flatMap(\.habits)
+    }
+
     private var sections: [HabitSectionProjection] {
+        appState.dashboard.sections.filter { $0.id != .archived }
+    }
+
+    private func rowPosition(for index: Int, count: Int) -> HabitRowPosition {
+        if count == 1 {
+            return .single
+        }
+        if index == 0 {
+            return .first
+        }
+        if index == count - 1 {
+            return .last
+        }
+        return .middle
+    }
+
+    private func performSwipeAction(_ action: @escaping () async -> Void) {
+        Task {
+            try? await Task.sleep(for: .milliseconds(180))
+            await action()
+        }
+    }
+}
+
+private struct ArchivedHabitsView: View {
+    @EnvironmentObject private var appState: HabitAppState
+    let currentTime: Date
+    let onShowHabitInfo: (HabitCardProjection) -> Void
+    let onEditHabit: (HabitCardProjection) -> Void
+
+    var body: some View {
+        Group {
+            if archivedHabits.isEmpty {
+                ContentUnavailableView(
+                    "No archived habits",
+                    systemImage: "archivebox",
+                    description: Text("Archived habits will appear here.")
+                )
+            } else {
+                List {
+                    ForEach(Array(archivedHabits.enumerated()), id: \.element.id) { index, habit in
+                        HabitCardView(
+                            habit: habit,
+                            position: rowPosition(for: index, count: archivedHabits.count),
+                            currentTime: currentTime
+                        )
+                        .padding(.horizontal, 10)
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button {
+                                onShowHabitInfo(habit)
+                            } label: {
+                                Image(systemName: "info")
+                            }
+                            .tint(.indigo)
+
+                            Button {
+                                onEditHabit(habit)
+                            } label: {
+                                Image(systemName: "pencil")
+                            }
+                            .tint(.blue)
+                        }
+                    }
+                }
+                .listStyle(.plain)
+                .contentMargins(.horizontal, 10, for: .scrollContent)
+                .scrollContentBackground(.hidden)
+            }
+        }
+        .navigationTitle("Archived Habits")
+        .navigationBarTitleDisplayMode(.inline)
+        .background(AppBackground(style: .habits))
+        .appTintedBackButton()
+    }
+
+    private var archivedHabits: [HabitCardProjection] {
         appState.dashboard.sections
+            .first { $0.id == .archived }?
+            .habits ?? []
     }
 
     private func rowPosition(for index: Int, count: Int) -> HabitRowPosition {

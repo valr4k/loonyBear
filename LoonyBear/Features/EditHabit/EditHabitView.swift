@@ -18,10 +18,6 @@ struct EditHabitView: View {
     @State private var validationMessage: String?
     @State private var historyValidationMessage: String?
     @State private var displayedMonth: Date
-    @State private var effectiveFromSelection: Date
-    @State private var hasManualEffectiveFromSelection = false
-    @State private var effectiveFromInfoMessage: String?
-    @State private var effectiveFromInfoDismissTask: Task<Void, Never>?
     @State private var isSaving = false
     @State private var isShowingDeleteConfirmation = false
     @State private var isShowingArchiveConfirmation = false
@@ -59,7 +55,6 @@ struct EditHabitView: View {
             skippedDays: details.skippedDays
         ))
         _displayedMonth = State(initialValue: Self.initialDisplayedMonth(startDate: details.startDate))
-        _effectiveFromSelection = State(initialValue: Self.initialEffectiveFrom(startDate: details.startDate))
         _isArchived = State(initialValue: details.isArchived)
     }
 
@@ -88,14 +83,16 @@ struct EditHabitView: View {
                     .padding(.vertical, 18)
                 }
 
-                HabitHistoryLegend()
-                AppHelperText(text: AppCopy.habitHistoryHint)
             }
 
             actionButtons
 
             if let validationMessage {
                 AppValidationBanner(message: validationMessage)
+            }
+
+            if let endDateValidationMessage {
+                AppValidationBanner(message: endDateValidationMessage)
             }
         }
         .overlay(alignment: .bottom) {
@@ -186,17 +183,13 @@ struct EditHabitView: View {
         .animation(.easeInOut(duration: 0.18), value: validationMessage)
         .animation(.easeInOut(duration: 0.18), value: historyValidationMessage)
         .animation(.easeInOut(duration: 0.18), value: floatingHistoryWarningMessage)
-        .animation(.easeInOut(duration: 0.18), value: effectiveFromInfoMessage)
         .animation(.easeInOut(duration: 0.18), value: isHistoryWarningDismissed)
         .animation(.easeInOut(duration: 0.18), value: isScheduleWarningDismissed)
-        .onDisappear {
-            effectiveFromInfoDismissTask?.cancel()
-        }
     }
 
     private var nameSection: some View {
         AppHabitNameCard(text: $draft.name, showsValidation: shouldShowNameValidation) {
-            validationText("Habit name is required.")
+            validationText("Enter a habit name.")
         }
     }
 
@@ -205,17 +198,11 @@ struct EditHabitView: View {
             reminderEnabled: $draft.reminderEnabled,
             reminderDate: $draft.reminderTime.dateBinding(fallback: ReminderTime.default()),
             repeatSummary: draft.scheduleRule.compactSummary,
-            effectiveFrom: effectiveFromBinding,
-            effectiveFromRange: effectiveFromRange,
-            isEffectiveFromEnabled: isEffectiveFromEnabled,
             endDate: $draft.endDate,
             endDateRange: selectableEndDateRange,
             endDateFallback: draft.startDate,
-            endDateTitle: "Goal Date",
-            endDateEmptyTitle: "Forever",
             reminderTimeTap: dismissKeyboardForNonTextControl,
             repeatTap: dismissKeyboardForNonTextControl,
-            effectiveFromTap: dismissKeyboardForNonTextControl,
             endDateTap: dismissKeyboardForNonTextControl
         ) {
             AppCreateRepeatEditorScreen(
@@ -254,15 +241,23 @@ struct EditHabitView: View {
         Button {
             isShowingArchiveConfirmation = true
         } label: {
-            Label(archiveActionTitle, systemImage: archiveActionSystemImage)
-                .frame(maxWidth: .infinity)
+            HStack(spacing: 10) {
+                Image(systemName: archiveActionSystemImage)
+                    .imageScale(.medium)
+                    .foregroundStyle(isArchiveRestoreButtonEnabled ? .primary : .secondary)
+
+                Text(archiveActionTitle)
+                    .foregroundStyle(isArchiveRestoreButtonEnabled ? .primary : .secondary)
+            }
+            .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.bordered)
-        .buttonBorderShape(.capsule)
-        .controlSize(.large)
+        .buttonStyle(AppNeutralCapsuleActionButtonStyle())
         .frame(maxWidth: .infinity)
-        .tint(.gray)
-        .disabled(isSaving || (isArchived && !isFormValid))
+        .disabled(!isArchiveRestoreButtonEnabled)
+    }
+
+    private var isArchiveRestoreButtonEnabled: Bool {
+        !isSaving && (!isArchived || isFormValid)
     }
 
     private var editableHistoryDays: Set<Date> {
@@ -294,13 +289,6 @@ struct EditHabitView: View {
 
     private var isScheduleEffectiveFromValid: Bool {
         !shouldUseScheduleEffectiveFrom || currentEffectiveFromResolution != nil
-    }
-
-    private var isEffectiveFromEnabled: Bool {
-        guard let resolution = currentEffectiveFromResolution else {
-            return false
-        }
-        return isArchived || (hasScheduleChanged && resolution.resolvedDate != effectiveFromBaseDate)
     }
 
     private var previewScheduledDates: Set<Date> {
@@ -349,18 +337,64 @@ struct EditHabitView: View {
         guard let endDate = draft.endDate else {
             return true
         }
-        return Calendar.current.startOfDay(for: endDate) >= selectableEndDateRange.lowerBound
+        let normalizedEndDate = Calendar.current.startOfDay(for: endDate)
+        guard normalizedEndDate >= selectableEndDateRange.lowerBound else {
+            return false
+        }
+        return hasScheduledDay(from: selectableEndDateRange.lowerBound, through: normalizedEndDate)
     }
 
-    private var effectiveFromBinding: Binding<Date> {
-        Binding(
-            get: { effectiveFromSelection },
-            set: { newValue in
-                hasManualEffectiveFromSelection = true
-                effectiveFromSelection = Calendar.current.startOfDay(for: newValue)
-                resolveEffectiveFromSelection(showAdjustmentBanner: true)
-            }
+    private var endDateValidationMessage: String? {
+        isEndDateValid ? nil : AppCopy.noScheduledDayBeforeEndDate
+    }
+
+    private var validationScheduleVersions: [SchedulePreviewVersion] {
+        if shouldUseScheduleEffectiveFrom, let effectiveFrom = currentEffectiveFromResolution?.resolvedDate {
+            return SchedulePreviewSupport.previewSchedules(
+                from: scheduleHistory,
+                replacementRule: draft.scheduleRule,
+                effectiveFrom: effectiveFrom,
+                calendar: Calendar.current
+            )
+        }
+
+        return scheduleHistory.map {
+            SchedulePreviewVersion(
+                rule: $0.rule,
+                effectiveFrom: Calendar.current.startOfDay(for: $0.effectiveFrom),
+                createdAt: $0.createdAt,
+                version: $0.version
+            )
+        }
+    }
+
+    private func hasScheduledDay(from lowerBound: Date, through endDate: Date) -> Bool {
+        let calendar = Calendar.current
+        var cursor = calendar.startOfDay(for: lowerBound)
+        let normalizedEndDate = calendar.startOfDay(for: endDate)
+        let cappedEndDate = min(
+            normalizedEndDate,
+            calendar.date(byAdding: .day, value: 31, to: cursor).map { calendar.startOfDay(for: $0) } ?? normalizedEndDate
         )
+
+        while cursor <= cappedEndDate {
+            if HistoryScheduleApplicability.isScheduled(
+                on: cursor,
+                startDate: draft.startDate,
+                endDate: normalizedEndDate,
+                from: validationScheduleVersions,
+                calendar: calendar
+            ) {
+                return true
+            }
+
+            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else {
+                break
+            }
+            cursor = calendar.startOfDay(for: next)
+        }
+
+        return false
     }
 
     private var currentMissingPastDays: [Date] {
@@ -402,11 +436,6 @@ struct EditHabitView: View {
                 }
             }
 
-            if let message = effectiveFromInfoMessage {
-                AppFloatingInfoBanner(message: message) {
-                    dismissEffectiveFromInfo()
-                }
-            }
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 14)
@@ -446,7 +475,7 @@ struct EditHabitView: View {
             if !draft.scheduleRule.isValidSelection {
                 isScheduleWarningDismissed = false
             }
-            validationMessage = draft.trimmedName.isEmpty ? "Habit name is required." : nil
+            validationMessage = draft.trimmedName.isEmpty ? "Enter a habit name." : endDateValidationMessage
             return
         }
 
@@ -479,7 +508,7 @@ struct EditHabitView: View {
                         displayedMonth = month(containing: firstDay)
                     }
                 } else {
-                    validationMessage = appState.actionErrorMessage ?? error.localizedDescription
+                    validationMessage = appState.actionErrorMessage ?? UserFacingErrorMessage.text(for: error)
                 }
                 isSaving = false
             }
@@ -555,7 +584,7 @@ struct EditHabitView: View {
             if !draft.scheduleRule.isValidSelection {
                 isScheduleWarningDismissed = false
             }
-            validationMessage = draft.trimmedName.isEmpty ? "Habit name is required." : nil
+            validationMessage = draft.trimmedName.isEmpty ? "Enter a habit name." : endDateValidationMessage
             return
         }
 
@@ -585,7 +614,7 @@ struct EditHabitView: View {
                         displayedMonth = month(containing: firstDay)
                     }
                 } else {
-                    validationMessage = appState.actionErrorMessage ?? error.localizedDescription
+                    validationMessage = appState.actionErrorMessage ?? UserFacingErrorMessage.text(for: error)
                 }
                 isSaving = false
             }
@@ -604,7 +633,7 @@ struct EditHabitView: View {
 
     private var currentEffectiveFromResolution: ScheduleEffectiveFromResolution? {
         effectiveFromResolution(
-            selectedDate: hasManualEffectiveFromSelection ? effectiveFromSelection : effectiveFromBaseDate
+            selectedDate: effectiveFromBaseDate
         )
     }
 
@@ -619,57 +648,18 @@ struct EditHabitView: View {
         )
     }
 
-    private func resolveEffectiveFromSelection(showAdjustmentBanner: Bool) {
+    private func resolveEffectiveFromSelection(showAdjustmentBanner _: Bool) {
         guard shouldUseScheduleEffectiveFrom else {
             draft.scheduleEffectiveFrom = nil
-            hasManualEffectiveFromSelection = false
-            dismissEffectiveFromInfo()
             return
         }
 
         guard let resolution = currentEffectiveFromResolution else {
             draft.scheduleEffectiveFrom = nil
-            dismissEffectiveFromInfo()
             return
         }
 
-        let adjusted = resolution.wasAdjusted
-        if effectiveFromSelection != resolution.resolvedDate {
-            effectiveFromSelection = resolution.resolvedDate
-        }
         draft.scheduleEffectiveFrom = resolution.resolvedDate
-
-        if adjusted, showAdjustmentBanner {
-            presentEffectiveFromInfo("Apply From set to the next scheduled day.")
-        } else {
-            dismissEffectiveFromInfo()
-        }
-    }
-
-    private func presentEffectiveFromInfo(_ message: String) {
-        effectiveFromInfoDismissTask?.cancel()
-        withAnimation(.easeInOut(duration: 0.18)) {
-            effectiveFromInfoMessage = message
-        }
-
-        effectiveFromInfoDismissTask = Task {
-            try? await Task.sleep(for: .seconds(4))
-            guard !Task.isCancelled else { return }
-
-            await MainActor.run {
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    effectiveFromInfoMessage = nil
-                }
-            }
-        }
-    }
-
-    private func dismissEffectiveFromInfo() {
-        effectiveFromInfoDismissTask?.cancel()
-        effectiveFromInfoDismissTask = nil
-        withAnimation(.easeInOut(duration: 0.18)) {
-            effectiveFromInfoMessage = nil
-        }
     }
 
     private func historyReviewMessage(for missingPastDays: [Date]) -> String {
@@ -695,11 +685,6 @@ struct EditHabitView: View {
 
     private static func initialDisplayedMonth(startDate: Date) -> Date {
         HistoryMonthWindow.displayMonth(startDate: startDate, today: Date(), calendar: Calendar.current)
-    }
-
-    private static func initialEffectiveFrom(startDate: Date) -> Date {
-        let today = Calendar.current.startOfDay(for: Date())
-        return max(today, Calendar.current.startOfDay(for: startDate))
     }
 
     private func dismissKeyboardForNonTextControl() {
@@ -815,7 +800,6 @@ struct HabitCalendarDayView: View {
     let isScheduled: Bool
     let cellSize: CGFloat
     @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ZStack {
@@ -843,7 +827,7 @@ struct HabitCalendarDayView: View {
     private var foreground: Color {
         switch style {
         case .completed:
-            return appTint.calendarPositiveForeground(for: colorScheme)
+            return appTint.accentColor
         case .skipped:
             return .red
         case .available:
@@ -856,7 +840,7 @@ struct HabitCalendarDayView: View {
     private var backgroundColor: Color {
         switch style {
         case .completed:
-            return appTint.accentColor
+            return appTint.accentColor.opacity(0.18)
         case .skipped:
             return Color(uiColor: .systemRed).opacity(0.18)
         case .available, .disabled:
@@ -878,21 +862,6 @@ struct HabitCalendarDayView: View {
 
     private var scheduleIndicatorColor: Color {
         Color(uiColor: .tertiaryLabel)
-    }
-
-    private var appTint: AppTint {
-        AppTint.stored(rawValue: appTintRawValue)
-    }
-}
-
-private struct HabitHistoryLegend: View {
-    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
-
-    var body: some View {
-        AppLegend(items: [
-            AppLegendEntry(label: "Completed", color: appTint.accentColor, fillOpacity: 1, strokeOpacity: 0),
-            AppLegendEntry(label: "Skipped", color: .red),
-        ])
     }
 
     private var appTint: AppTint {

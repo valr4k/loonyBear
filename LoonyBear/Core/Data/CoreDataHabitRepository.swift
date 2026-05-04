@@ -7,7 +7,7 @@ enum HabitRepositoryError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .internalFailure:
-            return "Habit operation failed unexpectedly."
+            return "Something went wrong. Try again."
         }
     }
 }

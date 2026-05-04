@@ -15,7 +15,7 @@ enum BackupServiceError: LocalizedError, Equatable {
         case .folderNotSelected:
             return "Please choose a backup folder first."
         case .invalidFolderAccess:
-            return "The selected backup folder is no longer accessible."
+            return "The selected folder is no longer available."
         case .missingBackup:
             return "No backup file was found in the selected folder."
         case .corruptedBackup:
@@ -23,7 +23,7 @@ enum BackupServiceError: LocalizedError, Equatable {
         case .unsupportedSchemaVersion(let version):
             return "This backup uses unsupported schema version \(version)."
         case .internalFailure:
-            return "Backup operation failed unexpectedly."
+            return "Couldn’t complete the action."
         }
     }
 }
@@ -1067,9 +1067,16 @@ final class BackupService {
         }
 
         let fileSize = ByteCountFormatter.string(fromByteCount: Int64(loadedArchive.data.count), countStyle: .file)
-        let timestamp = loadedArchive.archive.exportedAt.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+        let timestamp = Self.formattedBackupTimestamp(loadedArchive.archive.exportedAt)
         let fingerprint = Self.fingerprint(for: loadedArchive.data)
         return (timestamp, fileSize, true, state(forBackupFingerprint: fingerprint))
+    }
+
+    private static func formattedBackupTimestamp(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "dd MMM 'at' HH:mm"
+        return formatter.string(from: date)
     }
 
     private func loadPreferredArchive(in folderURL: URL) throws -> (archive: BackupArchive, data: Data) {

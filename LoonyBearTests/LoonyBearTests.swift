@@ -114,10 +114,9 @@ struct LoonyBearTests {
     }
 
     @Test
-    func effectiveFromResolverMovesWeeklyRulesToNextScheduledDay() throws {
+    func effectiveFromResolverUsesSelectedDateAsActivationDate() throws {
         let calendar = Calendar(identifier: .gregorian)
         let selectedTuesday = TestSupport.makeDate(2026, 5, 5, calendar: calendar)
-        let nextMonday = TestSupport.makeDate(2026, 5, 11, calendar: calendar)
 
         let resolution = try #require(ScheduleEffectiveFromResolver.resolve(
             scheduleRule: .weekly(.monday),
@@ -129,15 +128,14 @@ struct LoonyBearTests {
         ))
 
         #expect(resolution.selectedDate == selectedTuesday)
-        #expect(resolution.resolvedDate == nextMonday)
-        #expect(resolution.wasAdjusted)
+        #expect(resolution.resolvedDate == selectedTuesday)
+        #expect(!resolution.wasAdjusted)
     }
 
     @Test
-    func effectiveFromResolverUsesNextPlainDayAsIntervalAnchor() throws {
+    func effectiveFromResolverDoesNotMoveExplicitIntervalDate() throws {
         let calendar = Calendar(identifier: .gregorian)
         let selectedDate = TestSupport.makeDate(2026, 5, 5, calendar: calendar)
-        let nextDay = TestSupport.makeDate(2026, 5, 6, calendar: calendar)
 
         let resolution = try #require(ScheduleEffectiveFromResolver.resolve(
             scheduleRule: .intervalDays(3),
@@ -148,8 +146,8 @@ struct LoonyBearTests {
             calendar: calendar
         ))
 
-        #expect(resolution.resolvedDate == nextDay)
-        #expect(resolution.wasAdjusted)
+        #expect(resolution.resolvedDate == selectedDate)
+        #expect(!resolution.wasAdjusted)
     }
 
     @Test
@@ -240,6 +238,44 @@ struct LoonyBearTests {
     }
 
     @Test
+    func schedulePreviewDropsFutureVersionsReplacedByDraftRule() {
+        let calendar = Calendar(identifier: .gregorian)
+        let habitID = UUID()
+        let startDate = TestSupport.makeDate(2026, 5, 1, calendar: calendar)
+        let effectiveFrom = TestSupport.makeDate(2026, 5, 11, calendar: calendar)
+        let schedules = [
+            TestSupport.makeSchedule(
+                habitID: habitID,
+                rule: .weekly(.daily),
+                effectiveFrom: startDate,
+                version: 1
+            ),
+            TestSupport.makeSchedule(
+                habitID: habitID,
+                rule: .weekly(.thursday),
+                effectiveFrom: TestSupport.makeDate(2026, 5, 14, calendar: calendar),
+                version: 2
+            ),
+        ]
+
+        let scheduledDays = SchedulePreviewSupport.scheduledDays(
+            startDate: startDate,
+            through: TestSupport.makeDate(2026, 5, 28, calendar: calendar),
+            schedules: schedules,
+            replacementRule: .weekly(.monday),
+            effectiveFrom: effectiveFrom,
+            calendar: calendar
+        )
+
+        #expect(scheduledDays.contains(TestSupport.makeDate(2026, 5, 11, calendar: calendar)))
+        #expect(scheduledDays.contains(TestSupport.makeDate(2026, 5, 18, calendar: calendar)))
+        #expect(scheduledDays.contains(TestSupport.makeDate(2026, 5, 25, calendar: calendar)))
+        #expect(!scheduledDays.contains(TestSupport.makeDate(2026, 5, 14, calendar: calendar)))
+        #expect(!scheduledDays.contains(TestSupport.makeDate(2026, 5, 21, calendar: calendar)))
+        #expect(!scheduledDays.contains(TestSupport.makeDate(2026, 5, 28, calendar: calendar)))
+    }
+
+    @Test
     func overdueAndStreakUseEditedIntervalAnchor() {
         let calendar = Calendar(identifier: .gregorian)
         let habitID = UUID()
@@ -297,8 +333,8 @@ struct LoonyBearTests {
         let habitError = EditableHistoryValidationError.missingHabitPastDays(missingDays)
         let pillError = EditableHistoryValidationError.missingPillPastDays(missingDays)
 
-        #expect(habitError.localizedDescription == "Choose Completed or Skipped for every past scheduled day before saving.")
-        #expect(pillError.localizedDescription == "Choose Taken or Skipped for every past scheduled day before saving.")
+        #expect(habitError.localizedDescription == "Mark all past days as Completed or Skipped.")
+        #expect(pillError.localizedDescription == "Mark all past days as Taken or Skipped.")
         #expect(!habitError.localizedDescription.contains("Missing:"))
         #expect(!pillError.localizedDescription.contains("Missing:"))
         #expect(!habitError.localizedDescription.contains("Apr"))
@@ -594,7 +630,7 @@ struct LoonyBearTests {
         #expect(updatedDetails.completedDays.contains(yesterday))
         #expect(updatedDetails.completedDays.contains(twoDaysAgo))
         #expect(updatedDetails.skippedDays.isEmpty)
-        #expect(appState.actionErrorMessage == "Choose Completed or Skipped for every past scheduled day before saving.")
+        #expect(appState.actionErrorMessage == "Mark all past days as Completed or Skipped.")
 
         let dashboardHabit = try #require(
             appState.dashboard.sections
@@ -679,7 +715,7 @@ struct LoonyBearTests {
         #expect(updatedDetails.takenDays.contains(yesterday))
         #expect(updatedDetails.takenDays.contains(twoDaysAgo))
         #expect(updatedDetails.skippedDays.isEmpty)
-        #expect(appState.actionErrorMessage == "Choose Taken or Skipped for every past scheduled day before saving.")
+        #expect(appState.actionErrorMessage == "Mark all past days as Taken or Skipped.")
 
         let dashboardPill = try #require(appState.dashboard.pills.first { $0.id == pillID })
         #expect(dashboardPill.name == "Vitamin D")

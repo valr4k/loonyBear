@@ -103,7 +103,7 @@ struct CreateHabitView: View {
 
     private var nameSection: some View {
         AppHabitNameCard(text: $draft.name, showsValidation: shouldShowNameValidation) {
-            AppInlineErrorText(text: "Habit name is required.")
+            AppInlineErrorText(text: "Enter a habit name.")
         }
     }
 
@@ -115,8 +115,6 @@ struct CreateHabitView: View {
             reminderDate: $draft.reminderTime.dateBinding(fallback: ReminderTime(hour: 20, minute: 0)),
             endDate: $draft.endDate,
             endDateRange: selectableEndDateRange,
-            endDateTitle: "Goal Date",
-            endDateEmptyTitle: "Forever",
             repeatSummary: draft.scheduleRule.compactSummary,
             startDateTap: dismissKeyboardForNonTextControl,
             reminderTimeTap: dismissKeyboardForNonTextControl,
@@ -197,7 +195,7 @@ struct CreateHabitView: View {
             if !draft.scheduleRule.isValidSelection {
                 isScheduleWarningDismissed = false
             }
-            validationMessage = draft.trimmedName.isEmpty ? "Habit name is required." : nil
+            validationMessage = draft.trimmedName.isEmpty ? "Enter a habit name." : nil
             return
         }
 
@@ -215,7 +213,7 @@ struct CreateHabitView: View {
                 guard savedDraft.reminderEnabled else { return }
                 await appState.prepareReminderNotifications(forHabitID: habitID)
             } catch {
-                let message = appState.createHabitErrorMessage ?? error.localizedDescription
+                let message = appState.createHabitErrorMessage ?? UserFacingErrorMessage.text(for: error)
                 if isCreateLimitError(error, message: message) {
                     showCreateLimitWarning(message)
                 } else {

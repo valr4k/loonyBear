@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import SwiftUI
 
 enum PillDetailsLoadState {
     case found(PillDetailsProjection)
@@ -50,12 +51,23 @@ final class PillAppState: ObservableObject {
     }
 
     func refreshDashboard() {
+        refreshDashboard(animated: false)
+    }
+
+    private func refreshDashboard(animated: Bool) {
         do {
-            dashboard = PillDashboardProjection(pills: try repository.fetchDashboardPills())
+            let nextDashboard = PillDashboardProjection(pills: try repository.fetchDashboardPills())
+            if animated {
+                withAnimation(.smooth(duration: 0.38, extraBounce: 0)) {
+                    dashboard = nextDashboard
+                }
+            } else {
+                dashboard = nextDashboard
+            }
             sideEffectCoordinator.refreshDerivedState()
             actionErrorMessage = nil
         } catch {
-            actionErrorMessage = error.localizedDescription
+            actionErrorMessage = UserFacingErrorMessage.text(for: error)
         }
     }
 
@@ -124,13 +136,13 @@ final class PillAppState: ObservableObject {
         }
     }
 
-    func markTakenToday(id: UUID) async {
-        await markPillTaken(id: id, on: clock.now())
+    func markTakenToday(id: UUID, animatedRefresh: Bool = false) async {
+        await markPillTaken(id: id, on: clock.now(), animatedRefresh: animatedRefresh)
     }
 
-    func markPillTaken(id: UUID, on day: Date) async {
+    func markPillTaken(id: UUID, on day: Date, animatedRefresh: Bool = false) async {
         let didMutate = await writeCoordinator.performMutation(
-            refresh: refreshDashboard,
+            refresh: { self.refreshDashboard(animated: animatedRefresh) },
             setError: { self.actionErrorMessage = $0 },
             refreshOnFailure: true
         ) {
@@ -141,13 +153,13 @@ final class PillAppState: ObservableObject {
         sideEffectCoordinator.handleDailyMutation(forPillID: id, on: day)
     }
 
-    func skipPillToday(id: UUID) async {
-        await skipPillDay(id: id, on: clock.now())
+    func skipPillToday(id: UUID, animatedRefresh: Bool = false) async {
+        await skipPillDay(id: id, on: clock.now(), animatedRefresh: animatedRefresh)
     }
 
-    func skipPillDay(id: UUID, on day: Date) async {
+    func skipPillDay(id: UUID, on day: Date, animatedRefresh: Bool = false) async {
         let didMutate = await writeCoordinator.performMutation(
-            refresh: refreshDashboard,
+            refresh: { self.refreshDashboard(animated: animatedRefresh) },
             setError: { self.actionErrorMessage = $0 },
             refreshOnFailure: true
         ) {
@@ -158,13 +170,13 @@ final class PillAppState: ObservableObject {
         sideEffectCoordinator.handleDailyMutation(forPillID: id, on: day)
     }
 
-    func clearPillDayStateToday(id: UUID) async {
-        await clearPillDayState(id: id, on: clock.now())
+    func clearPillDayStateToday(id: UUID, animatedRefresh: Bool = false) async {
+        await clearPillDayState(id: id, on: clock.now(), animatedRefresh: animatedRefresh)
     }
 
-    func clearPillDayState(id: UUID, on day: Date) async {
+    func clearPillDayState(id: UUID, on day: Date, animatedRefresh: Bool = false) async {
         let didMutate = await writeCoordinator.performMutation(
-            refresh: refreshDashboard,
+            refresh: { self.refreshDashboard(animated: animatedRefresh) },
             setError: { self.actionErrorMessage = $0 },
             refreshOnFailure: true
         ) {
@@ -190,7 +202,7 @@ final class PillAppState: ObservableObject {
 
     func setPillArchived(id: UUID, isArchived: Bool) async {
         let didChange = await writeCoordinator.performMutation(
-            refresh: refreshDashboard,
+            refresh: { self.refreshDashboard(animated: true) },
             setError: { self.actionErrorMessage = $0 },
             refreshOnFailure: true
         ) {

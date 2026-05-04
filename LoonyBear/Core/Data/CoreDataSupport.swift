@@ -233,9 +233,9 @@ struct ScheduleEffectiveFromResolution: Equatable {
 
 enum ScheduleEffectiveFromResolver {
     static func resolve(
-        scheduleRule: ScheduleRule,
+        scheduleRule _: ScheduleRule,
         selectedDate: Date,
-        explicitDays: Set<Date>,
+        explicitDays _: Set<Date>,
         minimumDate: Date,
         maximumDate: Date,
         calendar: Calendar = .autoupdatingCurrent
@@ -245,33 +245,11 @@ enum ScheduleEffectiveFromResolver {
         guard normalizedMinimum <= normalizedMaximum else { return nil }
 
         let normalizedSelected = max(calendar.startOfDay(for: selectedDate), normalizedMinimum)
-        let normalizedExplicitDays = Set(explicitDays.map { calendar.startOfDay(for: $0) })
-        var candidate = normalizedSelected
-
-        while candidate <= normalizedMaximum {
-            if !normalizedExplicitDays.contains(candidate), ScheduleDateEligibility.isEligible(candidate, for: scheduleRule, calendar: calendar) {
-                return ScheduleEffectiveFromResolution(
-                    selectedDate: normalizedSelected,
-                    resolvedDate: candidate
-                )
-            }
-
-            guard let next = calendar.date(byAdding: .day, value: 1, to: candidate) else {
-                break
-            }
-            candidate = calendar.startOfDay(for: next)
-        }
-
-        return nil
-    }
-}
-
-private enum ScheduleDateEligibility {
-    static func isEligible(_ date: Date, for scheduleRule: ScheduleRule, calendar: Calendar) -> Bool {
-        if case .intervalDays = scheduleRule {
-            return true
-        }
-        return scheduleRule.isScheduled(on: date, anchorDate: date, calendar: calendar)
+        guard normalizedSelected <= normalizedMaximum else { return nil }
+        return ScheduleEffectiveFromResolution(
+            selectedDate: normalizedSelected,
+            resolvedDate: normalizedSelected
+        )
     }
 }
 
@@ -361,7 +339,7 @@ enum EditableHistoryValidationError: LocalizedError, Equatable {
     }
 
     private static func message(actionLabel: String) -> String {
-        "Choose \(actionLabel) or Skipped for every past scheduled day before saving."
+        "Mark all past days as \(actionLabel) or Skipped."
     }
 }
 
@@ -435,10 +413,13 @@ enum SchedulePreviewSupport {
         effectiveFrom: Date,
         calendar: Calendar = .autoupdatingCurrent
     ) -> [SchedulePreviewVersion] {
-        var previewSchedules = schedules.map { schedule in
-            SchedulePreviewVersion(
+        let normalizedEffectiveFrom = calendar.startOfDay(for: effectiveFrom)
+        var previewSchedules = schedules.compactMap { schedule -> SchedulePreviewVersion? in
+            let scheduleEffectiveFrom = calendar.startOfDay(for: schedule.effectiveFrom)
+            guard scheduleEffectiveFrom < normalizedEffectiveFrom else { return nil }
+            return SchedulePreviewVersion(
                 rule: schedule.rule,
-                effectiveFrom: calendar.startOfDay(for: schedule.effectiveFrom),
+                effectiveFrom: scheduleEffectiveFrom,
                 createdAt: schedule.createdAt,
                 version: schedule.version
             )
@@ -446,7 +427,7 @@ enum SchedulePreviewSupport {
         previewSchedules.append(
             SchedulePreviewVersion(
                 rule: replacementRule,
-                effectiveFrom: calendar.startOfDay(for: effectiveFrom),
+                effectiveFrom: normalizedEffectiveFrom,
                 createdAt: .distantFuture,
                 version: Int.max
             )

@@ -47,19 +47,23 @@
         },
         {
           "title": "What a Habit card shows",
-          "body": "Each Habit card shows the name, the current schedule summary, the current streak text, the reminder text if a reminder exists, and a status icon. If there is an active overdue scheduled day, the card shows a red Today, Yesterday, or date label. Active overdue is not counted as a history gap. If recent history still needs review for another required scheduled day, the card also shows an amber warning icon. Otherwise, a green checkmark circle means completed today and a red xmark circle means skipped today."
+          "body": "Each Habit card shows the name, the current schedule summary, the current streak text, the reminder text if a reminder exists, and a status icon. If there is an active overdue scheduled day, the card shows a red Today, Yesterday, or date label such as 03 May 2026. Future Habits show Starts plus the start date. Archived Habits live on the separate Habit Archive page. Active overdue is not counted as a history gap. If recent history still needs review for another required scheduled day, the card also shows an amber warning icon. Otherwise, a green checkmark circle means completed today and a red xmark circle means skipped today."
         },
         {
           "title": "Habit swipe actions",
-          "body": "Leading swipe actions are used for day-state changes. If today is already completed or skipped, the swipe action clears today's state. If today has no state, the swipe actions are Complete and Skip. Trailing swipe exposes Edit and Info. Edit uses system blue, Info uses system indigo, and Delete is not in card swipe actions."
+          "body": "Leading swipe actions are used for day-state changes on active started Habits. Future and archived Habit cards do not expose day-state leading swipe actions. If today is already completed or skipped, the swipe action clears today's state with the arrow.uturn.backward system symbol. If today has no state, the swipe actions are Complete and Skip. Trailing swipe exposes Edit and Info. Edit uses system blue, Info uses system indigo, and Delete is not in card swipe actions."
+        },
+        {
+          "title": "Habit Archive page",
+          "body": "My Habits has an Archive toolbar button. The Habit Archive page shows archived Habits without Build or Quit sections. Archived Habit cards do not expose day-state leading swipe actions, and Restore is handled from Edit."
         },
         {
           "title": "Creating a Habit",
-          "body": "Create Habit includes type, name, start date, reminder toggle, reminder time, a schedule rule, and the Use schedule for history? toggle. The schedule rule can be selected with weekday rows or the Intervals row for Every N days, limited to 2 through 5 days. Weekday summaries are canonicalized as Daily, Weekdays, Weekends, Weekly for one selected weekday, or Custom for other combinations. The save button is enabled only when the habit name is not empty and the schedule rule is valid. If the 20-habit hard limit blocks creation, the error is shown as a dismissible floating warning banner."
+          "body": "Create Habit includes type, name, start date, reminder toggle, reminder time, Repeat, End Repeat, and End Date. Repeat opens a pushed editor with Days and Interval sections. Days supports weekday combinations. Interval is Every N days, limited to 2 through 5 days. Weekday summaries are Daily, Weekdays, Weekends, Weekly on Mon style labels for one selected weekday, or abbreviated day lists such as Mon, Wed, Fri for other combinations. Use schedule for history is no longer shown; new Habits use schedule-based history generation. The save button is enabled only when the habit name is not empty and the schedule rule is valid. If the 20-habit hard limit blocks creation, the error is shown as a dismissible floating warning banner."
         },
         {
           "title": "Habit start date range",
-          "body": "Habit start date can be selected from the last 30 days through the end of the second next calendar month. A future Habit remains in its normal Build or Quit dashboard section, but it has no today action/status, no overdue state, no notifications, and no history review before its start date."
+          "body": "Habit start date can be selected from the last 5 years through the end of the second next calendar month. A future Habit remains in its normal Build or Quit dashboard section, shows Starts 03 May 2026 style dates, and has no today action/status, no overdue state, no notifications, and no history review before its start date."
         },
         {
           "title": "Habit reminder permission behavior",
@@ -67,11 +71,11 @@
         },
         {
           "title": "Habit details screen",
-          "body": "Habit Details shows name, schedule, reminder, start date, current streak, best streak, completed for, and a read-only calendar. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. If any past scheduled day needs review, a dismissible floating warning banner asks the user to open Edit and choose Completed or Skipped. If the only missing day is the active overdue day, the banner uses overdue-specific copy. The toolbar has Close on the left and Edit on the right. Edit is shown only when details load successfully."
+          "body": "Habit Details shows name, a Streaks block with current streak, best streak, and completed for, a read-only Schedule block with Reminder and Repeat, a History block with Start Date and End Date, and a read-only calendar. Repeat uses the same display style as dashboard cards and does not open a popover. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. If any past scheduled day needs review, a dismissible floating warning banner appears. If the only missing day is the active overdue day, the banner says Finish updating overdue days. Otherwise it says Finish updating past days. The toolbar has Close on the left and Edit on the right. Edit is shown only when details load successfully."
         },
         {
           "title": "Editing a Habit",
-          "body": "Edit Habit shows name, read-only start date, reminder settings, schedule rule, an editable calendar, helper text, and a Delete button at the bottom. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Missing past-day review is shown as a dismissible floating warning banner that does not take space inside the calendar layout, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a system alert with Cancel and Delete actions."
+          "body": "Edit Habit shows name, a Schedule block with Reminder, Time, Repeat, End Repeat, and End Date, an editable calendar, and Delete plus Archive or Restore actions at the bottom. Start Date is not editable from Edit. Repeat opens the pushed Repeat editor. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Missing past-day review is shown as a dismissible floating warning banner that does not take space inside the calendar layout, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a system alert with Cancel and Delete actions. Archive and Restore use system confirmation alerts."
         }
       ]
     },
@@ -88,7 +92,7 @@
         },
         {
           "title": "Habit auto-fill on create",
-          "body": "When a Habit is created, the repository generates completed history from the start date up to yesterday. If Use schedule for history? is on, only days matching the schedule rule are generated. If it is off, every day in that range is generated. Today is not prefilled."
+          "body": "When a Habit is created, the repository generates completed history from the start date up to yesterday using schedule-based history generation. Only days matching the schedule rule are generated. Today is not prefilled."
         },
         {
           "title": "Habit reconciliation",
@@ -100,7 +104,7 @@
         },
         {
           "title": "Today versus past days in Habit edit",
-          "body": "Today can still be empty, completed, or skipped. Every past editable scheduled Habit day must be Completed or Skipped before saving, including a past active overdue day. Saving Edit Habit does not auto-fill missing past scheduled days; if any past editable scheduled day is empty, the app shows a dismissible floating warning banner without listing dates and disables Save until the user chooses the state. Non-scheduled editable days may still be marked manually and count when marked. If the schedule is changed, Edit shows Apply From and stores the resolved date shown in the UI."
+          "body": "Today can still be empty, completed, or skipped. Every past editable scheduled Habit day must be Completed or Skipped before saving, including a past active overdue day. Saving Edit Habit does not auto-fill missing past scheduled days; if any past editable scheduled day is empty, the app shows a dismissible floating warning banner without listing dates and disables Save until the user chooses the state. Non-scheduled editable days may still be marked manually and count when marked. If the schedule is changed, the new schedule version resolves internally from today for active items, or from Start Date for future items."
         },
         {
           "title": "Current streak",
@@ -125,27 +129,31 @@
         },
         {
           "title": "What a Pill card shows",
-          "body": "Each Pill card shows the name, dosage, schedule summary, total taken days, reminder text if a reminder exists, and a status icon. If there is an active overdue scheduled day, the card shows a red Today, Yesterday, or date label. Active overdue is not counted as a history gap. If recent history still needs review for another required scheduled day, the card also shows an amber warning icon. Otherwise, a green checkmark circle means taken today and a red xmark circle means skipped today."
+          "body": "Each Pill card shows the name, dosage, schedule summary, total taken days, reminder text if a reminder exists, and a status icon. If there is an active overdue scheduled day, the card shows a red Today, Yesterday, or date label such as 03 May 2026. Future Pills appear in Pending and show Starts plus the start date. Archived Pills live on the separate Pill Archive page. Active overdue is not counted as a history gap. If recent history still needs review for another required scheduled day, the card also shows an amber warning icon. Otherwise, a green checkmark circle means taken today and a red xmark circle means skipped today."
         },
         {
           "title": "Pill swipe actions",
-          "body": "Leading swipe actions are used for day-state changes. If today is already taken or skipped, the swipe action clears today's state. If today has no state, the swipe actions are Taken and Skip. Trailing swipe exposes Edit and Info. Edit uses system blue, Info uses system indigo, and Delete is not in card swipe actions."
+          "body": "Leading swipe actions are used for day-state changes on active started Pills. Future and archived Pill cards do not expose day-state leading swipe actions. If today is already taken or skipped, the swipe action clears today's state with the arrow.uturn.backward system symbol. If today has no state, the swipe actions are Taken and Skip. Trailing swipe exposes Edit and Info. Edit uses system blue, Info uses system indigo, and Delete is not in card swipe actions."
+        },
+        {
+          "title": "Pill Archive page",
+          "body": "My Pills has an Archive toolbar button. The Pill Archive page shows archived Pills without Today or Pending sections. Archived Pill cards do not expose day-state leading swipe actions, and Restore is handled from Edit."
         },
         {
           "title": "Creating a Pill",
-          "body": "Create Pill includes name, dosage, start date, reminder toggle, reminder time, a schedule rule, Use schedule for history?, and an optional description. The schedule rule can be selected with weekday rows or the Intervals row for Every N days, limited to 2 through 5 days. Weekday summaries are canonicalized as Daily, Weekdays, Weekends, Weekly for one selected weekday, or Custom for other combinations. Save is enabled only when the pill name is not empty, the dosage is not empty, and the schedule rule is valid. If the 20-pill hard limit blocks creation, the error is shown as a dismissible floating warning banner."
+          "body": "Create Pill includes name, dosage, start date, reminder toggle, reminder time, Repeat, End Date, and an optional description. Repeat opens a pushed editor with Days and Interval sections. Days supports weekday combinations. Interval includes Never for one-time Pills and Every N days, limited to 2 through 5 days. Weekday summaries are Daily, Weekdays, Weekends, Weekly on Mon style labels for one selected weekday, or abbreviated day lists such as Mon, Wed, Fri for other combinations. Use schedule for history is no longer shown; new Pills use schedule-based history generation. Save is enabled only when the pill name is not empty, the dosage is not empty, and the schedule rule is valid. If the 20-pill hard limit blocks creation, the error is shown as a dismissible floating warning banner."
         },
         {
           "title": "Pill start date range",
-          "body": "Pill start date can be selected from the last 5 years through the end of the second next calendar month. A future Pill appears in Pending, but it has no today action/status, no overdue state, no notifications, and no history review before its start date."
+          "body": "Pill start date can be selected from the last 5 years through the end of the second next calendar month. A future Pill appears in Pending and shows Starts 03 May 2026 style dates, but it has no today action/status, no overdue state, no notifications, and no history review before its start date."
         },
         {
           "title": "Pill details screen",
-          "body": "Pill Details shows name, dosage, start date, schedule, reminder, taken for, a read-only calendar, and description if one exists. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. If any past scheduled day needs review, a dismissible floating warning banner asks the user to open Edit and choose Taken or Skipped. If the only missing day is the active overdue day, the banner uses overdue-specific copy. The toolbar has Close on the left and Edit on the right. Edit is shown only when details load successfully."
+          "body": "Pill Details shows name, dosage, a Streak block with Taken for, a read-only Schedule block with Reminder and Repeat, a History block with Start Date and End Date, a read-only calendar, and description if one exists. Repeat uses the same display style as dashboard cards and does not open a popover. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. If any past scheduled day needs review, a dismissible floating warning banner appears. If the only missing day is the active overdue day, the banner says Finish updating overdue days. Otherwise it says Finish updating past days. The toolbar has Close on the left and Edit on the right. Edit is shown only when details load successfully."
         },
         {
           "title": "Editing a Pill",
-          "body": "Edit Pill shows name, dosage, read-only start date, reminder settings, schedule rule, an editable calendar, helper text, description, and a Delete button at the bottom. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Missing past-day review is shown as a dismissible floating warning banner that does not take space inside the calendar layout, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a system alert with Cancel and Delete actions."
+          "body": "Edit Pill shows name, dosage, a Schedule block with Reminder, Time, Repeat, and End Date, an editable calendar, description, and Delete plus Archive or Restore actions at the bottom. Start Date is not editable from Edit. Repeat opens the pushed Repeat editor. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Missing past-day review is shown as a dismissible floating warning banner that does not take space inside the calendar layout, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a system alert with Cancel and Delete actions. Archive and Restore use system confirmation alerts."
         }
       ]
     },
@@ -162,7 +170,7 @@
         },
         {
           "title": "Pill prefilled taken history on create",
-          "body": "When a new Pill is created, the repository generates taken history from the start date up to yesterday. If Use schedule for history? is on, only days matching the schedule rule are generated. If it is off, every day from the start date up to yesterday is generated."
+          "body": "When a new Pill is created, the repository generates taken history from the start date up to yesterday using schedule-based history generation. Only days matching the schedule rule are generated."
         },
         {
           "title": "What repository create does for Pills",
@@ -178,7 +186,7 @@
         },
         {
           "title": "Today versus past days in Pill edit",
-          "body": "Today can still be empty, taken, or skipped. Every past editable scheduled Pill day must be Taken or Skipped before saving, including a past active overdue day. Saving Edit Pill does not auto-fill missing past scheduled days; if any past editable scheduled day is empty, the app shows a dismissible floating warning banner without listing dates and disables Save until the user chooses the state. Non-scheduled editable days may still be marked manually and count when marked. If the schedule is changed, Edit shows Apply From and stores the resolved date shown in the UI."
+          "body": "Today can still be empty, taken, or skipped. Every past editable scheduled Pill day must be Taken or Skipped before saving, including a past active overdue day. Saving Edit Pill does not auto-fill missing past scheduled days; if any past editable scheduled day is empty, the app shows a dismissible floating warning banner without listing dates and disables Save until the user chooses the state. Non-scheduled editable days may still be marked manually and count when marked. If the schedule is changed, the new schedule version resolves internally from today for active items, or from Start Date for future items."
         },
         {
           "title": "Pill totals",
@@ -203,7 +211,7 @@
         },
         {
           "title": "When reminders are eligible",
-          "body": "A reminder candidate is created only when reminder is enabled, the local day is not before the item start date, the local day matches the current schedule rule, the day is not already completed or taken, the day is not already skipped, and the scheduled reminder time is still in the future. Reminder planning intentionally scans the next 2 local days; this is currently accepted for sparse weekly and interval schedules because the expected usage pattern is daily app opens, which trigger a fresh reschedule."
+          "body": "A reminder candidate is created only when reminder is enabled, the item is not archived, the local day is not before the item start date, the local day is not after the final scheduled day when End Date exists, the local day matches the current schedule rule, the day is not already completed or taken, the day is not already skipped, and the scheduled reminder time is still in the future. Reminder planning intentionally scans the next 2 local days; this is currently accepted for sparse weekly and interval schedules because the expected usage pattern is daily app opens, which trigger a fresh reschedule."
         },
         {
           "title": "What tapping a reminder does",
@@ -232,11 +240,11 @@
         },
         {
           "title": "When a Habit is overdue",
-          "body": "A Habit is overdue when the latest due scheduled day is empty. Scheduled days become due at reminder time, or at 00:00 when reminders are disabled. Older empty due scheduled days are history gaps, not active overdue."
+          "body": "A Habit is overdue when it is not archived and the latest due scheduled day is empty. Scheduled days become due at reminder time, or at 00:00 when reminders are disabled. Older empty due scheduled days are history gaps, not active overdue."
         },
         {
           "title": "When a Pill is overdue",
-          "body": "A Pill is overdue when the latest due scheduled day is empty. Scheduled days become due at reminder time, or at 00:00 when reminders are disabled. Older empty due scheduled days are history gaps, not active overdue."
+          "body": "A Pill is overdue when it is not archived and the latest due scheduled day is empty. Scheduled days become due at reminder time, or at 00:00 when reminders are disabled. Older empty due scheduled days are history gaps, not active overdue."
         },
         {
           "title": "Projected badge count in notifications",
@@ -249,6 +257,10 @@
         {
           "title": "What overdue does not change",
           "body": "When a newer scheduled due day appears, older empty due scheduled days become history gaps. They remain manual review and can only be fixed in Edit."
+        },
+        {
+          "title": "End Date and archive",
+          "body": "End Date is optional for both Pills and Habits. If a date is selected, the final active scheduled day is the last scheduled day on or before that date. Once that final day is taken/completed or skipped, the item archives automatically without confirmation. If the final day remains empty, the item stays active and can become overdue. Repeat Never for Pills is a one-time schedule on Start Date and archives automatically after that day is taken or skipped."
         }
       ]
     },
@@ -257,19 +269,19 @@
       "items": [
         {
           "title": "What Backup screen shows",
-          "body": "Backup shows Last backup, Total size, and Folder. Last backup uses the same color as its cloud status icon: green when a readable backup exists and red when it does not. Create Backup and Restore Backup are full-width capsule buttons; Create uses the primary label color and Restore stays system red. Create and Restore confirmations use system alerts instead of popover confirmation dialogs; alert actions use short labels: Backup and Restore. Backup feedback uses dismissible floating banners that auto-hide after 4 seconds or clear when leaving the Backup screen. The Home Screen app icon exposes a Create Backup quick action; choosing it opens Settings > Backup only, and backup creation still starts only after the user taps Create Backup on the Backup screen."
+          "body": "Backup shows Last backup, Total size, and Folder. Last backup uses the same color as its cloud status icon, green when a readable backup exists and red when it does not, and dates use 03 May at 22:35 style formatting. Create Backup and Restore Backup are full-width capsule buttons; Create uses the primary label color and Restore stays system red. Create and Restore confirmations use system alerts instead of popover confirmation dialogs; alert actions use short labels: Backup and Restore. Backup feedback uses dismissible floating banners that auto-hide after 4 seconds or clear when leaving the Backup screen. The Home Screen app icon exposes a Create Backup quick action; choosing it opens Settings > Backup only, and backup creation still starts only after the user taps Create Backup on the Backup screen."
         },
         {
           "title": "Folder with an existing backup",
-          "body": "Choosing a folder never restores data automatically. Backup action notices are derived from the selected folder state and remembered backup fingerprints, not from a temporary screen session. If the folder contains a readable backup that has not been created or restored by this app install, the Backup screen shows Backup found. Tap Restore Backup to apply it. as a blue floating informational banner and disables Create Backup. If the same backup was already created or restored by this app install, no restore-needed informational banner is shown."
+          "body": "Choosing a folder never restores data automatically. Backup action notices are derived from the selected folder state and remembered backup fingerprints, not from a temporary screen session. If the folder contains a readable backup that has not been created or restored by this app install, the Backup screen shows Backup available. Restore when ready. as a blue floating informational banner and disables Create Backup. If the same backup was already created or restored by this app install, no restore-needed informational banner is shown."
         },
         {
           "title": "Folder without a backup",
-          "body": "If the selected folder has no readable backup, Backup shows No backup found. Tap Create Backup to save one. as a blue floating informational banner. Create Backup stays available and Restore Backup is disabled."
+          "body": "If the selected folder has no readable backup, Backup shows No backup found. Create one to get started. as a blue floating informational banner. Create Backup stays available and Restore Backup is disabled."
         },
         {
           "title": "Unreadable backup files",
-          "body": "If backup files exist but cannot be read, Backup shows Backup file can’t be read. Choose another folder or create a new backup. as a red floating banner. Restore Backup is disabled. Backup Created and Restore Complete are green floating success banners."
+          "body": "If backup files exist but cannot be read, Backup shows Backup can’t be read. Choose another location or create a new one. as a red floating banner. Restore Backup is disabled. Backup Created and Restore Complete are green floating success banners."
         },
         {
           "title": "Backup file names",
@@ -277,7 +289,7 @@
         },
         {
           "title": "What backup includes",
-          "body": "Backup includes Habits, Habit schedule rules, Habit completions, Habit ordering, Pills, Pill schedule rules, Pill intakes, reminder settings, stored history modes for both trackers, and app appearance settings."
+          "body": "Backup includes Habits, Habit schedule rules, Habit completions, Habit ordering, Pills, Pill schedule rules, Pill intakes, reminder settings, stored history modes, optional End Date values, archived state for both trackers, and app appearance settings."
         },
         {
           "title": "Restore safety snapshot",
@@ -285,7 +297,7 @@
         },
         {
           "title": "Restore validation",
-          "body": "Restore validates schema version, app appearance settings when present, history mode values, schedule rules, source values, and duplicate identifiers before replacing the store."
+          "body": "Restore validates schema version, app appearance settings when present, history mode values, schedule rules including interval and one-time kinds, source values, and duplicate identifiers before replacing the store."
         },
         {
           "title": "What restore does after success",
@@ -310,7 +322,7 @@
         },
         {
           "title": "Version footer",
-          "body": "Settings shows Version <short version> and Build <build number> from the app bundle metadata."
+          "body": "Settings shows Version <short version> and Build <build number> from the app bundle metadata. Build numbers are auto-incremented from CURRENT_PROJECT_VERSION during each build and displayed as a six-digit value, for example 001025."
         }
       ]
     },
@@ -338,8 +350,8 @@
           "body": "Shared month calendars use header chevron buttons for month navigation. Horizontal swipe paging is disabled on Details and Edit calendar surfaces. Calendar blocks keep a stable six-week footprint and adjust vertical row spacing for shorter months. Habit and Pill Details/Edit calendar day views show a small tertiary system-gray dot under dates that match the effective schedule history."
         },
         {
-          "title": "Schedule popovers",
-          "body": "Create and Edit screens open schedule selection in an in-place popover with no Weekly/Intervals mode switch. The popover shows full weekday names plus an Intervals row with a native Stepper for Every N days, limited to 2 through 5 days. Weekday summaries are canonicalized as Daily, Weekdays, Weekends, Weekly for one selected weekday, or Custom for other combinations. Details screens open a read-only schedule popover that shows either the weekday list or the selected interval rule. Schedule rows open popovers without a pressed-row visual effect. The popover content does not add an extra inner card or background layer."
+          "title": "Repeat editor",
+          "body": "Create and Edit screens open Repeat as a pushed screen inside the current sheet. The screen has Days and Interval sections. Days shows full weekday names with checkmarks and prevents leaving the schedule empty. Interval uses Every N days [Stepper] with a native Stepper, limited to 2 through 5 days, and for Pills only also includes Never. Details screens show Repeat as read-only text and do not open a schedule picker."
         },
         {
           "title": "Settings navigation persistence",
@@ -360,11 +372,11 @@
         },
         {
           "title": "Reminder time rules",
-          "body": "ReminderTime stores hour and minute as integers. ReminderTime.default rounds the current time up to a 5-minute boundary. If rounding reaches 60 minutes, the hour is incremented and minute becomes 0. Create/Edit reminder time rows use the native compact DatePicker when reminders are enabled, preserving system picker presentation and tint behavior. Create Start Date rows use the native compact DatePicker for date selection. Read-only Start Date rows on Edit and Details display plain trailing values without capsule backgrounds."
+          "body": "ReminderTime stores hour and minute as integers. ReminderTime.default rounds the current time up to a 5-minute boundary. If rounding reaches 60 minutes, the hour is incremented and minute becomes 0. Create/Edit reminder time rows use the native compact system time picker. Create Start Date rows use the native compact system date picker. End Repeat option popover transitions briefly block neighboring compact pickers to avoid overlapping UIKit presentations. Edit screens do not expose Start Date."
         },
         {
           "title": "Schedule model",
-          "body": "ScheduleRule stores weekday selections as weekly WeekdaySet bitmasks or Every N days as intervalDays. Weekday summaries are labels derived from the selected days: Daily for Monday through Sunday, Weekdays for Monday through Friday, Weekends for Saturday and Sunday, Weekly for one selected weekday, and Custom for other weekday combinations. IntervalDays is limited to 2 through 5 days. Initial interval schedules are anchored to the item start date; edited interval schedules are anchored to the active schedule version effectiveFrom. Legacy daily, weekdays, and weekends schedule kind values are read back as weekly masks."
+          "body": "ScheduleRule stores weekday selections as weekly WeekdaySet bitmasks, Every N days as intervalDays, or Never repeat as a one-time Pill rule. Weekday summaries are labels derived from the selected days: Daily for Monday through Sunday, Weekdays for Monday through Friday, Weekends for Saturday and Sunday, Weekly on Mon style labels for one selected weekday, and abbreviated day lists such as Mon, Wed, Fri for other weekday combinations. IntervalDays is limited to 2 through 5 days. Initial interval schedules are anchored to the item start date; edited interval schedules are anchored to the active schedule version effectiveFrom. Legacy daily, weekdays, and weekends schedule kind values are read back as weekly masks."
         }
       ]
     },
@@ -389,7 +401,7 @@
         },
         {
           "title": "Schedule applicability",
-          "body": "HistoryScheduleApplicability can compute past editable days, past scheduled editable days, past required editable days, and scheduled calendar indicator days. Effective schedule for a given day is the latest schedule version whose effectiveFrom is not later than that day, ordered by effectiveFrom, version, and createdAt. Weekly rules use weekday membership. Every-N-days interval rules use the active schedule version effectiveFrom as the interval anchor. Edit schedule changes use the resolved Apply From date shown in the UI."
+          "body": "HistoryScheduleApplicability can compute past editable days, past scheduled editable days, past required editable days, and scheduled calendar indicator days. Effective schedule for a given day is the latest schedule version whose effectiveFrom is not later than that day, ordered by effectiveFrom, version, and createdAt. Weekly rules use weekday membership. Every-N-days interval rules use the active schedule version effectiveFrom as the interval anchor. Edit schedule changes use today as effectiveFrom for active items and Start Date as effectiveFrom for future items; the calendar preview drops replaced future schedule versions so dots match the post-save schedule."
         }
       ]
     },
@@ -402,15 +414,15 @@
         },
         {
           "title": "Habit create storage",
-          "body": "Habit creation inserts a Habit row, inserts the first HabitScheduleVersion row, stores historyModeRaw based on Use schedule for history?, and inserts one HabitCompletion per generated initial completed day from startDate through yesterday."
+          "body": "Habit creation inserts a Habit row, inserts the first HabitScheduleVersion row, stores schedule-based historyModeRaw, stores optional End Date, sets isArchived to false, and inserts one HabitCompletion per generated initial completed day from startDate through yesterday."
         },
         {
           "title": "Habit create autofill source",
-          "body": "Habit create history generation inserts HabitCompletion rows with sourceRaw equal to auto fill. If Use schedule for history? is on, only days matching the schedule rule are generated. If it is off, every day from startDate through yesterday is generated."
+          "body": "Habit create history generation inserts HabitCompletion rows with sourceRaw equal to auto fill. Only days matching the schedule rule are generated. Today is not prefilled."
         },
         {
           "title": "Habit update behavior",
-          "body": "Habit update changes name, reminder fields, and optionally inserts a new HabitScheduleVersion if the schedule rule changed. The new schedule version uses the resolved Apply From date shown in Edit; if the selected date has explicit state or does not match a weekly rule, it resolves forward to the next available scheduled day. Editable history is normalized and written back day by day using manual edit or skipped sources. Update validation requires every past editable scheduled day to be Completed or Skipped; missing scheduled past states block save instead of being auto-filled."
+          "body": "Habit update changes name, reminder fields, optional End Date, and optionally inserts a new HabitScheduleVersion if the schedule rule changed. The new schedule version starts from today for active items, or from Start Date for future items. Editable history is normalized and written back day by day using manual edit or skipped sources. Update validation requires every past editable scheduled day to be Completed or Skipped; missing scheduled past states block save instead of being auto-filled. Manual Restore saves the current edit form before moving the Habit back to its active section."
         },
         {
           "title": "Habit today actions",
@@ -431,15 +443,15 @@
         },
         {
           "title": "Create Pill day generation",
-          "body": "During repository create, initial takenDays are generated from startDate through yesterday. If Use schedule for history? is on, generation includes only days matching the schedule rule. If it is off, generation includes every day in that range."
+          "body": "During repository create, initial takenDays are generated from startDate through yesterday. Generation includes only days matching the schedule rule. Today is not prefilled."
         },
         {
           "title": "Pill create storage",
-          "body": "Pill creation inserts a Pill row, inserts the first PillScheduleVersion row, stores historyModeRaw, and inserts one PillIntake per generated taken day with sourceRaw manual edit. Today is not prefilled."
+          "body": "Pill creation inserts a Pill row, inserts the first PillScheduleVersion row, stores schedule-based historyModeRaw, stores optional End Date, sets isArchived to false, and inserts one PillIntake per generated taken day with sourceRaw manual edit. Today is not prefilled."
         },
         {
           "title": "Pill update behavior",
-          "body": "Pill update changes name, dosage, details, reminder fields, and optionally inserts a new PillScheduleVersion if the schedule rule changed. The new schedule version uses the resolved Apply From date shown in Edit; if the selected date has explicit state or does not match a weekly rule, it resolves forward to the next available scheduled day. Editable history is normalized and written back day by day using manual edit or skipped sources. Update validation requires every past editable scheduled day to be Taken or Skipped; missing scheduled past states block save instead of being auto-filled."
+          "body": "Pill update changes name, dosage, details, reminder fields, optional End Date, and optionally inserts a new PillScheduleVersion if the schedule rule changed. The new schedule version starts from today for active items, or from Start Date for future items. Editable history is normalized and written back day by day using manual edit or skipped sources. Update validation requires every past editable scheduled day to be Taken or Skipped; missing scheduled past states block save instead of being auto-filled. Manual Restore saves the current edit form before moving the Pill back to its active section."
         },
         {
           "title": "Pill today actions",
@@ -468,7 +480,7 @@
         },
         {
           "title": "Reminder candidate rules",
-          "body": "Both Habit and Pill reminder services build candidates only when reminder is enabled, reminderTime exists, the local day is not before startDate, the local day matches the active schedule rule, the local day is not already completed or taken, the local day is not skipped, and the scheduled reminder time is still in the future."
+          "body": "Both Habit and Pill reminder services build candidates only when reminder is enabled, reminderTime exists, the item is not archived, the local day is not before startDate, the local day is not after the final scheduled day when End Date exists, the local day matches the active schedule rule, the local day is not already completed or taken, the local day is not skipped, and the scheduled reminder time is still in the future."
         },
         {
           "title": "Default tap routing",
@@ -485,11 +497,11 @@
       "items": [
         {
           "title": "Backup schema and files",
-          "body": "Backup schemaVersion is 1. The main backup file is LoonyBear.json.gz. The previous backup file is LoonyBear.previous.json.gz. The restore snapshot file is LoonyBear.restore-snapshot.json.gz. New builds can restore older v1 backups that do not contain scheduleKind or intervalDays. New interval schedule payloads still use schemaVersion 1 by product decision; restoring new backups into older app builds is not supported."
+          "body": "Backup schemaVersion is 1. The main backup file is LoonyBear.json.gz. The previous backup file is LoonyBear.previous.json.gz. The restore snapshot file is LoonyBear.restore-snapshot.json.gz. New builds can restore older v1 backups that do not contain scheduleKind, intervalDays, End Date, or archived state. New interval and archive payloads still use schemaVersion 1 by product decision; restoring new backups into older app builds is not supported."
         },
         {
           "title": "Backup payload contents",
-          "body": "BackupArchive contains habits, habit schedule versions with schedule kind, weekday mask, and interval days, habit completion records, habit ordering, optional app settings, pills, pill schedule versions with schedule kind, weekday mask, and interval days, and pill intake records. Schedule kind can represent weekly, interval presets, or custom interval days. BackupHabit and BackupPill both carry stored historyMode values. BackupAppSettings carries appearanceMode and appTint."
+          "body": "BackupArchive contains habits with End Date and archived state, habit schedule versions with schedule kind, weekday mask, and interval days, habit completion records, habit ordering, optional app settings, pills with End Date and archived state, pill schedule versions with schedule kind, weekday mask, and interval days, and pill intake records. Schedule kind can represent weekly, custom interval days, or one-time Pill rules. BackupHabit and BackupPill both carry stored historyMode values. BackupAppSettings carries appearanceMode and appTint."
         },
         {
           "title": "Backup file state",
@@ -497,7 +509,7 @@
         },
         {
           "title": "Restore safety and validation",
-          "body": "Restore first attempts to create a compressed snapshot of the current store. If snapshot payload creation fails with a DataIntegrityError, restore continues. If snapshot encoding, compression, or file writing fails, restore aborts. Restore validates schema version, app settings when present, history modes, reminder times, schedule rules, source values, foreign key references, and duplicate identifiers before replacing the store."
+          "body": "Restore first attempts to create a compressed snapshot of the current store. If snapshot payload creation fails with a DataIntegrityError, restore continues. If snapshot encoding, compression, or file writing fails, restore aborts. Restore validates schema version, app settings when present, history modes, reminder times, schedule rules including interval and one-time kinds, source values, foreign key references, and duplicate identifiers before replacing the store."
         },
         {
           "title": "Reliability layer",

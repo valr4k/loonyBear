@@ -1,5 +1,17 @@
 import Foundation
 
+enum UserFacingErrorMessage {
+    static func text(for error: Error) -> String {
+        if let localizedError = error as? LocalizedError,
+           let description = localizedError.errorDescription,
+           !description.isEmpty {
+            return description
+        }
+
+        return "Couldn’t complete the action."
+    }
+}
+
 @MainActor
 final class AppStateWriteCoordinator {
     private let writeQueue: OperationQueue
@@ -39,7 +51,7 @@ final class AppStateWriteCoordinator {
             if refreshOnFailure {
                 refresh()
             }
-            setError(error.localizedDescription)
+            setError(UserFacingErrorMessage.text(for: error))
             return false
         }
     }
@@ -59,7 +71,7 @@ final class AppStateWriteCoordinator {
             if refreshOnFailure {
                 refresh()
             }
-            setError(error.localizedDescription)
+            setError(UserFacingErrorMessage.text(for: error))
             throw error
         }
     }
@@ -79,7 +91,7 @@ final class AppStateWriteCoordinator {
                 ReliabilityLog.info("\(logPrefix) finalized \(finalizedDays) day(s)")
             }
         } catch {
-            reconciliationErrorMessage = error.localizedDescription
+            reconciliationErrorMessage = UserFacingErrorMessage.text(for: error)
             ReliabilityLog.error("\(logPrefix) failed: \(error.localizedDescription)")
         }
 
