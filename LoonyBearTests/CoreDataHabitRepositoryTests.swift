@@ -7,6 +7,108 @@ import Testing
 @Suite
 struct CoreDataHabitRepositoryTests {
     @Test
+    func dashboardIntervalHabitShowsNextScheduledWeekdays() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let today = TestSupport.makeDate(2026, 5, 3, calendar: calendar)
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { today.addingTimeInterval(10 * 60 * 60) })
+        )
+
+        var draft = CreateHabitDraft()
+        draft.type = .build
+        draft.name = "Interval habit"
+        draft.startDate = today
+        draft.scheduleRule = .intervalDays(3)
+
+        let habitID = try repository.createHabit(from: draft)
+        let dashboardHabit = try #require(try repository.fetchDashboardHabits().first { $0.id == habitID })
+
+        #expect(dashboardHabit.scheduleSummary == "Next: Sun, Wed, Sat")
+    }
+
+    @Test
+    func archiveAndRestoreHabitMovesBetweenDashboardSections() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = calendar.date(from: DateComponents(year: 2026, month: 5, day: 4, hour: 10, minute: 0))!
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+        let loadDashboard = LoadDashboardUseCase(repository: repository)
+
+        var draft = CreateHabitDraft()
+        draft.type = .build
+        draft.name = "Archive me"
+        draft.startDate = TestSupport.makeDate(2026, 5, 4, calendar: calendar)
+        draft.scheduleRule = .weekly(.daily)
+        draft.reminderEnabled = true
+        draft.reminderTime = ReminderTime(hour: 9, minute: 0)
+
+        let habitID = try repository.createHabit(from: draft)
+        try repository.setHabitArchived(id: habitID, isArchived: true)
+
+        let archivedDashboard = try loadDashboard.execute()
+        let archivedSection = try #require(archivedDashboard.sections.first)
+        let archivedHabit = try #require(archivedSection.habits.first)
+
+        #expect(archivedDashboard.sections.map(\.id) == [.archived])
+        #expect(archivedSection.title == "Archived")
+        #expect(archivedHabit.id == habitID)
+        #expect(archivedHabit.isArchived)
+        #expect(!archivedHabit.isReminderScheduledToday)
+        #expect(archivedHabit.activeOverdueDay == nil)
+        #expect(!archivedHabit.needsHistoryReview)
+
+        try repository.setHabitArchived(id: habitID, isArchived: false)
+
+        let restoredDashboard = try loadDashboard.execute()
+        let restoredSection = try #require(restoredDashboard.sections.first)
+        let restoredHabit = try #require(restoredSection.habits.first)
+
+        #expect(restoredDashboard.sections.map(\.id) == [.build])
+        #expect(!restoredHabit.isArchived)
+    }
+
+    @Test
+    func habitEndDateAutoArchivesAfterLastScheduledDayBeforeEndDate() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let finalScheduledDay = TestSupport.makeDate(2026, 5, 18, calendar: calendar)
+        let now = finalScheduledDay.addingTimeInterval(10 * 60 * 60)
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+
+        var draft = CreateHabitDraft()
+        draft.type = .build
+        draft.name = "Ended habit"
+        draft.startDate = TestSupport.makeDate(2026, 5, 1, calendar: calendar)
+        draft.endDate = TestSupport.makeDate(2026, 5, 20, calendar: calendar)
+        draft.scheduleRule = .weekly(.monday)
+
+        let habitID = try repository.createHabit(from: draft)
+        let activeHabit = try #require(try repository.fetchDashboardHabits().first { $0.id == habitID })
+
+        #expect(!activeHabit.isArchived)
+
+        try repository.completeHabitDay(id: habitID, on: finalScheduledDay)
+
+        let archivedHabit = try #require(try repository.fetchDashboardHabits().first { $0.id == habitID })
+        #expect(archivedHabit.isArchived)
+        #expect(archivedHabit.activeOverdueDay == nil)
+    }
+
+    @Test
     func updateHabitAppendsNewScheduleVersion() throws {
         let persistence = PersistenceController(inMemory: true)
         let context = persistence.container.viewContext
@@ -45,6 +147,179 @@ struct CoreDataHabitRepositoryTests {
 
         #expect(schedules.count == 2)
         #expect(masks == Set([WeekdaySet.daily.rawValue, WeekdaySet.weekends.rawValue]))
+    }
+
+    @Test
+    func futureHabitHasNoTodayStateButShowsScheduledDotsFromStartDateMonth() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = TestSupport.makeDate(2026, 5, 3, calendar: calendar)
+        let futureStartDate = TestSupport.makeDate(2026, 7, 14, calendar: calendar)
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Future habit"
+        draft.startDate = futureStartDate
+        draft.scheduleRule = .weekly(.daily)
+        draft.reminderEnabled = true
+        draft.reminderTime = ReminderTime(hour: 9, minute: 0)
+
+        let habitID = try repository.createHabit(from: draft)
+        let dashboardHabit = try #require(try repository.fetchDashboardHabits().first { $0.id == habitID })
+        let details = try #require(try repository.fetchHabitDetails(id: habitID))
+
+        #expect(!dashboardHabit.isReminderScheduledToday)
+        #expect(!dashboardHabit.isCompletedToday)
+        #expect(!dashboardHabit.isSkippedToday)
+        #expect(!dashboardHabit.needsHistoryReview)
+        #expect(dashboardHabit.activeOverdueDay == nil)
+        #expect(dashboardHabit.startsInFuture)
+        #expect(dashboardHabit.futureStartDate == futureStartDate)
+        #expect(details.requiredPastScheduledDays.isEmpty)
+        #expect(details.scheduledDates.contains(futureStartDate))
+        #expect(details.scheduledDates.contains(TestSupport.makeDate(2026, 7, 31, calendar: calendar)))
+    }
+
+    @Test
+    func updateHabitResolvesScheduleEffectiveFromToNextScheduledDay() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = TestSupport.makeDate(2026, 5, 3, calendar: calendar)
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataHabitRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+
+        var createDraft = CreateHabitDraft()
+        createDraft.name = "Move schedule"
+        createDraft.startDate = TestSupport.makeDate(2026, 5, 1, calendar: calendar)
+        createDraft.scheduleRule = .weekly(.daily)
+
+        let habitID = try repository.createHabit(from: createDraft)
+        let details = try #require(try repository.fetchHabitDetails(id: habitID))
+        var editDraft = EditHabitDraft(
+            id: habitID,
+            type: details.type,
+            startDate: details.startDate,
+            name: details.name,
+            scheduleRule: .weekly(.monday),
+            reminderEnabled: details.reminderEnabled,
+            reminderTime: details.reminderTime ?? ReminderTime.default(),
+            completedDays: details.completedDays,
+            skippedDays: details.skippedDays
+        )
+        editDraft.scheduleEffectiveFrom = TestSupport.makeDate(2026, 5, 5, calendar: calendar)
+
+        try repository.updateHabit(from: editDraft)
+
+        let request = NSFetchRequest<NSManagedObject>(entityName: "HabitScheduleVersion")
+        request.predicate = NSPredicate(format: "habitID == %@", habitID as CVarArg)
+        let schedules = try context.fetch(request)
+        let latest = try #require(schedules.max {
+            ($0.value(forKey: "version") as? Int32 ?? 0) < ($1.value(forKey: "version") as? Int32 ?? 0)
+        })
+
+        #expect(latest.value(forKey: "effectiveFrom") as? Date == TestSupport.makeDate(2026, 5, 11, calendar: calendar))
+        #expect(CoreDataScheduleSupport.rule(from: latest) == .weekly(.monday))
+    }
+
+    @Test
+    func updateFutureHabitDashboardUsesSavedLatestScheduleVersion() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = TestSupport.makeDate(2026, 5, 4, calendar: calendar)
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+
+        var createDraft = CreateHabitDraft()
+        createDraft.type = .build
+        createDraft.name = "Future habit"
+        createDraft.startDate = TestSupport.makeDate(2026, 5, 11, calendar: calendar)
+        createDraft.scheduleRule = .weekly([.tuesday, .wednesday])
+
+        let habitID = try repository.createHabit(from: createDraft)
+        let details = try #require(try repository.fetchHabitDetails(id: habitID))
+        var editDraft = EditHabitDraft(
+            id: habitID,
+            type: details.type,
+            startDate: details.startDate,
+            name: details.name,
+            scheduleRule: .weekly(.friday),
+            reminderEnabled: details.reminderEnabled,
+            reminderTime: details.reminderTime ?? ReminderTime.default(),
+            completedDays: details.completedDays,
+            skippedDays: details.skippedDays
+        )
+        editDraft.scheduleEffectiveFrom = TestSupport.makeDate(2026, 5, 15, calendar: calendar)
+
+        try repository.updateHabit(from: editDraft)
+
+        let dashboardHabit = try #require(try repository.fetchDashboardHabits().first { $0.id == habitID })
+        let updatedDetails = try #require(try repository.fetchHabitDetails(id: habitID))
+
+        #expect(dashboardHabit.scheduleSummary == "Weekly on Fri")
+        #expect(updatedDetails.scheduleRule == .weekly(.friday))
+    }
+
+    @Test
+    func updateHabitRemovesFutureScheduleVersionsReplacedByEarlierApplyFrom() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = TestSupport.makeDate(2026, 5, 4, calendar: calendar)
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+
+        var createDraft = CreateHabitDraft()
+        createDraft.type = .build
+        createDraft.name = "Replace future"
+        createDraft.startDate = TestSupport.makeDate(2026, 5, 1, calendar: calendar)
+        createDraft.scheduleRule = .weekly(.daily)
+
+        let habitID = try repository.createHabit(from: createDraft)
+        let details = try #require(try repository.fetchHabitDetails(id: habitID))
+
+        var futureDraft = EditHabitDraft(
+            id: habitID,
+            type: details.type,
+            startDate: details.startDate,
+            name: details.name,
+            scheduleRule: .weekly(.weekends),
+            reminderEnabled: details.reminderEnabled,
+            reminderTime: details.reminderTime ?? ReminderTime.default(),
+            completedDays: details.completedDays,
+            skippedDays: details.skippedDays
+        )
+        futureDraft.scheduleEffectiveFrom = TestSupport.makeDate(2026, 5, 9, calendar: calendar)
+        try repository.updateHabit(from: futureDraft)
+
+        var replacementDraft = futureDraft
+        replacementDraft.scheduleRule = .weekly(.daily)
+        replacementDraft.scheduleEffectiveFrom = TestSupport.makeDate(2026, 5, 5, calendar: calendar)
+        try repository.updateHabit(from: replacementDraft)
+
+        let dashboardHabit = try #require(try repository.fetchDashboardHabits().first { $0.id == habitID })
+        let updatedDetails = try #require(try repository.fetchHabitDetails(id: habitID))
+
+        #expect(dashboardHabit.scheduleSummary == "Daily")
+        #expect(updatedDetails.scheduleRule == .weekly(.daily))
+        #expect(updatedDetails.scheduleHistory.contains { $0.rule == .weekly(.daily) && $0.effectiveFrom == TestSupport.makeDate(2026, 5, 5, calendar: calendar) })
+        #expect(!updatedDetails.scheduleHistory.contains { $0.rule == .weekly(.weekends) && $0.effectiveFrom == TestSupport.makeDate(2026, 5, 9, calendar: calendar) })
     }
 
     @Test

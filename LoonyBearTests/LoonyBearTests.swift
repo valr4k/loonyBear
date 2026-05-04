@@ -7,24 +7,26 @@ import Testing
 @MainActor
 struct LoonyBearTests {
     @Test
-    func weekdaySetSummaryReturnsExactListForCustomSets() {
+    func weekdaySetSummaryReturnsCanonicalLabels() {
         let custom: WeekdaySet = [.monday, .wednesday, .friday]
 
         #expect(WeekdaySet.daily.summary == "Daily")
         #expect(WeekdaySet.weekdays.summary == "Weekdays")
         #expect(WeekdaySet.weekends.summary == "Weekends")
+        #expect(WeekdaySet.monday.summary == "Weekly on Mon")
         #expect(custom.summary == "Mon, Wed, Fri")
     }
 
     @Test
-    func weekdaySetCompactSummaryReturnsCustomForCustomSets() {
+    func weekdaySetCompactSummaryReturnsCanonicalLabels() {
         let custom: WeekdaySet = [.monday, .wednesday, .friday]
 
         #expect(WeekdaySet.daily.compactSummary == "Daily")
         #expect(WeekdaySet.weekdays.compactSummary == "Weekdays")
         #expect(WeekdaySet.weekends.compactSummary == "Weekends")
-        #expect(custom.compactSummary == "Custom")
-        #expect(custom.compactSummaryOrPlaceholder == "Custom")
+        #expect(WeekdaySet.monday.compactSummary == "Weekly on Mon")
+        #expect(custom.compactSummary == "Mon, Wed, Fri")
+        #expect(custom.compactSummaryOrPlaceholder == "Mon, Wed, Fri")
     }
 
     @Test
@@ -42,42 +44,26 @@ struct LoonyBearTests {
     }
 
     @Test
-    func intervalPresetsUseActiveAnchorAndCustomRange() {
+    func intervalRulesUseActiveAnchorAndFiveDayCustomRange() {
         let calendar = Calendar(identifier: .gregorian)
         let anchor = TestSupport.makeDate(2026, 5, 20)
 
-        #expect(ScheduleRule.intervalPreset(.daily).summary == "Daily")
-        #expect(ScheduleRule.intervalPreset(.weekdays).isScheduled(
+        #expect(ScheduleRule.weekly(.daily).summary == "Daily")
+        #expect(ScheduleRule.weekly(.weekdays).isScheduled(
             on: TestSupport.makeDate(2026, 5, 22),
             anchorDate: anchor,
             calendar: calendar
         ))
-        #expect(!ScheduleRule.intervalPreset(.weekends).isScheduled(
+        #expect(!ScheduleRule.weekly(.weekends).isScheduled(
             on: TestSupport.makeDate(2026, 5, 22),
-            anchorDate: anchor,
-            calendar: calendar
-        ))
-        #expect(ScheduleRule.intervalPreset(.weekly).isScheduled(
-            on: TestSupport.makeDate(2026, 5, 27),
-            anchorDate: anchor,
-            calendar: calendar
-        ))
-        #expect(!ScheduleRule.intervalPreset(.weekly).isScheduled(
-            on: TestSupport.makeDate(2026, 5, 28),
-            anchorDate: anchor,
-            calendar: calendar
-        ))
-        #expect(ScheduleRule.intervalPreset(.biweekly).isScheduled(
-            on: TestSupport.makeDate(2026, 6, 3),
             anchorDate: anchor,
             calendar: calendar
         ))
         #expect(!ScheduleRule.intervalDays(1).isValidSelection)
-        #expect(ScheduleRule.intervalDays(14).isValidSelection)
-        #expect(ScheduleRule.intervalDays(20).isValidSelection)
-        #expect(!ScheduleRule.intervalDays(21).isValidSelection)
-        #expect(ScheduleRule.intervalDays(14).summary == "Biweekly")
-        #expect(ScheduleRule.intervalDays(14).compactSummary == "Biweekly")
+        #expect(ScheduleRule.intervalDays(5).isValidSelection)
+        #expect(!ScheduleRule.intervalDays(6).isValidSelection)
+        #expect(ScheduleRule.intervalDays(5).summary == "Every 5 days")
+        #expect(ScheduleRule.intervalDays(5).compactSummary == "Every 5 days")
     }
 
     @Test
@@ -128,6 +114,61 @@ struct LoonyBearTests {
     }
 
     @Test
+    func effectiveFromResolverMovesWeeklyRulesToNextScheduledDay() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let selectedTuesday = TestSupport.makeDate(2026, 5, 5, calendar: calendar)
+        let nextMonday = TestSupport.makeDate(2026, 5, 11, calendar: calendar)
+
+        let resolution = try #require(ScheduleEffectiveFromResolver.resolve(
+            scheduleRule: .weekly(.monday),
+            selectedDate: selectedTuesday,
+            explicitDays: [selectedTuesday],
+            minimumDate: selectedTuesday,
+            maximumDate: TestSupport.makeDate(2026, 7, 31, calendar: calendar),
+            calendar: calendar
+        ))
+
+        #expect(resolution.selectedDate == selectedTuesday)
+        #expect(resolution.resolvedDate == nextMonday)
+        #expect(resolution.wasAdjusted)
+    }
+
+    @Test
+    func effectiveFromResolverUsesNextPlainDayAsIntervalAnchor() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let selectedDate = TestSupport.makeDate(2026, 5, 5, calendar: calendar)
+        let nextDay = TestSupport.makeDate(2026, 5, 6, calendar: calendar)
+
+        let resolution = try #require(ScheduleEffectiveFromResolver.resolve(
+            scheduleRule: .intervalDays(3),
+            selectedDate: selectedDate,
+            explicitDays: [selectedDate],
+            minimumDate: selectedDate,
+            maximumDate: TestSupport.makeDate(2026, 7, 31, calendar: calendar),
+            calendar: calendar
+        ))
+
+        #expect(resolution.resolvedDate == nextDay)
+        #expect(resolution.wasAdjusted)
+    }
+
+    @Test
+    func legacyWeeklyIntervalSevenDaysMigratesToWeeklyFromEffectiveFrom() {
+        let calendar = Calendar(identifier: .gregorian)
+        let sundayEffectiveFrom = TestSupport.makeDate(2026, 3, 1, calendar: calendar)
+
+        let rule = ScheduleRule.make(
+            kindRaw: "weeklyInterval",
+            weekdayMask: 0,
+            intervalDays: 7,
+            effectiveFrom: sundayEffectiveFrom,
+            calendar: calendar
+        )
+
+        #expect(rule == .weekly(.sunday))
+    }
+
+    @Test
     func scheduledCalendarDaysFollowScheduleHistory() {
         let calendar = Calendar(identifier: .gregorian)
         let habitID = UUID()
@@ -161,6 +202,40 @@ struct LoonyBearTests {
             TestSupport.makeDate(2026, 5, 6, calendar: calendar),
             TestSupport.makeDate(2026, 5, 9, calendar: calendar),
             TestSupport.makeDate(2026, 5, 12, calendar: calendar),
+        ])
+    }
+
+    @Test
+    func schedulePreviewDatesUseDraftRuleFromResolvedEffectiveFrom() {
+        let calendar = Calendar(identifier: .gregorian)
+        let habitID = UUID()
+        let startDate = TestSupport.makeDate(2026, 5, 1, calendar: calendar)
+        let effectiveFrom = TestSupport.makeDate(2026, 5, 6, calendar: calendar)
+        let schedules = [
+            TestSupport.makeSchedule(
+                habitID: habitID,
+                rule: .weekly(.daily),
+                effectiveFrom: startDate,
+                version: 1
+            ),
+        ]
+
+        let scheduledDays = SchedulePreviewSupport.scheduledDays(
+            startDate: startDate,
+            through: TestSupport.makeDate(2026, 5, 10, calendar: calendar),
+            schedules: schedules,
+            replacementRule: .weekly(.wednesday),
+            effectiveFrom: effectiveFrom,
+            calendar: calendar
+        )
+
+        #expect(scheduledDays == [
+            TestSupport.makeDate(2026, 5, 1, calendar: calendar),
+            TestSupport.makeDate(2026, 5, 2, calendar: calendar),
+            TestSupport.makeDate(2026, 5, 3, calendar: calendar),
+            TestSupport.makeDate(2026, 5, 4, calendar: calendar),
+            TestSupport.makeDate(2026, 5, 5, calendar: calendar),
+            TestSupport.makeDate(2026, 5, 6, calendar: calendar),
         ])
     }
 

@@ -235,14 +235,15 @@ private struct AppNotificationSettingsAlertModifier: ViewModifier {
 enum AppCopy {
     static let chooseAtLeastOneDay = "Choose at least one day."
     static let notificationsRequired = "Turn on notifications in Settings to use reminders."
+    static let endDateRemovedForNeverRepeat = "End Date removed because Repeat is Never."
     static let backupFolderHint = "Backups stay in the selected Files folder even if the app is deleted. After reinstalling, choose the same folder again before restoring."
     static let pillHistoryFollowsSchedule = "History follows schedule from start date."
     static let pillHistoryCountsEveryDay = "History counts every day from the start date."
     static let habitHistoryFollowsSchedule = "History follows schedule from start date."
     static let habitHistoryCountsEveryDay = "History counts every day from the start date."
-    static let pillDescriptionPlaceholder = "Notes (optional)"
-    static let habitHistoryHint = "Today: None, Completed, or Skipped.\nPast days: Completed or Skipped only.\nYou can edit the last 30 days.\nDays before the start date can’t be edited"
-    static let pillHistoryHint = "Today: None, Taken, or Skipped.\nPast days: Taken or Skipped only.\nYou can edit the last 30 days.\nDays before the start date can’t be edited"
+    static let pillDescriptionPlaceholder = "(optional)"
+    static let habitHistoryHint = "Today: None, Completed, or Skipped.\nPast days: Completed or Skipped only."
+    static let pillHistoryHint = "Today: None, Taken, or Skipped.\nPast days: Taken or Skipped only."
 
     static func overdueScheduledDayEditMessage(actionLabel: String) -> String {
         "Choose \(actionLabel) or Skipped for the overdue scheduled day before saving."
@@ -473,6 +474,9 @@ private struct AppPickerValueLabel: View {
         HStack(spacing: 6) {
             Text(text)
                 .multilineTextAlignment(.trailing)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .allowsTightening(true)
 
             if showsChevron {
                 Image(systemName: "chevron.right")
@@ -496,6 +500,7 @@ private struct AppPickerValueForegroundStyle: ViewModifier {
 }
 
 struct AppSchedulePickerRow<PopoverContent: View>: View {
+    let title: String
     let value: String
     let onTap: (() -> Void)?
     @ViewBuilder let popoverContent: PopoverContent
@@ -503,10 +508,12 @@ struct AppSchedulePickerRow<PopoverContent: View>: View {
     @State private var isValueTinted = false
 
     init(
+        title: String = "Schedule",
         value: String,
         onTap: (() -> Void)? = nil,
         @ViewBuilder popoverContent: () -> PopoverContent
     ) {
+        self.title = title
         self.value = value
         self.onTap = onTap
         self.popoverContent = popoverContent()
@@ -520,8 +527,16 @@ struct AppSchedulePickerRow<PopoverContent: View>: View {
                 onTap?()
                 isShowingPopover = true
             }
+            .onChange(of: isShowingPopover) { _, isPresented in
+                if !isPresented {
+                    setValueTinted(false)
+                }
+            }
+            .onDisappear {
+                setValueTinted(false)
+            }
             .popover(
-                isPresented: $isShowingPopover,
+                isPresented: popoverPresentationBinding,
                 attachmentAnchor: .point(.trailing),
                 arrowEdge: .trailing
             ) {
@@ -531,10 +546,13 @@ struct AppSchedulePickerRow<PopoverContent: View>: View {
                     .background {
                         AppPopoverLifecycleObserver(
                             onWillAppear: {
-                                isValueTinted = true
+                                setValueTinted(true)
+                            },
+                            onWillDismiss: {
+                                setValueTinted(false)
                             },
                             onWillDisappear: {
-                                isValueTinted = false
+                                setValueTinted(false)
                             }
                         )
                     }
@@ -543,37 +561,104 @@ struct AppSchedulePickerRow<PopoverContent: View>: View {
 
     private var rowContent: some View {
         HStack(spacing: 16) {
-            Text("Schedule")
+            Text(title)
                 .foregroundStyle(.primary)
 
             Spacer()
 
-            AppPickerValueLabel(text: value, isTinted: isValueTinted, showsChevron: true)
+            AppPickerValueLabel(text: value, isTinted: isShowingPopover && isValueTinted, showsChevron: true)
+                .transaction { transaction in
+                    transaction.animation = nil
+                }
         }
         .padding(.horizontal, AppLayout.rowHorizontalPadding)
         .padding(.vertical, AppLayout.rowVerticalPadding)
+    }
+
+    private var popoverPresentationBinding: Binding<Bool> {
+        Binding(
+            get: { isShowingPopover },
+            set: { isPresented in
+                if !isPresented {
+                    setValueTinted(false)
+                }
+                isShowingPopover = isPresented
+            }
+        )
+    }
+
+    private func setValueTinted(_ isTinted: Bool) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        transaction.animation = nil
+
+        withTransaction(transaction) {
+            isValueTinted = isTinted
+        }
+    }
+}
+
+private struct AppCreateRepeatPickerRow<Destination: View>: View {
+    let value: String
+    let onTap: (() -> Void)?
+    @ViewBuilder let destination: Destination
+
+    var body: some View {
+        NavigationLink {
+            destination
+        } label: {
+            HStack(spacing: 16) {
+                Text("Repeat")
+                    .foregroundStyle(.primary)
+
+                Spacer()
+
+                AppPickerValueLabel(text: value, isTinted: false, showsChevron: true)
+            }
+            .padding(.horizontal, AppLayout.rowHorizontalPadding)
+            .padding(.vertical, AppLayout.rowVerticalPadding)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(TapGesture().onEnded {
+            AppDescriptionFieldSupport.dismissKeyboard()
+            onTap?()
+        })
     }
 }
 
 private struct AppPopoverLifecycleObserver: UIViewControllerRepresentable {
     let onWillAppear: () -> Void
+    let onWillDismiss: () -> Void
     let onWillDisappear: () -> Void
 
     func makeUIViewController(context: Context) -> Controller {
-        Controller(onWillAppear: onWillAppear, onWillDisappear: onWillDisappear)
+        Controller(
+            onWillAppear: onWillAppear,
+            onWillDismiss: onWillDismiss,
+            onWillDisappear: onWillDisappear
+        )
     }
 
     func updateUIViewController(_ viewController: Controller, context: Context) {
         viewController.onWillAppear = onWillAppear
+        viewController.onWillDismiss = onWillDismiss
         viewController.onWillDisappear = onWillDisappear
+        viewController.attachDismissDelegate()
     }
 
-    final class Controller: UIViewController {
+    final class Controller: UIViewController, UIAdaptivePresentationControllerDelegate, UIPopoverPresentationControllerDelegate {
         var onWillAppear: () -> Void
+        var onWillDismiss: () -> Void
         var onWillDisappear: () -> Void
 
-        init(onWillAppear: @escaping () -> Void, onWillDisappear: @escaping () -> Void) {
+        init(
+            onWillAppear: @escaping () -> Void,
+            onWillDismiss: @escaping () -> Void,
+            onWillDisappear: @escaping () -> Void
+        ) {
             self.onWillAppear = onWillAppear
+            self.onWillDismiss = onWillDismiss
             self.onWillDisappear = onWillDisappear
             super.init(nibName: nil, bundle: nil)
         }
@@ -585,12 +670,69 @@ private struct AppPopoverLifecycleObserver: UIViewControllerRepresentable {
 
         override func viewWillAppear(_ animated: Bool) {
             super.viewWillAppear(animated)
-            onWillAppear()
+            DispatchQueue.main.async { [weak self] in
+                self?.onWillAppear()
+            }
+        }
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            attachDismissDelegate()
         }
 
         override func viewWillDisappear(_ animated: Bool) {
             super.viewWillDisappear(animated)
+            onWillDismiss()
+            DispatchQueue.main.async { [weak self] in
+                self?.onWillDisappear()
+            }
+        }
+
+        func attachDismissDelegate() {
+            let controllers = [
+                self,
+                parent,
+                presentingViewController,
+                parent?.presentingViewController,
+            ].compactMap { $0 }
+
+            for controller in controllers {
+                if let popoverPresentationController = controller.presentationController as? UIPopoverPresentationController {
+                    popoverPresentationController.delegate = self
+                } else {
+                    controller.presentationController?.delegate = self
+                }
+
+                controller.popoverPresentationController?.delegate = self
+            }
+        }
+
+        func presentationControllerWillDismiss(_ presentationController: UIPresentationController) {
+            onWillDismiss()
+        }
+
+        func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
             onWillDisappear()
+        }
+
+        func popoverPresentationControllerShouldDismissPopover(_ popoverPresentationController: UIPopoverPresentationController) -> Bool {
+            onWillDismiss()
+            return true
+        }
+
+        func popoverPresentationControllerDidDismissPopover(_ popoverPresentationController: UIPopoverPresentationController) {
+            onWillDisappear()
+        }
+
+        func adaptivePresentationStyle(for controller: UIPresentationController) -> UIModalPresentationStyle {
+            .none
+        }
+
+        func adaptivePresentationStyle(
+            for controller: UIPresentationController,
+            traitCollection: UITraitCollection
+        ) -> UIModalPresentationStyle {
+            .none
         }
     }
 }
@@ -599,15 +741,18 @@ struct AppReminderTimeRows: View {
     @Binding var isEnabled: Bool
     @Binding var reminderDate: Date
     let onTimeTap: (() -> Void)?
+    let isPickerPresentationBlocked: Bool
 
     init(
         isEnabled: Binding<Bool>,
         reminderDate: Binding<Date>,
-        onTimeTap: (() -> Void)? = nil
+        onTimeTap: (() -> Void)? = nil,
+        isPickerPresentationBlocked: Bool = false
     ) {
         _isEnabled = isEnabled
         _reminderDate = reminderDate
         self.onTimeTap = onTimeTap
+        self.isPickerPresentationBlocked = isPickerPresentationBlocked
     }
 
     var body: some View {
@@ -647,6 +792,7 @@ struct AppReminderTimeRows: View {
                 .labelsHidden()
                 .appAccentTint()
                 .fixedSize()
+                .allowsHitTesting(!isPickerPresentationBlocked)
         }
         .padding(.horizontal, AppLayout.rowHorizontalPadding)
         .padding(.vertical, AppLayout.rowVerticalPadding)
@@ -664,17 +810,20 @@ struct AppReminderTimeRows: View {
 
 struct AppStartDatePickerRow: View {
     @Binding var date: Date
-    let range: ClosedRange<Date>
+    let range: ClosedRange<Date>?
     let onTap: (() -> Void)?
+    let isPickerPresentationBlocked: Bool
 
     init(
         date: Binding<Date>,
-        range: ClosedRange<Date>,
-        onTap: (() -> Void)? = nil
+        range: ClosedRange<Date>? = nil,
+        onTap: (() -> Void)? = nil,
+        isPickerPresentationBlocked: Bool = false
     ) {
         _date = date
         self.range = range
         self.onTap = onTap
+        self.isPickerPresentationBlocked = isPickerPresentationBlocked
     }
 
     var body: some View {
@@ -684,11 +833,7 @@ struct AppStartDatePickerRow: View {
 
             Spacer()
 
-            DatePicker("", selection: $date, in: range, displayedComponents: .date)
-                .datePickerStyle(.compact)
-                .labelsHidden()
-                .appAccentTint()
-                .fixedSize()
+            datePicker
         }
         .padding(.horizontal, AppLayout.rowHorizontalPadding)
         .padding(.vertical, AppLayout.rowVerticalPadding)
@@ -697,6 +842,25 @@ struct AppStartDatePickerRow: View {
             AppDescriptionFieldSupport.dismissKeyboard()
             onTap?()
         })
+    }
+
+    @ViewBuilder
+    private var datePicker: some View {
+        if let range {
+            DatePicker("", selection: $date, in: range, displayedComponents: .date)
+                .datePickerStyle(.compact)
+                .labelsHidden()
+                .appAccentTint()
+                .fixedSize()
+                .allowsHitTesting(!isPickerPresentationBlocked)
+        } else {
+            DatePicker("", selection: $date, displayedComponents: .date)
+                .datePickerStyle(.compact)
+                .labelsHidden()
+                .appAccentTint()
+                .fixedSize()
+                .allowsHitTesting(!isPickerPresentationBlocked)
+        }
     }
 }
 
@@ -711,12 +875,503 @@ struct AppStartDateValueRow: View {
     }
 }
 
+struct AppEffectiveFromPickerRow: View {
+    @Binding var date: Date
+    let range: ClosedRange<Date>
+    let isEnabled: Bool
+    let onTap: (() -> Void)?
+    let isPickerPresentationBlocked: Bool
+
+    init(
+        date: Binding<Date>,
+        range: ClosedRange<Date>,
+        isEnabled: Bool = true,
+        onTap: (() -> Void)? = nil,
+        isPickerPresentationBlocked: Bool = false
+    ) {
+        _date = date
+        self.range = range
+        self.isEnabled = isEnabled
+        self.onTap = onTap
+        self.isPickerPresentationBlocked = isPickerPresentationBlocked
+    }
+
+    var body: some View {
+        HStack(spacing: 16) {
+            Text("Apply From")
+                .foregroundStyle(.primary)
+
+            Spacer()
+
+            if isEnabled {
+                DatePicker("", selection: $date, in: range, displayedComponents: .date)
+                    .datePickerStyle(.compact)
+                    .labelsHidden()
+                    .appAccentTint()
+                    .fixedSize()
+                    .allowsHitTesting(!isPickerPresentationBlocked)
+            } else {
+                AppReadOnlyValueCapsule(
+                    text: Self.displayDate(date),
+                    valueColor: AnyShapeStyle(.secondary)
+                )
+            }
+        }
+        .padding(.horizontal, AppLayout.rowHorizontalPadding)
+        .padding(.vertical, AppLayout.rowVerticalPadding)
+        .contentShape(Rectangle())
+        .simultaneousGesture(TapGesture().onEnded {
+            guard isEnabled else { return }
+            AppDescriptionFieldSupport.dismissKeyboard()
+            onTap?()
+        })
+    }
+
+    private static func displayDate(_ date: Date) -> String {
+        date.formatted(date: .abbreviated, time: .omitted)
+    }
+}
+
+struct AppOptionalEndDatePickerRow: View {
+    let title: String
+    let emptyTitle: String
+    @Binding var date: Date?
+    let range: PartialRangeFrom<Date>
+    let fallbackDate: Date
+    let isEnabled: Bool
+    let onTap: (() -> Void)?
+    let onOptionsPresentationChange: (Bool) -> Void
+    let isPickerPresentationBlocked: Bool
+    @State private var isShowingEndDateOptions = false
+
+    init(
+        title: String = "End Date",
+        emptyTitle: String = "Never",
+        date: Binding<Date?>,
+        range: PartialRangeFrom<Date>,
+        fallbackDate: Date,
+        isEnabled: Bool = true,
+        onTap: (() -> Void)? = nil,
+        onOptionsPresentationChange: @escaping (Bool) -> Void = { _ in },
+        isPickerPresentationBlocked: Bool = false
+    ) {
+        self.title = title
+        self.emptyTitle = emptyTitle
+        _date = date
+        self.range = range
+        self.fallbackDate = fallbackDate
+        self.isEnabled = isEnabled
+        self.onTap = onTap
+        self.onOptionsPresentationChange = onOptionsPresentationChange
+        self.isPickerPresentationBlocked = isPickerPresentationBlocked
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 16) {
+                Text(title)
+                    .foregroundStyle(.primary)
+
+                Spacer()
+
+                Button {
+                    guard isEnabled else { return }
+                    AppDescriptionFieldSupport.dismissKeyboard()
+                    onTap?()
+                    setEndDateOptionsPresented(true)
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(date == nil ? emptyTitle : "On Date")
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(isEnabled ? .primary : .secondary)
+                .frame(minWidth: 128, minHeight: 44, alignment: .trailing)
+                .contentShape(Rectangle())
+                .allowsHitTesting(isEnabled)
+            }
+            .padding(.horizontal, AppLayout.rowHorizontalPadding)
+            .padding(.vertical, AppLayout.rowVerticalPadding)
+            .contentShape(Rectangle())
+            .simultaneousGesture(TapGesture().onEnded {
+                AppDescriptionFieldSupport.dismissKeyboard()
+                onTap?()
+            })
+            .popover(
+                isPresented: endDateOptionsPresentationBinding,
+                attachmentAnchor: .point(.trailing),
+                arrowEdge: .trailing
+            ) {
+                endDateOptionsPopover
+            }
+
+            if isEnabled, date != nil {
+                AppSectionDivider()
+
+                HStack(spacing: 16) {
+                    Text("Date")
+                        .foregroundStyle(.primary)
+
+                    Spacer()
+
+                    DatePicker("", selection: dateBinding, in: range, displayedComponents: .date)
+                        .datePickerStyle(.compact)
+                        .labelsHidden()
+                        .appAccentTint()
+                        .fixedSize()
+                        .allowsHitTesting(!isPickerPresentationBlocked)
+                }
+                .padding(.horizontal, AppLayout.rowHorizontalPadding)
+                .padding(.vertical, AppLayout.rowVerticalPadding)
+                .contentShape(Rectangle())
+                .simultaneousGesture(TapGesture().onEnded {
+                    AppDescriptionFieldSupport.dismissKeyboard()
+                    onTap?()
+                })
+            }
+        }
+        .transaction { transaction in
+            transaction.animation = nil
+        }
+    }
+
+    private var endDateOptionsPopover: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            endDateOptionButton(title: "Never", isSelected: date == nil) {
+                applyEndDateSelection(nil)
+            }
+
+            endDateOptionButton(title: "On Date", isSelected: date != nil) {
+                applyEndDateSelection(clampedFallbackDate)
+            }
+        }
+        .frame(width: 220)
+        .padding(.vertical, 8)
+        .presentationCompactAdaptation(.popover)
+    }
+
+    private func endDateOptionButton(
+        title: String,
+        isSelected: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Text(title)
+                    .foregroundStyle(.primary)
+
+                Spacer()
+
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func applyEndDateSelection(_ newDate: Date?) {
+        date = newDate
+        setEndDateOptionsPresented(false)
+    }
+
+    private var endDateOptionsPresentationBinding: Binding<Bool> {
+        Binding(
+            get: { isShowingEndDateOptions },
+            set: { isPresented in
+                setEndDateOptionsPresented(isPresented)
+            }
+        )
+    }
+
+    private func setEndDateOptionsPresented(_ isPresented: Bool) {
+        guard isShowingEndDateOptions != isPresented else { return }
+        isShowingEndDateOptions = isPresented
+        onOptionsPresentationChange(isPresented)
+    }
+
+    private var dateBinding: Binding<Date> {
+        Binding(
+            get: {
+                date.map { Calendar.current.startOfDay(for: $0) } ?? clampedFallbackDate
+            },
+            set: { newValue in
+                date = Calendar.current.startOfDay(for: newValue)
+            }
+        )
+    }
+
+    private var clampedFallbackDate: Date {
+        let normalizedFallback = Calendar.current.startOfDay(for: fallbackDate)
+        return max(normalizedFallback, range.lowerBound)
+    }
+}
+
+struct AppCreateScheduleSection<RepeatDestination: View>: View {
+    @Binding var startDate: Date
+    let startDateRange: ClosedRange<Date>?
+    @Binding var reminderEnabled: Bool
+    @Binding var reminderDate: Date
+    @Binding var endDate: Date?
+    let endDateRange: PartialRangeFrom<Date>
+    let isEndDateEnabled: Bool
+    let endDateTitle: String
+    let endDateEmptyTitle: String
+    let repeatSummary: String
+    let startDateTap: (() -> Void)?
+    let reminderTimeTap: (() -> Void)?
+    let repeatTap: (() -> Void)?
+    let endDateTap: (() -> Void)?
+    @ViewBuilder let repeatDestination: RepeatDestination
+    @State private var isEndDateOptionsTransitionBlockingPickers = false
+    @State private var endDateOptionsTransitionReleaseTask: Task<Void, Never>?
+
+    init(
+        startDate: Binding<Date>,
+        startDateRange: ClosedRange<Date>? = nil,
+        reminderEnabled: Binding<Bool>,
+        reminderDate: Binding<Date>,
+        endDate: Binding<Date?>,
+        endDateRange: PartialRangeFrom<Date>,
+        isEndDateEnabled: Bool = true,
+        endDateTitle: String = "End Date",
+        endDateEmptyTitle: String = "Never",
+        repeatSummary: String,
+        startDateTap: (() -> Void)? = nil,
+        reminderTimeTap: (() -> Void)? = nil,
+        repeatTap: (() -> Void)? = nil,
+        endDateTap: (() -> Void)? = nil,
+        @ViewBuilder repeatDestination: () -> RepeatDestination
+    ) {
+        _startDate = startDate
+        self.startDateRange = startDateRange
+        _reminderEnabled = reminderEnabled
+        _reminderDate = reminderDate
+        _endDate = endDate
+        self.endDateRange = endDateRange
+        self.isEndDateEnabled = isEndDateEnabled
+        self.endDateTitle = endDateTitle
+        self.endDateEmptyTitle = endDateEmptyTitle
+        self.repeatSummary = repeatSummary
+        self.startDateTap = startDateTap
+        self.reminderTimeTap = reminderTimeTap
+        self.repeatTap = repeatTap
+        self.endDateTap = endDateTap
+        self.repeatDestination = repeatDestination()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            AppFormSectionHeader(title: "Schedule")
+
+            AppCard {
+                VStack(alignment: .leading, spacing: 0) {
+                    AppStartDatePickerRow(
+                        date: $startDate,
+                        range: startDateRange,
+                        onTap: startDateTap,
+                        isPickerPresentationBlocked: isEndDateOptionsTransitionBlockingPickers
+                    )
+
+                    AppSectionDivider()
+
+                    AppReminderTimeRows(
+                        isEnabled: $reminderEnabled,
+                        reminderDate: $reminderDate,
+                        onTimeTap: reminderTimeTap,
+                        isPickerPresentationBlocked: isEndDateOptionsTransitionBlockingPickers
+                    )
+
+                    AppSectionDivider()
+
+                    AppCreateRepeatPickerRow(
+                        value: repeatSummary,
+                        onTap: repeatTap
+                    ) {
+                        repeatDestination
+                    }
+
+                    AppSectionDivider()
+
+                    AppOptionalEndDatePickerRow(
+                        title: endDateTitle,
+                        emptyTitle: endDateEmptyTitle,
+                        date: $endDate,
+                        range: endDateRange,
+                        fallbackDate: startDate,
+                        isEnabled: isEndDateEnabled,
+                        onTap: endDateTap,
+                        onOptionsPresentationChange: setEndDateOptionsPresentationActive,
+                        isPickerPresentationBlocked: isEndDateOptionsTransitionBlockingPickers
+                    )
+                }
+            }
+        }
+        .onDisappear {
+            endDateOptionsTransitionReleaseTask?.cancel()
+            isEndDateOptionsTransitionBlockingPickers = false
+        }
+    }
+
+    private func setEndDateOptionsPresentationActive(_ isActive: Bool) {
+        endDateOptionsTransitionReleaseTask?.cancel()
+
+        if isActive {
+            isEndDateOptionsTransitionBlockingPickers = true
+        } else {
+            endDateOptionsTransitionReleaseTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                guard !Task.isCancelled else { return }
+                isEndDateOptionsTransitionBlockingPickers = false
+            }
+        }
+    }
+}
+
+struct AppEditScheduleSection<RepeatDestination: View>: View {
+    @Binding var reminderEnabled: Bool
+    @Binding var reminderDate: Date
+    let repeatSummary: String
+    @Binding var effectiveFrom: Date
+    let effectiveFromRange: ClosedRange<Date>
+    let isEffectiveFromEnabled: Bool
+    @Binding var endDate: Date?
+    let endDateRange: PartialRangeFrom<Date>
+    let endDateFallback: Date
+    let isEndDateEnabled: Bool
+    let endDateTitle: String
+    let endDateEmptyTitle: String
+    let reminderTimeTap: (() -> Void)?
+    let repeatTap: (() -> Void)?
+    let effectiveFromTap: (() -> Void)?
+    let endDateTap: (() -> Void)?
+    @ViewBuilder let repeatDestination: RepeatDestination
+    @State private var isEndDateOptionsTransitionBlockingPickers = false
+    @State private var endDateOptionsTransitionReleaseTask: Task<Void, Never>?
+
+    init(
+        reminderEnabled: Binding<Bool>,
+        reminderDate: Binding<Date>,
+        repeatSummary: String,
+        effectiveFrom: Binding<Date>,
+        effectiveFromRange: ClosedRange<Date>,
+        isEffectiveFromEnabled: Bool,
+        endDate: Binding<Date?>,
+        endDateRange: PartialRangeFrom<Date>,
+        endDateFallback: Date,
+        isEndDateEnabled: Bool = true,
+        endDateTitle: String = "End Date",
+        endDateEmptyTitle: String = "Never",
+        reminderTimeTap: (() -> Void)? = nil,
+        repeatTap: (() -> Void)? = nil,
+        effectiveFromTap: (() -> Void)? = nil,
+        endDateTap: (() -> Void)? = nil,
+        @ViewBuilder repeatDestination: () -> RepeatDestination
+    ) {
+        _reminderEnabled = reminderEnabled
+        _reminderDate = reminderDate
+        self.repeatSummary = repeatSummary
+        _effectiveFrom = effectiveFrom
+        self.effectiveFromRange = effectiveFromRange
+        self.isEffectiveFromEnabled = isEffectiveFromEnabled
+        _endDate = endDate
+        self.endDateRange = endDateRange
+        self.endDateFallback = endDateFallback
+        self.isEndDateEnabled = isEndDateEnabled
+        self.endDateTitle = endDateTitle
+        self.endDateEmptyTitle = endDateEmptyTitle
+        self.reminderTimeTap = reminderTimeTap
+        self.repeatTap = repeatTap
+        self.effectiveFromTap = effectiveFromTap
+        self.endDateTap = endDateTap
+        self.repeatDestination = repeatDestination()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            AppFormSectionHeader(title: "Schedule")
+
+            AppCard {
+                VStack(alignment: .leading, spacing: 0) {
+                    AppReminderTimeRows(
+                        isEnabled: $reminderEnabled,
+                        reminderDate: $reminderDate,
+                        onTimeTap: reminderTimeTap,
+                        isPickerPresentationBlocked: isEndDateOptionsTransitionBlockingPickers
+                    )
+
+                    AppSectionDivider()
+
+                    AppCreateRepeatPickerRow(
+                        value: repeatSummary,
+                        onTap: repeatTap
+                    ) {
+                        repeatDestination
+                    }
+
+                    AppSectionDivider()
+
+                    AppEffectiveFromPickerRow(
+                        date: $effectiveFrom,
+                        range: effectiveFromRange,
+                        isEnabled: isEffectiveFromEnabled,
+                        onTap: effectiveFromTap,
+                        isPickerPresentationBlocked: isEndDateOptionsTransitionBlockingPickers
+                    )
+
+                    AppSectionDivider()
+
+                    AppOptionalEndDatePickerRow(
+                        title: endDateTitle,
+                        emptyTitle: endDateEmptyTitle,
+                        date: $endDate,
+                        range: endDateRange,
+                        fallbackDate: endDateFallback,
+                        isEnabled: isEndDateEnabled,
+                        onTap: endDateTap,
+                        onOptionsPresentationChange: setEndDateOptionsPresentationActive,
+                        isPickerPresentationBlocked: isEndDateOptionsTransitionBlockingPickers
+                    )
+                }
+            }
+        }
+        .onDisappear {
+            endDateOptionsTransitionReleaseTask?.cancel()
+            isEndDateOptionsTransitionBlockingPickers = false
+        }
+    }
+
+    private func setEndDateOptionsPresentationActive(_ isActive: Bool) {
+        endDateOptionsTransitionReleaseTask?.cancel()
+
+        if isActive {
+            isEndDateOptionsTransitionBlockingPickers = true
+        } else {
+            endDateOptionsTransitionReleaseTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                guard !Task.isCancelled else { return }
+                isEndDateOptionsTransitionBlockingPickers = false
+            }
+        }
+    }
+}
+
 struct AppNotificationSettingsSection<PopoverContent: View>: View {
     let scheduleSummary: String
     let scheduleTap: (() -> Void)?
     @Binding var reminderEnabled: Bool
     @Binding var reminderDate: Date
     let reminderTimeTap: (() -> Void)?
+    let effectiveFromRow: AnyView?
     @ViewBuilder let schedulePopoverContent: PopoverContent
 
     init(
@@ -725,6 +1380,7 @@ struct AppNotificationSettingsSection<PopoverContent: View>: View {
         reminderEnabled: Binding<Bool>,
         reminderDate: Binding<Date>,
         reminderTimeTap: (() -> Void)? = nil,
+        effectiveFromRow: AnyView? = nil,
         @ViewBuilder schedulePopoverContent: () -> PopoverContent
     ) {
         self.scheduleSummary = scheduleSummary
@@ -732,6 +1388,7 @@ struct AppNotificationSettingsSection<PopoverContent: View>: View {
         _reminderEnabled = reminderEnabled
         _reminderDate = reminderDate
         self.reminderTimeTap = reminderTimeTap
+        self.effectiveFromRow = effectiveFromRow
         self.schedulePopoverContent = schedulePopoverContent()
     }
 
@@ -749,6 +1406,12 @@ struct AppNotificationSettingsSection<PopoverContent: View>: View {
                     }
 
                     AppSectionDivider()
+
+                    if let effectiveFromRow {
+                        effectiveFromRow
+
+                        AppSectionDivider()
+                    }
 
                     AppReminderTimeRows(
                         isEnabled: $reminderEnabled,
@@ -828,6 +1491,309 @@ enum AppDescriptionFieldSupport {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             setIsDismissingKeyboardForNonTextControl(false)
         }
+    }
+}
+
+private enum AppCreateRepeatFrequency: CaseIterable, Identifiable {
+    case never
+    case daily
+    case weekdays
+    case weekends
+    case weekly
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .never:
+            return "Never"
+        case .daily:
+            return "Daily"
+        case .weekdays:
+            return "Weekdays"
+        case .weekends:
+            return "Weekends"
+        case .weekly:
+            return "Weekly"
+        }
+    }
+
+}
+
+private enum AppCreateRepeatMode: Equatable {
+    case frequency(AppCreateRepeatFrequency)
+    case customDays
+    case customInterval
+}
+
+struct AppCreateRepeatEditorScreen: View {
+    let backgroundStyle: AppBackgroundStyle
+    let initialScheduleRule: ScheduleRule
+    let startDate: Date
+    let allowsNeverRepeat: Bool
+    let onTap: (() -> Void)?
+    let onSave: (ScheduleRule) -> Void
+    @State private var mode: AppCreateRepeatMode
+    @State private var customDays: WeekdaySet
+    @State private var intervalDays: Int
+    @State private var lastAppliedRule: ScheduleRule
+
+    init(
+        backgroundStyle: AppBackgroundStyle,
+        scheduleRule: ScheduleRule,
+        startDate: Date,
+        allowsNeverRepeat: Bool = false,
+        onTap: (() -> Void)? = nil,
+        onSave: @escaping (ScheduleRule) -> Void
+    ) {
+        self.backgroundStyle = backgroundStyle
+        initialScheduleRule = scheduleRule
+        self.startDate = startDate
+        self.allowsNeverRepeat = allowsNeverRepeat
+        self.onTap = onTap
+        self.onSave = onSave
+
+        let initialRule = scheduleRule
+        _mode = State(initialValue: Self.initialMode(for: initialRule, allowsNeverRepeat: allowsNeverRepeat))
+        _customDays = State(initialValue: Self.initialCustomDays(for: initialRule, startDate: startDate))
+        _intervalDays = State(initialValue: initialRule.customIntervalDays ?? ScheduleRule.defaultIntervalDays)
+        _lastAppliedRule = State(initialValue: initialRule)
+    }
+
+    var body: some View {
+        AppScreen(backgroundStyle: backgroundStyle, topPadding: 8) {
+            VStack(alignment: .leading, spacing: 20) {
+                frequencySection
+                customDaysSection
+                customIntervalSection
+            }
+        }
+        .navigationTitle("Repeat")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var frequencySection: some View {
+        AppFormCardSection(title: "Frequency") {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(availableFrequencies.enumerated()), id: \.element.id) { index, frequency in
+                    AppCreateRepeatOptionRow(
+                        title: frequency.title,
+                        isSelected: mode == .frequency(frequency),
+                        isEnabled: true
+                    ) {
+                        selectFrequency(frequency)
+                    }
+
+                    if index < availableFrequencies.count - 1 {
+                        AppSectionDivider()
+                    }
+                }
+            }
+        }
+    }
+
+    private var availableFrequencies: [AppCreateRepeatFrequency] {
+        AppCreateRepeatFrequency.allCases.filter {
+            allowsNeverRepeat || $0 != .never
+        }
+    }
+
+    private var customDaysSection: some View {
+        AppFormCardSection(title: "Custom Days") {
+            AppCreateRepeatDaysSelector(
+                selection: $customDays,
+                isActive: mode == .customDays
+            ) { updatedDays in
+                mode = .customDays
+                customDays = updatedDays
+                applyRuleIfNeeded(.weekly(updatedDays))
+            }
+        }
+    }
+
+    private var customIntervalSection: some View {
+        AppFormCardSection(title: "Custom Interval") {
+            HStack(spacing: 16) {
+                Text("Every \(intervalDays) days")
+                    .foregroundStyle(.primary)
+
+                Spacer()
+
+                if mode == .customInterval {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: AppLayout.listIconSize, weight: .semibold))
+                        .appAccentForeground()
+                }
+
+                Stepper("", value: intervalDaysBinding, in: ScheduleRule.intervalDaysRange)
+                    .labelsHidden()
+                    .disabled(mode != .customInterval)
+                    .opacity(mode == .customInterval ? 1 : 0.45)
+            }
+            .padding(.horizontal, AppLayout.rowHorizontalPadding)
+            .padding(.vertical, AppLayout.rowVerticalPadding)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                selectCustomInterval()
+            }
+        }
+    }
+
+    private var intervalDaysBinding: Binding<Int> {
+        Binding(
+            get: { intervalDays },
+            set: { newValue in
+                intervalDays = newValue
+                mode = .customInterval
+                applyRuleIfNeeded(.intervalDays(newValue))
+            }
+        )
+    }
+
+    private func selectFrequency(_ frequency: AppCreateRepeatFrequency) {
+        mode = .frequency(frequency)
+        let rule: ScheduleRule
+
+        switch frequency {
+        case .never:
+            customDays = Calendar.current.weekdaySet(for: startDate)
+            rule = allowsNeverRepeat ? .oneTime : initialScheduleRule
+        case .daily:
+            customDays = .daily
+            rule = .weekly(.daily)
+        case .weekdays:
+            customDays = .weekdays
+            rule = .weekly(.weekdays)
+        case .weekends:
+            customDays = .weekends
+            rule = .weekly(.weekends)
+        case .weekly:
+            let startWeekday = Calendar.current.weekdaySet(for: startDate)
+            customDays = startWeekday
+            rule = .weekly(startWeekday)
+        }
+
+        applyRuleIfNeeded(rule)
+    }
+
+    private func selectCustomInterval() {
+        mode = .customInterval
+        applyRuleIfNeeded(.intervalDays(intervalDays))
+    }
+
+    private func applyRuleIfNeeded(_ rule: ScheduleRule) {
+        guard rule.isValidSelection, lastAppliedRule != rule else { return }
+        lastAppliedRule = rule
+
+        onTap?()
+        onSave(rule)
+    }
+
+    private static func initialMode(for rule: ScheduleRule, allowsNeverRepeat: Bool) -> AppCreateRepeatMode {
+        switch rule {
+        case let .weekly(days):
+            if days == .daily {
+                return .frequency(.daily)
+            }
+            if days == .weekdays {
+                return .frequency(.weekdays)
+            }
+            if days == .weekends {
+                return .frequency(.weekends)
+            }
+            if days.rawValue.nonzeroBitCount == 1 {
+                return .frequency(.weekly)
+            }
+            return .customDays
+        case .intervalDays:
+            return .customInterval
+        case .oneTime:
+            return allowsNeverRepeat ? .frequency(.never) : .frequency(.daily)
+        }
+    }
+
+    private static func initialCustomDays(for rule: ScheduleRule, startDate: Date) -> WeekdaySet {
+        if let weeklyDays = rule.weeklyDays, weeklyDays.rawValue != 0 {
+            return weeklyDays
+        }
+        return Calendar.current.weekdaySet(for: startDate)
+    }
+}
+
+private struct AppCreateRepeatOptionRow: View {
+    let title: String
+    let isSelected: Bool
+    let isEnabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        HStack(spacing: 16) {
+            Text(title)
+                .foregroundStyle(isEnabled ? .primary : .tertiary)
+
+            Spacer()
+
+            if isSelected {
+                Image(systemName: "checkmark")
+                    .font(.system(size: AppLayout.listIconSize, weight: .semibold))
+                    .appAccentForeground()
+            }
+        }
+        .padding(.horizontal, AppLayout.rowHorizontalPadding)
+        .padding(.vertical, AppLayout.rowVerticalPadding)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard isEnabled else { return }
+            action()
+        }
+    }
+}
+
+private struct AppCreateRepeatDaysSelector: View {
+    @Binding var selection: WeekdaySet
+    let isActive: Bool
+    let onSelectionChange: (WeekdaySet) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(WeekdayDisplay.fullNames.enumerated()), id: \.element.label) { index, day in
+                HStack(spacing: 16) {
+                    Text(day.label)
+                        .foregroundStyle(.primary)
+
+                    Spacer()
+
+                    if isActive && selection.contains(day.value) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: AppLayout.listIconSize, weight: .semibold))
+                            .appAccentForeground()
+                    }
+                }
+                .padding(.horizontal, AppLayout.rowHorizontalPadding)
+                .padding(.vertical, AppLayout.schedulePopoverRowVerticalPadding)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    toggle(day.value)
+                }
+
+                if index < WeekdayDisplay.fullNames.count - 1 {
+                    AppSectionDivider()
+                }
+            }
+        }
+    }
+
+    private func toggle(_ weekday: WeekdaySet) {
+        var updatedSelection = isActive ? selection : []
+
+        if updatedSelection.contains(weekday) {
+            guard updatedSelection.rawValue.nonzeroBitCount > 1 else { return }
+            updatedSelection.remove(weekday)
+        } else {
+            updatedSelection.insert(weekday)
+        }
+
+        onSelectionChange(updatedSelection)
     }
 }
 
@@ -1042,110 +2008,22 @@ private struct AppScheduleEditorPopoverBody: View {
     }
 }
 
-private enum ScheduleEditorMode: String {
-    case weekly
-    case intervals
-}
-
-private enum ScheduleIntervalChoice: CaseIterable {
-    case daily
-    case weekdays
-    case weekends
-    case weekly
-    case biweekly
-    case custom
-
-    var title: String {
-        switch self {
-        case .daily:
-            return "Daily"
-        case .weekdays:
-            return "Weekdays"
-        case .weekends:
-            return "Weekends"
-        case .weekly:
-            return "Weekly"
-        case .biweekly:
-            return "Biweekly"
-        case .custom:
-            return "Custom"
-        }
-    }
-
-    var rule: ScheduleRule {
-        switch self {
-        case .daily:
-            return .intervalPreset(.daily)
-        case .weekdays:
-            return .intervalPreset(.weekdays)
-        case .weekends:
-            return .intervalPreset(.weekends)
-        case .weekly:
-            return .intervalPreset(.weekly)
-        case .biweekly:
-            return .intervalPreset(.biweekly)
-        case .custom:
-            return .intervalDays(ScheduleRule.defaultIntervalDays)
-        }
-    }
-
-    init?(rule: ScheduleRule) {
-        switch rule {
-        case .weekly:
-            return nil
-        case .intervalPreset(.daily):
-            self = .daily
-        case .intervalPreset(.weekdays):
-            self = .weekdays
-        case .intervalPreset(.weekends):
-            self = .weekends
-        case .intervalPreset(.weekly):
-            self = .weekly
-        case .intervalPreset(.biweekly):
-            self = .biweekly
-        case .intervalDays:
-            self = .custom
-        }
-    }
-}
-
 private struct AppScheduleEditorListContent: View {
     @Binding var scheduleRule: ScheduleRule
     let onTap: (() -> Void)?
     let useScheduleForHistory: Binding<Bool>?
-    @State private var rememberedWeeklyDays: WeekdaySet?
-    @State private var rememberedIntervalRule: ScheduleRule?
     @State private var rememberedCustomIntervalDays = ScheduleRule.defaultIntervalDays
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Picker("Schedule Mode", selection: modeBinding) {
-                Text("Weekly").tag(ScheduleEditorMode.weekly)
-                Text("Intervals").tag(ScheduleEditorMode.intervals)
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, AppLayout.rowHorizontalPadding)
-            .padding(.top, 12)
-            .padding(.bottom, 8)
-            .appTapAction(onTap)
+            InlineDaysSelector(selection: weeklyDaysBinding)
+                .appTapAction(onTap)
 
-            ZStack(alignment: .top) {
-                InlineDaysSelector(selection: weeklyDaysBinding)
-                    .opacity(currentMode == .weekly ? 1 : 0)
-                    .allowsHitTesting(currentMode == .weekly)
-                    .accessibilityHidden(currentMode != .weekly)
-                    .appTapAction(onTap)
+            intervalSelectionRow
+                .appTapAction(onTap)
 
-                InlineIntervalSelector(
-                    selectedChoice: selectedIntervalChoice,
-                    customIntervalDays: customIntervalDaysBinding,
-                    onSelect: selectIntervalChoice
-                )
-                    .opacity(currentMode == .intervals ? 1 : 0)
-                    .allowsHitTesting(currentMode == .intervals)
-                    .accessibilityHidden(currentMode != .intervals)
-                    .appTapAction(onTap)
-            }
+            intervalStepperRow
+                .appTapAction(onTap)
 
             if let useScheduleForHistory {
                 HStack(spacing: 16) {
@@ -1163,148 +2041,17 @@ private struct AppScheduleEditorListContent: View {
                 .appTapAction(onTap)
             }
 
-            if !scheduleRule.isValidSelection {
-                HStack {
-                    AppInlineErrorText(text: AppCopy.chooseAtLeastOneDay)
-                    Spacer()
-                }
-                .padding(.horizontal, AppLayout.rowHorizontalPadding)
-                .padding(.bottom, 16)
-            }
         }
     }
 
-    private var currentMode: ScheduleEditorMode {
-        switch scheduleRule.kind {
-        case .weekly:
-            return .weekly
-        case .daily, .weekdays, .weekends, .weeklyInterval, .biweekly, .intervalDays:
-            return .intervals
-        }
-    }
-
-    private var modeBinding: Binding<ScheduleEditorMode> {
-        Binding(
-            get: { currentMode },
-            set: { newMode in
-                switch newMode {
-                case .weekly:
-                    if case .weekly = scheduleRule { return }
-                    rememberIntervalRule()
-                    scheduleRule = .weekly(rememberedWeeklyDays ?? .daily)
-                case .intervals:
-                    if case .weekly(let days) = scheduleRule {
-                        rememberedWeeklyDays = days
-                    } else {
-                        return
-                    }
-                    scheduleRule = rememberedIntervalRule ?? .intervalPreset(.daily)
-                }
-            }
-        )
-    }
-
-    private var weeklyDaysBinding: Binding<WeekdaySet> {
-        Binding(
-            get: { scheduleRule.weeklyDays ?? .daily },
-            set: {
-                rememberedWeeklyDays = $0
-                scheduleRule = .weekly($0)
-            }
-        )
-    }
-
-    private var selectedIntervalChoice: ScheduleIntervalChoice {
-        ScheduleIntervalChoice(rule: scheduleRule) ?? .daily
-    }
-
-    private var customIntervalDaysBinding: Binding<Int> {
-        Binding(
-            get: { scheduleRule.customIntervalDays ?? rememberedCustomIntervalDays },
-            set: { newValue in
-                rememberedCustomIntervalDays = newValue
-                if case .intervalDays = scheduleRule {
-                    scheduleRule = .intervalDays(newValue)
-                    rememberedIntervalRule = scheduleRule
-                }
-            }
-        )
-    }
-
-    private func selectIntervalChoice(_ choice: ScheduleIntervalChoice) {
-        if case .weekly(let days) = scheduleRule {
-            rememberedWeeklyDays = days
-        }
-
-        switch choice {
-        case .custom:
-            scheduleRule = .intervalDays(rememberedCustomIntervalDays)
-        default:
-            scheduleRule = choice.rule
-        }
-        rememberedIntervalRule = scheduleRule
-    }
-
-    private func rememberIntervalRule() {
-        switch scheduleRule {
-        case .weekly:
-            return
-        case let .intervalDays(days):
-            rememberedCustomIntervalDays = days
-            rememberedIntervalRule = scheduleRule
-        case .intervalPreset:
-            rememberedIntervalRule = scheduleRule
-        }
-    }
-}
-
-private struct InlineIntervalSelector: View {
-    let selectedChoice: ScheduleIntervalChoice
-    @Binding var customIntervalDays: Int
-    let onSelect: (ScheduleIntervalChoice) -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            ForEach(ScheduleIntervalChoice.allCases, id: \.title) { choice in
-                IntervalChoiceRow(
-                    title: choice.title,
-                    isSelected: selectedChoice == choice
-                )
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    onSelect(choice)
-                }
-            }
-
-            HStack(spacing: 16) {
-                Spacer()
-
-                Text("Every \(customIntervalDays) days")
-                    .foregroundStyle(.secondary)
-
-                Stepper("", value: $customIntervalDays, in: ScheduleRule.intervalDaysRange)
-                    .labelsHidden()
-            }
-            .disabled(selectedChoice != .custom)
-            .opacity(selectedChoice == .custom ? 1 : 0.45)
-            .padding(.horizontal, AppLayout.rowHorizontalPadding)
-            .padding(.vertical, AppLayout.scheduleStepperRowVerticalPadding)
-        }
-    }
-}
-
-private struct IntervalChoiceRow: View {
-    let title: String
-    let isSelected: Bool
-
-    var body: some View {
+    private var intervalSelectionRow: some View {
         HStack {
-            Text(title)
+            Text("Intervals")
                 .foregroundStyle(.primary)
 
             Spacer()
 
-            if isSelected {
+            if isIntervalSelected {
                 Image(systemName: "checkmark")
                     .font(.system(size: AppLayout.listIconSize, weight: .semibold))
                     .appAccentForeground()
@@ -1312,6 +2059,61 @@ private struct IntervalChoiceRow: View {
         }
         .padding(.horizontal, AppLayout.rowHorizontalPadding)
         .padding(.vertical, AppLayout.schedulePopoverRowVerticalPadding)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            selectIntervals()
+        }
+    }
+
+    private var intervalStepperRow: some View {
+        HStack(spacing: 16) {
+            Spacer()
+
+            Text("Every \(currentCustomIntervalDays) days")
+                .foregroundStyle(.secondary)
+
+            Stepper("", value: customIntervalDaysBinding, in: ScheduleRule.intervalDaysRange)
+                .labelsHidden()
+        }
+        .disabled(!isIntervalSelected)
+        .opacity(isIntervalSelected ? 1 : 0.45)
+        .padding(.horizontal, AppLayout.rowHorizontalPadding)
+        .padding(.vertical, AppLayout.scheduleStepperRowVerticalPadding)
+    }
+
+    private var weeklyDaysBinding: Binding<WeekdaySet> {
+        Binding(
+            get: { scheduleRule.weeklyDays ?? [] },
+            set: {
+                scheduleRule = .weekly($0)
+            }
+        )
+    }
+
+    private var isIntervalSelected: Bool {
+        if case .intervalDays = scheduleRule {
+            return true
+        }
+        return false
+    }
+
+    private var currentCustomIntervalDays: Int {
+        scheduleRule.customIntervalDays ?? rememberedCustomIntervalDays
+    }
+
+    private var customIntervalDaysBinding: Binding<Int> {
+        Binding(
+            get: { currentCustomIntervalDays },
+            set: { newValue in
+                rememberedCustomIntervalDays = newValue
+                scheduleRule = .intervalDays(newValue)
+            }
+        )
+    }
+
+    private func selectIntervals() {
+        guard !isIntervalSelected else { return }
+        scheduleRule = .intervalDays(rememberedCustomIntervalDays)
     }
 }
 
@@ -1521,6 +2323,51 @@ struct AppFloatingWarningBanner: View {
     }
 }
 
+struct AppFloatingInfoBanner: View {
+    let message: String
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "info.circle.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Color(uiColor: .systemBlue))
+
+            Text(message)
+                .font(.footnote)
+                .foregroundStyle(.primary)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button(action: onDismiss) {
+                Label("Dismiss", systemImage: "xmark.circle.fill")
+                    .labelStyle(.iconOnly)
+                    .font(.system(size: 17, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color(uiColor: .systemBlue).opacity(0.16))
+                }
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color(uiColor: .systemBlue).opacity(0.28), lineWidth: 1)
+        }
+        .shadow(color: Color.black.opacity(0.12), radius: 14, x: 0, y: 6)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+}
+
 enum OverdueDayLabel {
     static func text(for overdueDay: Date, now: Date, calendar: Calendar = .autoupdatingCurrent) -> String {
         let normalizedOverdueDay = calendar.startOfDay(for: overdueDay)
@@ -1541,6 +2388,12 @@ enum OverdueDayLabel {
             return normalizedOverdueDay.formatted(date: .abbreviated, time: .omitted)
         }
         return String(format: "%02d.%02d.%04d", day, month, year)
+    }
+}
+
+enum FutureStartLabel {
+    static func text(for startDate: Date) -> String {
+        "Starts \(startDate.formatted(.dateTime.month(.abbreviated).day()))"
     }
 }
 
@@ -1635,7 +2488,12 @@ private struct AppReadOnlyScheduleList: View {
                         isSelected: scheduleDays.contains(day.value)
                     )
                 }
-            case .intervalPreset, .intervalDays:
+            case .intervalDays:
+                AppReadOnlyScheduleRow(
+                    title: scheduleRule.summary,
+                    isSelected: true
+                )
+            case .oneTime:
                 AppReadOnlyScheduleRow(
                     title: scheduleRule.summary,
                     isSelected: true

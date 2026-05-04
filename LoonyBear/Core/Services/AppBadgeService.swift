@@ -66,6 +66,7 @@ enum ProjectedBadgeCountCalculator {
     private static func isOverdue(_ habit: HabitReminderConfiguration, at date: Date, calendar: Calendar) -> Bool {
         ScheduledOverdueState.activeOverdueDay(
             startDate: habit.startDate,
+            endDate: habit.endDate,
             schedules: effectiveHabitScheduleHistory(for: habit),
             reminderTime: habit.reminderEnabled ? habit.reminderTime : nil,
             positiveDays: habit.completedDays,
@@ -78,6 +79,7 @@ enum ProjectedBadgeCountCalculator {
     private static func isOverdue(_ pill: PillReminderConfiguration, at date: Date, calendar: Calendar) -> Bool {
         ScheduledOverdueState.activeOverdueDay(
             startDate: pill.startDate,
+            endDate: pill.endDate,
             schedules: effectivePillScheduleHistory(for: pill),
             reminderTime: pill.reminderEnabled ? pill.reminderTime : nil,
             positiveDays: pill.takenDays,

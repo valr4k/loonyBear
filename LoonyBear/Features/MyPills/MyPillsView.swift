@@ -43,10 +43,12 @@ struct MyPillsView: View {
                                 )
                                 .padding(.horizontal, 10)
                                 .listRowInsets(EdgeInsets())
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
-                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                    if let overdueDay = pill.activeOverdueDay {
+	                                .listRowBackground(Color.clear)
+	                                .listRowSeparator(.hidden)
+	                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
+	                                    if pill.isArchived || pill.startsInFuture {
+	                                        EmptyView()
+	                                    } else if let overdueDay = pill.activeOverdueDay {
                                         Button {
                                             Task {
                                                 await pillAppState.markPillTaken(id: pill.id, on: overdueDay)
@@ -101,22 +103,22 @@ struct MyPillsView: View {
                                         }
                                         .tint(.red)
                                     }
-                                }
-                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    Button {
-                                        onShowPillInfo(pill)
-                                    } label: {
-                                        Image(systemName: "info")
-                                    }
-                                    .tint(.indigo)
+	                                }
+	                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+	                                    Button {
+	                                        onShowPillInfo(pill)
+	                                    } label: {
+	                                        Image(systemName: "info")
+	                                    }
+	                                    .tint(.indigo)
 
-                                    Button {
-                                        onEditPill(pill)
-                                    } label: {
-                                        Image(systemName: "pencil")
-                                    }
-                                    .tint(.blue)
-                                }
+	                                    Button {
+	                                        onEditPill(pill)
+	                                    } label: {
+	                                        Image(systemName: "pencil")
+	                                    }
+	                                    .tint(.blue)
+	                                }
                             }
                         } header: {
                             Text(section.title)
@@ -159,11 +161,14 @@ struct MyPillsView: View {
     }
 
     private var sections: [PillDashboardSectionProjection] {
-        let today = pills.filter { $0.isScheduledToday || $0.activeOverdueDay != nil }
-        let pending = pills.filter { !$0.isScheduledToday && $0.activeOverdueDay == nil }
+        let activePills = pills.filter { !$0.isArchived }
+        let today = activePills.filter { $0.isScheduledToday || $0.activeOverdueDay != nil }
+        let pending = activePills.filter { !$0.isScheduledToday && $0.activeOverdueDay == nil }
+        let archived = pills.filter(\.isArchived)
         return [
             PillDashboardSectionProjection(id: .today, title: "Today", pills: today),
             PillDashboardSectionProjection(id: .pending, title: "Pending", pills: pending),
+            PillDashboardSectionProjection(id: .archived, title: "Archived", pills: archived),
         ].filter { !$0.pills.isEmpty }
     }
 
@@ -200,6 +205,7 @@ struct MyPillsView: View {
 private enum PillDashboardSectionID: Hashable {
     case today
     case pending
+    case archived
 }
 
 private struct PillDashboardSectionProjection: Identifiable {

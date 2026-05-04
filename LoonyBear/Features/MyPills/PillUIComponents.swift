@@ -45,6 +45,9 @@ struct PillCardView: View {
                 Text(pill.scheduleSummary)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .allowsTightening(true)
 
                 Text("Taken for: \(DayCountFormatter.compactDurationString(for: pill.totalTakenDays))")
                     .font(.caption)
@@ -54,7 +57,12 @@ struct PillCardView: View {
 
             Color.clear
                 .overlay(alignment: .topTrailing) {
-                    if pill.reminderText != nil || activeOverdueLabel != nil {
+                    if let futureStartLabel {
+                        Text(futureStartLabel)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: true, vertical: false)
+                    } else if pill.reminderText != nil || activeOverdueLabel != nil {
                         VStack(alignment: .trailing, spacing: 2) {
                             if let reminderText = pill.reminderText {
                                 Text(reminderText)
@@ -109,6 +117,11 @@ struct PillCardView: View {
     private var activeOverdueLabel: String? {
         guard let overdueDay = pill.activeOverdueDay else { return nil }
         return OverdueDayLabel.text(for: overdueDay, now: currentTime)
+    }
+
+    private var futureStartLabel: String? {
+        guard pill.startsInFuture, let futureStartDate = pill.futureStartDate else { return nil }
+        return FutureStartLabel.text(for: futureStartDate)
     }
 }
 

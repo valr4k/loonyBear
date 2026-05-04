@@ -149,8 +149,18 @@ struct EditableHistoryWindowTests {
     }
 
     @Test
-    func startDateSelectionWindowReturnsClosedRangeEndingToday() {
+    func datesReturnEmptyWhenStartDateIsFuture() {
         let today = TestSupport.makeDate(2026, 4, 30)
+        let startDate = TestSupport.makeDate(2026, 5, 3)
+
+        let dates = EditableHistoryWindow.dates(startDate: startDate, today: today)
+
+        #expect(dates.isEmpty)
+    }
+
+    @Test
+    func startDateSelectionWindowReturnsClosedRangeThroughSecondNextMonth() {
+        let today = TestSupport.makeDate(2026, 5, 3)
         let calendar = Calendar.current
 
         let range = StartDateSelectionWindow.range(
@@ -159,7 +169,16 @@ struct EditableHistoryWindowTests {
             calendar: calendar
         )
 
-        #expect(range.lowerBound == TestSupport.makeDate(2026, 4, 1))
-        #expect(range.upperBound == today)
+        #expect(range.lowerBound == TestSupport.makeDate(2026, 4, 4))
+        #expect(range.upperBound == TestSupport.makeDate(2026, 7, 31))
+    }
+
+    @Test
+    func historyMonthWindowUsesStartDateMonthForFutureItems() {
+        let today = TestSupport.makeDate(2026, 5, 3)
+        let startDate = TestSupport.makeDate(2026, 7, 14)
+
+        #expect(HistoryMonthWindow.displayMonth(startDate: startDate, today: today) == TestSupport.makeDate(2026, 7, 1))
+        #expect(HistoryMonthWindow.detailsCalendarEndDate(startDate: startDate, today: today) == TestSupport.makeDate(2026, 7, 31))
     }
 }

@@ -36,6 +36,16 @@ struct PillSideEffectCoordinator {
         rescheduleAllReminderNotifications?()
     }
 
+    func handleArchiveChange(forPillID pillID: UUID, isArchived: Bool) {
+        if isArchived {
+            notificationService.removeNotifications(forPillID: pillID)
+        } else if let rescheduleAllReminderNotifications {
+            rescheduleAllReminderNotifications()
+        } else {
+            notificationService.rescheduleNotifications(forPillID: pillID)
+        }
+    }
+
     func prepareReminderNotifications(forPillID pillID: UUID) async {
         await notificationService.prepareReminderNotifications(forPillID: pillID)
         rescheduleAllReminderNotifications?()

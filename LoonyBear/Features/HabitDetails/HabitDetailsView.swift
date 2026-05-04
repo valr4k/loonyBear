@@ -10,7 +10,6 @@ struct HabitDetailsView: View {
     @State private var isLoadingDetails = true
     @State private var needsReloadOnAppear = false
     @State private var isShowingEdit = false
-    @State private var isShowingSchedulePopover = false
     @State private var isCalendarWarningDismissed = false
     @State private var displayedMonth: Date = {
         var calendar = Calendar.autoupdatingCurrent
@@ -35,30 +34,40 @@ struct HabitDetailsView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    AppFormSectionHeader(title: "Notifications")
+                    AppFormSectionHeader(title: "Streaks")
 
                     DetailsCard {
                         AppPlainValueRow(
-                            title: "Schedule",
-                            value: details.scheduleRule.compactSummary,
-                            valueColor: AnyShapeStyle(.secondary),
-                            showsChevron: true
+                            title: "Current streak",
+                            value: DayCountFormatter.compactDurationString(for: details.currentStreak),
+                            valueColor: AnyShapeStyle(.secondary)
                         )
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            isShowingSchedulePopover = true
-                        }
-                        .popover(
-                            isPresented: $isShowingSchedulePopover,
-                            attachmentAnchor: .point(.trailing),
-                            arrowEdge: .trailing
-                        ) {
-                            AppReadOnlySchedulePopoverContent(scheduleRule: details.scheduleRule)
-                                .presentationBackground(.clear)
-                        }
-
                         AppSectionDivider()
+                        AppPlainValueRow(
+                            title: "Best streak",
+                            value: DayCountFormatter.compactDurationString(for: details.longestStreak),
+                            valueColor: AnyShapeStyle(.secondary)
+                        )
+                        AppSectionDivider()
+                        AppPlainValueRow(
+                            title: "Completed for",
+                            value: DayCountFormatter.compactDurationString(for: details.totalCompletedDays),
+                            valueColor: AnyShapeStyle(.secondary)
+                        )
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    AppFormSectionHeader(title: "Schedule")
+
+                    DetailsCard {
                         AppPlainValueRow(title: "Reminder", value: details.reminderTime?.formatted ?? "Off")
+                        AppSectionDivider()
+                        AppPlainValueRow(
+                            title: "Repeat",
+                            value: scheduleDisplayText(for: details),
+                            valueColor: AnyShapeStyle(.secondary)
+                        )
                     }
                 }
 
@@ -68,11 +77,7 @@ struct HabitDetailsView: View {
                     DetailsCard {
                         AppPlainValueRow(title: "Start Date", value: details.startDate.formatted(date: .abbreviated, time: .omitted))
                         AppSectionDivider()
-                        AppPlainValueRow(title: "Current streak", value: DayCountFormatter.compactDurationString(for: details.currentStreak), valueColor: AnyShapeStyle(.secondary))
-                        AppSectionDivider()
-                        AppPlainValueRow(title: "Best streak", value: DayCountFormatter.compactDurationString(for: details.longestStreak), valueColor: AnyShapeStyle(.secondary))
-                        AppSectionDivider()
-                        AppPlainValueRow(title: "Completed for", value: DayCountFormatter.compactDurationString(for: details.totalCompletedDays), valueColor: AnyShapeStyle(.secondary))
+                        AppPlainValueRow(title: "Goal Date", value: endDateText(for: details.endDate))
                     }
                 }
 
@@ -173,6 +178,9 @@ struct HabitDetailsView: View {
                 },
                 onDeleteSuccess: {
                     dismiss()
+                },
+                onArchiveSuccess: {
+                    dismiss()
                 }
             )
             .appTintedBackButton()
@@ -208,6 +216,7 @@ struct HabitDetailsView: View {
         switch appState.loadHabitDetailsState(id: habit.id) {
         case .found(let loadedDetails):
             details = loadedDetails
+            displayedMonth = HistoryMonthWindow.displayMonth(startDate: loadedDetails.startDate)
             detailErrorMessage = nil
             isIntegrityError = false
         case .notFound:
@@ -220,6 +229,21 @@ struct HabitDetailsView: View {
             isIntegrityError = true
         }
         isLoadingDetails = false
+    }
+
+    private func scheduleDisplayText(for details: HabitDetailsProjection) -> String {
+        DashboardScheduleSummary.text(
+            latestSchedule: details.scheduleHistory.sorted(by: CoreDataScheduleSupport.isNewerSchedule).first,
+            startDate: details.startDate,
+            endDate: details.endDate,
+            schedules: details.scheduleHistory,
+            today: Calendar.current.startOfDay(for: Date()),
+            calendar: Calendar.current
+        )
+    }
+
+    private func endDateText(for endDate: Date?) -> String {
+        endDate?.formatted(date: .abbreviated, time: .omitted) ?? "Forever"
     }
 
     private func calendarReviewMessage(for details: HabitDetailsProjection) -> String? {
@@ -289,7 +313,11 @@ private struct HabitHeatmapView: View {
     }
 
     private var displayMonths: [Date] {
-        HistoryMonthWindow.months(from: startDate, through: Date(), calendar: calendar)
+        HistoryMonthWindow.months(
+            from: startDate,
+            through: HistoryMonthWindow.detailsCalendarEndDate(startDate: startDate, today: Date(), calendar: calendar),
+            calendar: calendar
+        )
     }
 }
 

@@ -26,6 +26,7 @@ enum DemoDataWriter {
             habit.setValue(name, forKey: "name")
             habit.setValue(Int32(sortOrder), forKey: "sortOrder")
             habit.setValue(calendar.startOfDay(for: now), forKey: "startDate")
+            habit.setValue(false, forKey: "isArchived")
             habit.setValue(false, forKey: "reminderEnabled")
             habit.setValue(now, forKey: "createdAt")
             habit.setValue(now, forKey: "updatedAt")

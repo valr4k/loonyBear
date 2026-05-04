@@ -434,6 +434,9 @@ final class PillNotificationService {
                 guard let pill = try context.fetch(pillRequest).first else {
                     return false
                 }
+                guard !pill.boolValue(forKey: "isArchived") else {
+                    return false
+                }
 
                 var report = IntegrityReportBuilder()
                 guard
@@ -457,8 +460,14 @@ final class PillNotificationService {
 
                 let takenDays = Set(intakeEntries.compactMap { $0.1.countsAsIntake ? $0.0 : nil })
                 let skippedDays = Set(intakeEntries.compactMap { !$0.1.countsAsIntake ? $0.0 : nil })
+                let activeStartDate = ActiveCycleStartDate.value(
+                    for: pill,
+                    fallbackStartDate: startDate,
+                    calendar: calendar
+                )
                 let activeOverdueDay = ScheduledOverdueState.activeOverdueDay(
-                    startDate: startDate,
+                    startDate: activeStartDate,
+                    endDate: pill.dateValue(forKey: "endDate"),
                     schedules: schedules,
                     reminderTime: reminderTime,
                     positiveDays: takenDays,
@@ -717,6 +726,8 @@ final class PillNotificationService {
         from object: NSManagedObject,
         report: inout IntegrityReportBuilder
     ) -> PillReminderConfiguration? {
+        guard !object.boolValue(forKey: "isArchived") else { return nil }
+
         guard
             let id = object.uuidValue(forKey: "id"),
             let name = object.stringValue(forKey: "name"),
@@ -770,12 +781,18 @@ final class PillNotificationService {
         }
         let takenDays = Set(intakeEntries.compactMap { $0.1.countsAsIntake ? $0.0 : nil })
         let skippedDays = Set(intakeEntries.compactMap { !$0.1.countsAsIntake ? $0.0 : nil })
+        let activeStartDate = ActiveCycleStartDate.value(
+            for: object,
+            fallbackStartDate: startDate,
+            calendar: calendar
+        )
 
         return PillReminderConfiguration(
             id: id,
             name: name,
             dosage: dosage,
-            startDate: startDate,
+            startDate: activeStartDate,
+            endDate: object.dateValue(forKey: "endDate"),
             scheduleDays: scheduleDays,
             scheduleRule: scheduleRule,
             scheduleHistory: scheduleHistory,
@@ -854,6 +871,8 @@ final class PillNotificationService {
         from object: NSManagedObject,
         report: inout IntegrityReportBuilder
     ) -> HabitReminderConfiguration? {
+        guard !object.boolValue(forKey: "isArchived") else { return nil }
+
         guard
             let id = object.uuidValue(forKey: "id"),
             let name = object.stringValue(forKey: "name"),
@@ -907,11 +926,17 @@ final class PillNotificationService {
         }
         let completedDays = Set(completionEntries.compactMap { $0.1.countsAsCompletion ? $0.0 : nil })
         let skippedDays = Set(completionEntries.compactMap { !$0.1.countsAsCompletion ? $0.0 : nil })
+        let activeStartDate = ActiveCycleStartDate.value(
+            for: object,
+            fallbackStartDate: startDate,
+            calendar: calendar
+        )
 
         return HabitReminderConfiguration(
             id: id,
             name: name,
-            startDate: startDate,
+            startDate: activeStartDate,
+            endDate: object.dateValue(forKey: "endDate"),
             scheduleDays: scheduleDays,
             scheduleRule: scheduleRule,
             scheduleHistory: scheduleHistory,
@@ -988,6 +1013,43 @@ final class PillNotificationService {
         )
     }
 
+    private func applyAutomaticArchiveIfNeeded(
+        for pill: NSManagedObject,
+        pillID: UUID
+    ) throws {
+        guard !pill.boolValue(forKey: "isArchived") else { return }
+        var report = IntegrityReportBuilder()
+        guard
+            let startDate = pill.dateValue(forKey: "startDate"),
+            let schedules = loadPillSchedules(for: pill, pillID: pillID, report: &report),
+            let intakeEntries = loadPillIntakeEntries(for: pill, report: &report)
+        else {
+            throw report.makeError(operation: "notification.pill.autoArchive")
+        }
+
+        let takenDays = Set(intakeEntries.compactMap { $0.1.countsAsIntake ? $0.0 : nil })
+        let skippedDays = Set(intakeEntries.compactMap { !$0.1.countsAsIntake ? $0.0 : nil })
+        let activeStartDate = ActiveCycleStartDate.value(
+            for: pill,
+            fallbackStartDate: startDate,
+            calendar: calendar
+        )
+        guard ScheduleLifecycleSupport.shouldAutoArchive(
+            startDate: activeStartDate,
+            endDate: pill.dateValue(forKey: "endDate"),
+            schedules: schedules,
+            positiveDays: takenDays,
+            skippedDays: skippedDays,
+            calendar: calendar
+        ) else {
+            return
+        }
+
+        pill.setValue(true, forKey: "isArchived")
+        pill.setValue(clock.now(), forKey: "updatedAt")
+        overdueAnchorStore.clearAnchorDay(for: .pill, id: pillID)
+    }
+
     private func notificationIdentifierPrefix(for pillID: UUID) -> String {
         "\(prefix)\(pillID.uuidString.lowercased())_"
     }
@@ -1044,6 +1106,9 @@ final class PillNotificationService {
                 if existingSource == .skipped {
                     existing.setValue(source.rawValue, forKey: "sourceRaw")
                     existing.setValue(clock.now(), forKey: "createdAt")
+                    if let pill = existing.value(forKey: "pill") as? NSManagedObject {
+                        try applyAutomaticArchiveIfNeeded(for: pill, pillID: pillID)
+                    }
                     try context.save()
                     return NotificationMutationOutcome.mutated
                 }
@@ -1066,6 +1131,7 @@ final class PillNotificationService {
             intake.setValue(source.rawValue, forKey: "sourceRaw")
             intake.setValue(clock.now(), forKey: "createdAt")
             intake.setValue(pill, forKey: "pill")
+            try applyAutomaticArchiveIfNeeded(for: pill, pillID: pillID)
 
             try context.save()
             return .mutated
@@ -1124,6 +1190,7 @@ final class PillNotificationService {
             intake.setValue(PillCompletionSource.skipped.rawValue, forKey: "sourceRaw")
             intake.setValue(clock.now(), forKey: "createdAt")
             intake.setValue(pill, forKey: "pill")
+            try applyAutomaticArchiveIfNeeded(for: pill, pillID: pillID)
 
             try context.save()
             return .mutated
@@ -1237,6 +1304,7 @@ struct PillReminderConfiguration {
     let name: String
     let dosage: String
     let startDate: Date
+    let endDate: Date?
     let scheduleDays: WeekdaySet
     let scheduleRule: ScheduleRule
     let scheduleHistory: [PillScheduleVersion]
@@ -1250,6 +1318,7 @@ struct PillReminderConfiguration {
         name: String,
         dosage: String,
         startDate: Date,
+        endDate: Date? = nil,
         scheduleDays: WeekdaySet,
         scheduleRule: ScheduleRule? = nil,
         scheduleHistory: [PillScheduleVersion] = [],
@@ -1262,6 +1331,7 @@ struct PillReminderConfiguration {
         self.name = name
         self.dosage = dosage
         self.startDate = startDate
+        self.endDate = endDate
         self.scheduleDays = scheduleDays
         self.scheduleRule = scheduleRule ?? .weekly(scheduleDays)
         self.scheduleHistory = scheduleHistory

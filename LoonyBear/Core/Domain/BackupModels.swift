@@ -75,7 +75,10 @@ struct BackupHabit: Codable {
     let name: String
     let sortOrder: Int
     let startDate: Date
+    let activeFrom: Date?
+    let endDate: Date?
     let historyMode: String
+    let isArchived: Bool
     let reminderEnabled: Bool
     let reminderTime: BackupReminderTime?
     let createdAt: Date
@@ -88,7 +91,10 @@ struct BackupHabit: Codable {
         case name
         case sortOrder
         case startDate
+        case activeFrom
+        case endDate
         case historyMode
+        case isArchived
         case reminderEnabled
         case reminderTime
         case createdAt
@@ -102,7 +108,10 @@ struct BackupHabit: Codable {
         name: String,
         sortOrder: Int,
         startDate: Date,
+        activeFrom: Date? = nil,
+        endDate: Date? = nil,
         historyMode: String = HabitHistoryMode.scheduleBased.rawValue,
+        isArchived: Bool = false,
         reminderEnabled: Bool,
         reminderTime: BackupReminderTime?,
         createdAt: Date,
@@ -114,7 +123,10 @@ struct BackupHabit: Codable {
         self.name = name
         self.sortOrder = sortOrder
         self.startDate = startDate
+        self.activeFrom = activeFrom
+        self.endDate = endDate
         self.historyMode = historyMode
+        self.isArchived = isArchived
         self.reminderEnabled = reminderEnabled
         self.reminderTime = reminderTime
         self.createdAt = createdAt
@@ -129,7 +141,10 @@ struct BackupHabit: Codable {
         name = try container.decode(String.self, forKey: .name)
         sortOrder = try container.decode(Int.self, forKey: .sortOrder)
         startDate = try container.decode(Date.self, forKey: .startDate)
+        activeFrom = try container.decodeIfPresent(Date.self, forKey: .activeFrom)
+        endDate = try container.decodeIfPresent(Date.self, forKey: .endDate)
         historyMode = try container.decodeIfPresent(String.self, forKey: .historyMode) ?? HabitHistoryMode.scheduleBased.rawValue
+        isArchived = try container.decodeIfPresent(Bool.self, forKey: .isArchived) ?? false
         reminderEnabled = try container.decode(Bool.self, forKey: .reminderEnabled)
         reminderTime = try container.decodeIfPresent(BackupReminderTime.self, forKey: .reminderTime)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
@@ -218,7 +233,10 @@ struct BackupPill: Codable {
     let details: String?
     let sortOrder: Int
     let startDate: Date
+    let activeFrom: Date?
+    let endDate: Date?
     let historyMode: String
+    let isArchived: Bool
     let reminderEnabled: Bool
     let reminderTime: BackupReminderTime?
     let createdAt: Date
@@ -232,7 +250,10 @@ struct BackupPill: Codable {
         case details
         case sortOrder
         case startDate
+        case activeFrom
+        case endDate
         case historyMode
+        case isArchived
         case reminderEnabled
         case reminderTime
         case createdAt
@@ -247,7 +268,10 @@ struct BackupPill: Codable {
         details: String?,
         sortOrder: Int,
         startDate: Date,
+        activeFrom: Date? = nil,
+        endDate: Date? = nil,
         historyMode: String,
+        isArchived: Bool = false,
         reminderEnabled: Bool,
         reminderTime: BackupReminderTime?,
         createdAt: Date,
@@ -260,7 +284,10 @@ struct BackupPill: Codable {
         self.details = details
         self.sortOrder = sortOrder
         self.startDate = startDate
+        self.activeFrom = activeFrom
+        self.endDate = endDate
         self.historyMode = historyMode
+        self.isArchived = isArchived
         self.reminderEnabled = reminderEnabled
         self.reminderTime = reminderTime
         self.createdAt = createdAt
@@ -276,7 +303,10 @@ struct BackupPill: Codable {
         details = try container.decodeIfPresent(String.self, forKey: .details)
         sortOrder = try container.decode(Int.self, forKey: .sortOrder)
         startDate = try container.decode(Date.self, forKey: .startDate)
+        activeFrom = try container.decodeIfPresent(Date.self, forKey: .activeFrom)
+        endDate = try container.decodeIfPresent(Date.self, forKey: .endDate)
         historyMode = try container.decodeIfPresent(String.self, forKey: .historyMode) ?? PillHistoryMode.scheduleBased.rawValue
+        isArchived = try container.decodeIfPresent(Bool.self, forKey: .isArchived) ?? false
         reminderEnabled = try container.decode(Bool.self, forKey: .reminderEnabled)
         reminderTime = try container.decodeIfPresent(BackupReminderTime.self, forKey: .reminderTime)
         createdAt = try container.decode(Date.self, forKey: .createdAt)

@@ -194,7 +194,7 @@ Functions:
 - `scheduledDays(...)`
 - `effectiveWeekdays(on:from:calendar:)`
 
-These helpers are used to determine which past editable days must be finalized according to schedule and history mode. `scheduledDays(...)` returns the normalized schedule-matching dates through a supplied end date so Details/Edit calendars can draw schedule indicators without changing stored history.
+These helpers are used to determine which past editable days must be finalized according to schedule and history mode. Editable history never includes days before `startDate` or future days. `scheduledDays(...)` returns the normalized schedule-matching dates through a supplied end date so Details/Edit calendars can draw schedule indicators, including future scheduled dots, without changing stored history.
 
 ## 5. Habit Pipeline
 
@@ -211,6 +211,7 @@ Files:
 Validation rules:
 - name must not be empty after trimming
 - at least one schedule day must be selected
+- start date may be selected from the last 30 days through the end of the second next calendar month
 
 Repository-level create rule:
 - maximum number of habits is `20`
@@ -227,6 +228,7 @@ Create flow writes:
 - optional reminder values
 
 After that, the repository generates initial completed days from `startDate` through yesterday and inserts one `HabitCompletion` per generated day.
+If `startDate` is in the future, no initial history rows are generated and the item has no overdue, today action/status, notifications, or history review before that date.
 
 ### 5.5 Habit Auto Fill
 Initial Habit history generation inserts `HabitCompletion` rows with source:
@@ -270,8 +272,9 @@ Delete is not available from card swipe actions.
 `updateHabit(from:)`:
 - updates name
 - updates reminder flags and time
-- inserts a new `HabitScheduleVersion` if the weekday mask changed
-- if today's state is already explicit, the new schedule version starts tomorrow; otherwise it starts today
+- inserts a new `HabitScheduleVersion` if the schedule rule changed
+- uses the resolved `Apply From` date shown in Edit as the new schedule version `effectiveFrom`
+- if the selected Apply From date already has an explicit state or does not match a weekly rule, it is resolved forward to the next available scheduled day; for interval rules, the resolved date becomes the new interval anchor
 - preserves the persisted `historyModeRaw` already stored on the Habit
 - builds editable day set from `EditableHistoryWindow.dates(startDate:)`
 - normalizes selected days with `EditableHistoryContract.normalizedSelection(...)`
@@ -322,11 +325,14 @@ Create form validation rules:
 - name must not be empty after trimming
 - dosage must not be empty after trimming
 - at least one schedule day must be selected
+- start date may be selected from the last 5 years through the end of the second next calendar month
 
-There is no repository-level max-count rule for pills.
+Repository-level create rule:
+- maximum number of pills is `20`
 
 ### 6.4 Pill Create Generation
 Repository create generates `takenDays` from `startDate` through yesterday.
+If `startDate` is in the future, no initial history rows are generated and the item appears in Pending with no overdue, today action/status, notifications, or history review before that date.
 
 Rules:
 - if `useScheduleForHistory == true`, only scheduled days are included
@@ -371,8 +377,9 @@ Delete is not available from card swipe actions.
 `updatePill(from:)`:
 - updates name, dosage, details
 - updates reminder flags and time
-- inserts a new `PillScheduleVersion` if weekday mask changed
-- if today's state is already explicit, the new schedule version starts tomorrow; otherwise it starts today
+- inserts a new `PillScheduleVersion` if the schedule rule changed
+- uses the resolved `Apply From` date shown in Edit as the new schedule version `effectiveFrom`
+- if the selected Apply From date already has an explicit state or does not match a weekly rule, it is resolved forward to the next available scheduled day; for interval rules, the resolved date becomes the new interval anchor
 - preserves the persisted `historyModeRaw` already stored on the Pill
 - builds editable day set from `EditableHistoryWindow.dates(startDate:)`
 - normalizes selected days with `EditableHistoryContract.normalizedSelection(...)`
@@ -423,10 +430,12 @@ Behavior:
 `longestStreak(...)` runs the same metrics logic up to the latest completion day and returns the maximum running value encountered.
 
 ### 7.3 Effective Schedule Resolution
-For streak calculations, schedule for a day is the latest `HabitScheduleVersion` whose `effectiveFrom` is not later than that day, ordered by:
+For streak, overdue, notification, history-review, and calendar indicator calculations, schedule for a day is the latest schedule version whose `effectiveFrom` is not later than that day, ordered by:
 - `effectiveFrom`
 - `version`
 - `createdAt`
+
+Weekly schedules use the stored weekday mask. `Every N days` schedules use the active schedule version `effectiveFrom` as the interval anchor. Legacy `daily`, `weekdays`, and `weekends` schedule kind values are read as weekly masks; new writes store those choices as `weekly`.
 
 ## 8. Notifications
 
@@ -786,9 +795,9 @@ Create/Edit schedule behavior:
 - schedule rows open `AppScheduleEditorPopoverContent` from `AppSchedulePickerRow`
 - schedule rows use a tap gesture instead of a visible pressed `Button` highlight
 - the popover uses full weekday names
-- the Intervals mode shows Daily, Weekdays, Weekends, Weekly, Biweekly, and Custom as a single-selection list
-- Custom enables a native Stepper for every 2 to 20 days only after Custom is selected
-- `ScheduleRule.intervalDays(14)` is still stored as a Custom interval rule, but its public summary and compact summary are `Biweekly`
+- the popover has no Weekly/Intervals mode switch; weekday rows and the Intervals row are shown together
+- the Intervals row uses a native Stepper for every 2 to 5 days
+- weekday summaries are canonicalized as Daily, Weekdays, Weekends, Weekly for one selected weekday, or Custom for other combinations
 - day rows use compact `schedulePopoverRowVerticalPadding`
 - dividers between weekday rows are not shown
 - `Use schedule for history?` appears only when the caller supplies a binding

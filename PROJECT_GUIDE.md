@@ -111,14 +111,15 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
 
 ## Important Current Rules
 
-- Habit create start date range is the last 30 days including today.
-- Pill create start date range is the last 5 years including today.
+- Habit create start date range is the last 30 days through the end of the second next calendar month.
+- Pill create start date range is the last 5 years through the end of the second next calendar month.
+- Future Habits stay in Build/Quit without today actions, overdue, notifications, or history review until their start date; future Pills appear in Pending with the same inactive behavior.
 - Editable history window is 30 days for both domains.
 - Habit current streak is reset only by missed scheduled days in the past.
 - Pills do not use streak logic.
 - Notifications are scheduled only for the next 2 days.
 - Pill `Remind me in 10 mins` survives global regular pill reschedules.
-- Schedule Intervals support Daily, Weekdays, Weekends, Weekly, Biweekly, and Custom every 2 to 20 days; `Every 14 days` is summarized as `Biweekly` outside the picker.
+- Schedule popovers use weekday selection plus an Intervals row for `Every N days`, limited to 2 through 5 days. Weekday summaries are canonicalized as Daily, Weekdays, Weekends, Weekly for one selected weekday, or Custom for other combinations.
 - Settings supports System/Light/Dark appearance and Blue/Indigo/Green/Amber app color selection; Blue is the default and first palette option.
 - App tint colors supported accent surfaces, while page backgrounds stay on the system grouped background.
 - Backup includes the selected appearance mode and app tint, while legacy backups without those settings keep the current appearance.

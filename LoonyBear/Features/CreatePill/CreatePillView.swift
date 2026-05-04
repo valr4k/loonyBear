@@ -10,6 +10,10 @@ struct CreatePillView: View {
     @State private var validationMessage: String?
     @State private var createLimitWarningMessage: String?
     @State private var isCreateLimitWarningDismissed = false
+    @State private var isScheduleWarningDismissed = false
+    @State private var scheduleInfoMessage: String?
+    @State private var scheduleInfoDismissTask: Task<Void, Never>?
+    @State private var pendingScheduleRule: ScheduleRule?
     @State private var isSaving = false
     @State private var isDismissingKeyboardForNonTextControl = false
     @State private var isShowingNotificationSettingsAlert = false
@@ -23,8 +27,7 @@ struct CreatePillView: View {
             AppScreen(backgroundStyle: .pills, topPadding: 8) {
                 VStack(alignment: .leading, spacing: 20) {
                     detailsSection
-                    notificationsSection
-                    historySection
+                    scheduleSection
                     descriptionSection
 
                     if let validationMessage {
@@ -38,7 +41,7 @@ struct CreatePillView: View {
                 }
             }
             .overlay(alignment: .bottom) {
-                createLimitWarningBanner
+                floatingBottomBanners
             }
             .navigationTitle("Create Pill")
             .navigationBarTitleDisplayMode(.inline)
@@ -81,6 +84,13 @@ struct CreatePillView: View {
                     }
                 }
             }
+            .onAppear {
+                applyPendingScheduleRuleIfNeeded()
+            }
+            .onChange(of: draft.scheduleRule) { _, _ in
+                handleScheduleRuleChange()
+                clearEndDateForNeverRepeat(showInfo: true)
+            }
             .appNotificationSettingsAlert(isPresented: $isShowingNotificationSettingsAlert)
             .onChange(of: focusedField) { _, field in
                 guard field == .description else { return }
@@ -104,7 +114,12 @@ struct CreatePillView: View {
             }
             .animation(.easeInOut(duration: 0.18), value: validationMessage)
             .animation(.easeInOut(duration: 0.18), value: createLimitWarningMessage)
+            .animation(.easeInOut(duration: 0.18), value: scheduleInfoMessage)
             .animation(.easeInOut(duration: 0.18), value: isCreateLimitWarningDismissed)
+            .animation(.easeInOut(duration: 0.18), value: isScheduleWarningDismissed)
+            .onDisappear {
+                scheduleInfoDismissTask?.cancel()
+            }
         }
     }
 
@@ -112,28 +127,28 @@ struct CreatePillView: View {
         AppPillDetailsCard(name: $draft.name, dosage: $draft.dosage)
     }
 
-    private var historySection: some View {
-        AppFormCardSection(title: "History") {
-            AppStartDatePickerRow(
-                date: $draft.startDate,
-                range: selectableStartDateRange,
-                onTap: dismissKeyboardForNonTextControl
-            )
-        }
-    }
-
-    private var notificationsSection: some View {
-        AppNotificationSettingsSection(
-            scheduleSummary: draft.scheduleRule.compactSummary,
-            scheduleTap: dismissKeyboardForNonTextControl,
+    private var scheduleSection: some View {
+        AppCreateScheduleSection(
+            startDate: startDateBinding,
+            startDateRange: selectableStartDateRange,
             reminderEnabled: $draft.reminderEnabled,
             reminderDate: $draft.reminderTime.dateBinding(fallback: ReminderTime.default()),
-            reminderTimeTap: dismissKeyboardForNonTextControl
+            endDate: $draft.endDate,
+            endDateRange: selectableEndDateRange,
+            isEndDateEnabled: !draft.scheduleRule.isOneTime,
+            repeatSummary: draft.scheduleRule.compactSummary,
+            startDateTap: dismissKeyboardForNonTextControl,
+            reminderTimeTap: dismissKeyboardForNonTextControl,
+            repeatTap: dismissKeyboardForNonTextControl,
+            endDateTap: dismissKeyboardForNonTextControl
         ) {
-            CreatePillScheduleView(
-                scheduleRule: $draft.scheduleRule,
-                useScheduleForHistory: $draft.useScheduleForHistory,
-                dismissKeyboardForNonTextControl: dismissKeyboardForNonTextControl
+            AppCreateRepeatEditorScreen(
+                backgroundStyle: .pills,
+                scheduleRule: draft.scheduleRule,
+                startDate: draft.startDate,
+                allowsNeverRepeat: true,
+                onTap: dismissKeyboardForNonTextControl,
+                onSave: stageScheduleRule
             )
         }
     }
@@ -154,8 +169,23 @@ struct CreatePillView: View {
         StartDateSelectionWindow.range(offset: DateComponents(year: -5))
     }
 
+    private var selectableEndDateRange: PartialRangeFrom<Date> {
+        let today = Calendar.current.startOfDay(for: Date())
+        let lowerBound = max(today, Calendar.current.startOfDay(for: draft.startDate))
+        return lowerBound...
+    }
+
     private var isFormValid: Bool {
         !draft.trimmedName.isEmpty && !draft.trimmedDosage.isEmpty && draft.scheduleRule.isValidSelection
+    }
+
+    private var startDateBinding: Binding<Date> {
+        Binding(
+            get: { draft.startDate },
+            set: { newValue in
+                draft.startDate = Calendar.current.startOfDay(for: newValue)
+            }
+        )
     }
 
     private var shouldShowDescriptionInset: Bool {
@@ -167,10 +197,26 @@ struct CreatePillView: View {
     }
 
     @ViewBuilder
-    private var createLimitWarningBanner: some View {
-        if let message = createLimitWarningMessage, !isCreateLimitWarningDismissed {
-            AppFloatingWarningBanner(message: message) {
-                isCreateLimitWarningDismissed = true
+    private var floatingBottomBanners: some View {
+        if shouldShowFloatingBottomBanners {
+            VStack(spacing: 10) {
+                if let message = scheduleWarningMessage, !isScheduleWarningDismissed {
+                    AppFloatingWarningBanner(message: message) {
+                        isScheduleWarningDismissed = true
+                    }
+                }
+
+                if let message = createLimitWarningMessage, !isCreateLimitWarningDismissed {
+                    AppFloatingWarningBanner(message: message) {
+                        isCreateLimitWarningDismissed = true
+                    }
+                }
+
+                if let message = scheduleInfoMessage {
+                    AppFloatingInfoBanner(message: message) {
+                        dismissScheduleInfo()
+                    }
+                }
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 14)
@@ -178,17 +224,30 @@ struct CreatePillView: View {
         }
     }
 
+    private var shouldShowFloatingBottomBanners: Bool {
+        (scheduleWarningMessage != nil && !isScheduleWarningDismissed)
+            || (createLimitWarningMessage != nil && !isCreateLimitWarningDismissed)
+            || scheduleInfoMessage != nil
+    }
+
+    private var scheduleWarningMessage: String? {
+        draft.scheduleRule.isValidSelection ? nil : AppCopy.chooseAtLeastOneDay
+    }
+
     private func savePill() {
         guard isFormValid else {
             createLimitWarningMessage = nil
-            validationMessage = invalidMessage
+            if !draft.scheduleRule.isValidSelection {
+                isScheduleWarningDismissed = false
+            }
+            validationMessage = nonScheduleInvalidMessage
             return
         }
 
         isSaving = true
         validationMessage = nil
         createLimitWarningMessage = nil
-        let savedDraft = draft
+        let savedDraft = normalizedDraft()
 
         Task {
             do {
@@ -210,6 +269,22 @@ struct CreatePillView: View {
         }
     }
 
+    private func handleScheduleRuleChange() {
+        isScheduleWarningDismissed = false
+        if draft.scheduleRule.isValidSelection, validationMessage == AppCopy.chooseAtLeastOneDay {
+            validationMessage = nil
+        }
+    }
+
+    private func clearEndDateForNeverRepeat(showInfo: Bool) {
+        guard draft.scheduleRule.isOneTime, draft.endDate != nil else { return }
+        draft.endDate = nil
+
+        if showInfo {
+            presentScheduleInfo(AppCopy.endDateRemovedForNeverRepeat)
+        }
+    }
+
     private func isCreateLimitError(_ error: Error, message: String) -> Bool {
         if let pillRepositoryError = error as? PillRepositoryError,
            case .tooManyPills = pillRepositoryError {
@@ -224,14 +299,65 @@ struct CreatePillView: View {
         isCreateLimitWarningDismissed = false
     }
 
-    private var invalidMessage: String {
+    private func normalizedDraft() -> PillDraft {
+        var normalized = draft
+        normalized.useScheduleForHistory = true
+        if normalized.scheduleRule.isOneTime {
+            normalized.endDate = nil
+        }
+        if let endDate = normalized.endDate {
+            let today = Calendar.current.startOfDay(for: Date())
+            let lowerBound = max(today, Calendar.current.startOfDay(for: normalized.startDate))
+            normalized.endDate = max(Calendar.current.startOfDay(for: endDate), lowerBound)
+        }
+        return normalized
+    }
+
+    private func presentScheduleInfo(_ message: String) {
+        scheduleInfoDismissTask?.cancel()
+        withAnimation(.easeInOut(duration: 0.18)) {
+            scheduleInfoMessage = message
+        }
+
+        scheduleInfoDismissTask = Task {
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    scheduleInfoMessage = nil
+                }
+            }
+        }
+    }
+
+    private func dismissScheduleInfo() {
+        scheduleInfoDismissTask?.cancel()
+        scheduleInfoDismissTask = nil
+        withAnimation(.easeInOut(duration: 0.18)) {
+            scheduleInfoMessage = nil
+        }
+    }
+
+    private func stageScheduleRule(_ scheduleRule: ScheduleRule) {
+        pendingScheduleRule = scheduleRule
+    }
+
+    private func applyPendingScheduleRuleIfNeeded() {
+        guard let scheduleRule = pendingScheduleRule else { return }
+        pendingScheduleRule = nil
+        guard draft.scheduleRule != scheduleRule else { return }
+        draft.scheduleRule = scheduleRule
+    }
+
+    private var nonScheduleInvalidMessage: String? {
         if draft.trimmedName.isEmpty {
             return "Pill name is required."
         }
         if draft.trimmedDosage.isEmpty {
             return "Dosage is required."
         }
-        return AppCopy.chooseAtLeastOneDay
+        return nil
     }
 
     private func dismissKeyboardForNonTextControl() {
@@ -249,21 +375,4 @@ struct CreatePillView: View {
         CreatePillView()
     }
     .environmentObject(AppEnvironment.preview.pillAppState)
-}
-
-private struct CreatePillScheduleView: View {
-    @Binding var scheduleRule: ScheduleRule
-    @Binding var useScheduleForHistory: Bool
-    let dismissKeyboardForNonTextControl: () -> Void
-
-    var body: some View {
-        AppScheduleEditorPopoverContent(
-            scheduleRule: $scheduleRule,
-            onTap: dismissKeyboardForNonTextControl,
-            useScheduleForHistory: $useScheduleForHistory,
-            helperText: useScheduleForHistory
-                ? AppCopy.pillHistoryFollowsSchedule
-                : AppCopy.pillHistoryCountsEveryDay
-        )
-    }
 }

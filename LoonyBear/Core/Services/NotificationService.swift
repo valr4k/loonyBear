@@ -380,6 +380,9 @@ final class NotificationService {
                 guard let habit = try context.fetch(habitRequest).first else {
                     return false
                 }
+                guard !habit.boolValue(forKey: "isArchived") else {
+                    return false
+                }
 
                 var report = IntegrityReportBuilder()
                 guard
@@ -403,8 +406,14 @@ final class NotificationService {
 
                 let completedDays = Set(completionEntries.compactMap { $0.1.countsAsCompletion ? $0.0 : nil })
                 let skippedDays = Set(completionEntries.compactMap { !$0.1.countsAsCompletion ? $0.0 : nil })
+                let activeStartDate = ActiveCycleStartDate.value(
+                    for: habit,
+                    fallbackStartDate: startDate,
+                    calendar: calendar
+                )
                 let activeOverdueDay = ScheduledOverdueState.activeOverdueDay(
-                    startDate: startDate,
+                    startDate: activeStartDate,
+                    endDate: habit.dateValue(forKey: "endDate"),
                     schedules: schedules,
                     reminderTime: reminderTime,
                     positiveDays: completedDays,
@@ -604,6 +613,8 @@ final class NotificationService {
         from object: NSManagedObject,
         report: inout IntegrityReportBuilder
     ) -> HabitReminderConfiguration? {
+        guard !object.boolValue(forKey: "isArchived") else { return nil }
+
         guard
             let id = object.uuidValue(forKey: "id"),
             let name = object.stringValue(forKey: "name"),
@@ -657,11 +668,17 @@ final class NotificationService {
         }
         let completedDays = Set(completionEntries.compactMap { $0.1.countsAsCompletion ? $0.0 : nil })
         let skippedDays = Set(completionEntries.compactMap { !$0.1.countsAsCompletion ? $0.0 : nil })
+        let activeStartDate = ActiveCycleStartDate.value(
+            for: object,
+            fallbackStartDate: startDate,
+            calendar: calendar
+        )
 
         return HabitReminderConfiguration(
             id: id,
             name: name,
-            startDate: startDate,
+            startDate: activeStartDate,
+            endDate: object.dateValue(forKey: "endDate"),
             scheduleDays: scheduleDays,
             scheduleRule: scheduleRule,
             scheduleHistory: scheduleHistory,
@@ -676,6 +693,8 @@ final class NotificationService {
         from object: NSManagedObject,
         report: inout IntegrityReportBuilder
     ) -> PillReminderConfiguration? {
+        guard !object.boolValue(forKey: "isArchived") else { return nil }
+
         guard
             let id = object.uuidValue(forKey: "id"),
             let name = object.stringValue(forKey: "name"),
@@ -729,12 +748,18 @@ final class NotificationService {
         }
         let takenDays = Set(intakeEntries.compactMap { $0.1.countsAsIntake ? $0.0 : nil })
         let skippedDays = Set(intakeEntries.compactMap { !$0.1.countsAsIntake ? $0.0 : nil })
+        let activeStartDate = ActiveCycleStartDate.value(
+            for: object,
+            fallbackStartDate: startDate,
+            calendar: calendar
+        )
 
         return PillReminderConfiguration(
             id: id,
             name: name,
             dosage: dosage,
-            startDate: startDate,
+            startDate: activeStartDate,
+            endDate: object.dateValue(forKey: "endDate"),
             scheduleDays: scheduleDays,
             scheduleRule: scheduleRule,
             scheduleHistory: scheduleHistory,
@@ -811,6 +836,43 @@ final class NotificationService {
         )
     }
 
+    private func applyAutomaticArchiveIfNeeded(
+        for habit: NSManagedObject,
+        habitID: UUID
+    ) throws {
+        guard !habit.boolValue(forKey: "isArchived") else { return }
+        var report = IntegrityReportBuilder()
+        guard
+            let startDate = habit.dateValue(forKey: "startDate"),
+            let schedules = loadHabitSchedules(for: habit, habitID: habitID, report: &report),
+            let completionEntries = loadHabitCompletionEntries(for: habit, report: &report)
+        else {
+            throw report.makeError(operation: "notification.habit.autoArchive")
+        }
+
+        let completedDays = Set(completionEntries.compactMap { $0.1.countsAsCompletion ? $0.0 : nil })
+        let skippedDays = Set(completionEntries.compactMap { !$0.1.countsAsCompletion ? $0.0 : nil })
+        let activeStartDate = ActiveCycleStartDate.value(
+            for: habit,
+            fallbackStartDate: startDate,
+            calendar: calendar
+        )
+        guard ScheduleLifecycleSupport.shouldAutoArchive(
+            startDate: activeStartDate,
+            endDate: habit.dateValue(forKey: "endDate"),
+            schedules: schedules,
+            positiveDays: completedDays,
+            skippedDays: skippedDays,
+            calendar: calendar
+        ) else {
+            return
+        }
+
+        habit.setValue(true, forKey: "isArchived")
+        habit.setValue(clock.now(), forKey: "updatedAt")
+        overdueAnchorStore.clearAnchorDay(for: .habit, id: habitID)
+    }
+
     @discardableResult
     private func createCompletionIfNeeded(
         for habitID: UUID,
@@ -838,6 +900,9 @@ final class NotificationService {
                 if existingSource == .skipped {
                     existing.setValue(source.rawValue, forKey: "sourceRaw")
                     existing.setValue(clock.now(), forKey: "createdAt")
+                    if let habit = existing.value(forKey: "habit") as? NSManagedObject {
+                        try applyAutomaticArchiveIfNeeded(for: habit, habitID: habitID)
+                    }
                     try context.save()
                     return NotificationMutationOutcome.mutated
                 }
@@ -860,6 +925,7 @@ final class NotificationService {
             completion.setValue(source.rawValue, forKey: "sourceRaw")
             completion.setValue(clock.now(), forKey: "createdAt")
             completion.setValue(habit, forKey: "habit")
+            try applyAutomaticArchiveIfNeeded(for: habit, habitID: habitID)
 
             try context.save()
             return .mutated
@@ -918,6 +984,7 @@ final class NotificationService {
             completion.setValue(CompletionSource.skipped.rawValue, forKey: "sourceRaw")
             completion.setValue(clock.now(), forKey: "createdAt")
             completion.setValue(habit, forKey: "habit")
+            try applyAutomaticArchiveIfNeeded(for: habit, habitID: habitID)
 
             try context.save()
             return .mutated
@@ -1099,6 +1166,7 @@ struct HabitReminderConfiguration {
     let id: UUID
     let name: String
     let startDate: Date
+    let endDate: Date?
     let scheduleDays: WeekdaySet
     let scheduleRule: ScheduleRule
     let scheduleHistory: [HabitScheduleVersion]
@@ -1111,6 +1179,7 @@ struct HabitReminderConfiguration {
         id: UUID,
         name: String,
         startDate: Date,
+        endDate: Date? = nil,
         scheduleDays: WeekdaySet,
         scheduleRule: ScheduleRule? = nil,
         scheduleHistory: [HabitScheduleVersion] = [],
@@ -1122,6 +1191,7 @@ struct HabitReminderConfiguration {
         self.id = id
         self.name = name
         self.startDate = startDate
+        self.endDate = endDate
         self.scheduleDays = scheduleDays
         self.scheduleRule = scheduleRule ?? .weekly(scheduleDays)
         self.scheduleHistory = scheduleHistory

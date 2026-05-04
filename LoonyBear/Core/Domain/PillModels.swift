@@ -28,6 +28,7 @@ struct Pill: Identifiable, Equatable {
     let details: String?
     let sortOrder: Int
     let startDate: Date
+    let endDate: Date?
     let historyMode: PillHistoryMode
     let reminderEnabled: Bool
     let reminderTime: ReminderTime?
@@ -106,6 +107,9 @@ struct PillCardProjection: Identifiable, Equatable, Hashable {
     let isSkippedToday: Bool
     var needsHistoryReview = false
     var activeOverdueDay: Date?
+    var startsInFuture = false
+    var futureStartDate: Date? = nil
+    var isArchived = false
     let sortOrder: Int
 }
 
@@ -115,6 +119,7 @@ struct PillDetailsProjection: Equatable {
     let dosage: String
     let details: String?
     let startDate: Date
+    let endDate: Date?
     let historyMode: PillHistoryMode
     let scheduleSummary: String
     let scheduleDays: WeekdaySet
@@ -124,10 +129,12 @@ struct PillDetailsProjection: Equatable {
     let totalTakenDays: Int
     let takenDays: Set<Date>
     let skippedDays: Set<Date>
+    let scheduleHistory: [PillScheduleVersion]
     let scheduledDates: Set<Date>
     var needsHistoryReview = false
     var requiredPastScheduledDays: Set<Date> = []
     var activeOverdueDay: Date?
+    var isArchived = false
 }
 
 struct PillDashboardProjection: Equatable {
@@ -141,6 +148,7 @@ struct PillDraft: Equatable {
     var dosage = ""
     var details = ""
     var startDate: Date = Calendar.autoupdatingCurrent.startOfDay(for: Date())
+    var endDate: Date?
     var scheduleRule: ScheduleRule = .weekly(.daily)
     var useScheduleForHistory = true
     var reminderEnabled = false
@@ -172,11 +180,13 @@ struct EditPillDraft: Equatable {
     var dosage: String
     var details: String
     let startDate: Date
+    var endDate: Date?
     var scheduleRule: ScheduleRule
     var reminderEnabled: Bool
     var reminderTime: ReminderTime
     var takenDays: Set<Date>
     var skippedDays: Set<Date>
+    var scheduleEffectiveFrom: Date?
 
     init(
         id: UUID,
@@ -184,6 +194,7 @@ struct EditPillDraft: Equatable {
         dosage: String,
         details: String,
         startDate: Date,
+        endDate: Date? = nil,
         scheduleDays: WeekdaySet,
         reminderEnabled: Bool,
         reminderTime: ReminderTime,
@@ -195,11 +206,13 @@ struct EditPillDraft: Equatable {
         self.dosage = dosage
         self.details = details
         self.startDate = startDate
+        self.endDate = endDate
         self.scheduleRule = .weekly(scheduleDays)
         self.reminderEnabled = reminderEnabled
         self.reminderTime = reminderTime
         self.takenDays = takenDays
         self.skippedDays = skippedDays
+        scheduleEffectiveFrom = nil
     }
 
     init(
@@ -208,6 +221,7 @@ struct EditPillDraft: Equatable {
         dosage: String,
         details: String,
         startDate: Date,
+        endDate: Date? = nil,
         scheduleRule: ScheduleRule,
         reminderEnabled: Bool,
         reminderTime: ReminderTime,
@@ -219,11 +233,13 @@ struct EditPillDraft: Equatable {
         self.dosage = dosage
         self.details = details
         self.startDate = startDate
+        self.endDate = endDate
         self.scheduleRule = scheduleRule
         self.reminderEnabled = reminderEnabled
         self.reminderTime = reminderTime
         self.takenDays = takenDays
         self.skippedDays = skippedDays
+        scheduleEffectiveFrom = nil
     }
 
     var scheduleDays: WeekdaySet {

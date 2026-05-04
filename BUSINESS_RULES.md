@@ -16,6 +16,8 @@ This file describes the behavioral rules that are currently implemented in code.
 - Habit name must not be empty.
 - At least one schedule day must be selected.
 - The app allows at most 20 Habits.
+- Create Habit allows a start date from the last 30 days through the end of the second next calendar month.
+- A future Habit remains in its normal Build or Quit dashboard section, but it has no today action/status, no overdue state, no notifications, and no history review before its start date.
 
 ## Habit History Modes
 
@@ -61,7 +63,7 @@ This file describes the behavioral rules that are currently implemented in code.
 - Habit Details shows the same dismissible floating warning banner while any past scheduled day is missing. If the only missing day is the active overdue day, the warning asks the user to open Edit and choose `Completed` or `Skipped` for the overdue scheduled day.
 - Saving Edit Habit does not auto-fill missing past days; the user must choose the state.
 - Edit Habit delete confirmation uses a system alert with `Cancel` and destructive `Delete` actions.
-- If today's state is already finalized and the schedule is changed, the new schedule takes effect from tomorrow instead of rewriting today's schedule meaning.
+- If the schedule is changed, Edit shows an `Apply From` date. If the selected date already has an explicit state or does not match the new schedule, the date is resolved forward to the next available scheduled day and the user sees an informational banner.
 
 ## Habit Streak Rules
 
@@ -74,6 +76,11 @@ This file describes the behavioral rules that are currently implemented in code.
 ## Pills
 
 - Pills are shown in one ordered dashboard list that is later split into `Today` and `Pending` sections in the UI.
+- Pill name and dosage must not be empty.
+- At least one schedule day must be selected.
+- The app allows at most 20 Pills.
+- Create Pill allows a start date from the last 5 years through the end of the second next calendar month.
+- A future Pill appears in Pending, but it has no today action/status, no overdue state, no notifications, and no history review before its start date.
 - A Pill day can be in one of 3 stored states:
   - taken
   - skipped
@@ -127,19 +134,19 @@ This file describes the behavioral rules that are currently implemented in code.
 - Pill Details shows the same dismissible floating warning banner while any past scheduled day is missing. If the only missing day is the active overdue day, the warning asks the user to open Edit and choose `Taken` or `Skipped` for the overdue scheduled day.
 - Saving Edit Pill does not auto-fill missing past days; the user must choose the state.
 - Edit Pill delete confirmation uses a system alert with `Cancel` and destructive `Delete` actions.
-- If today's state is already finalized and the schedule is changed, the new schedule takes effect from tomorrow instead of rewriting today's schedule meaning.
+- If the schedule is changed, Edit shows an `Apply From` date. If the selected date already has an explicit state or does not match the new schedule, the date is resolved forward to the next available scheduled day and the user sees an informational banner.
 
 ## Schedule Rules
 
 - Schedules are represented by `WeekdaySet` bitmasks.
 - Editing schedule days appends a new schedule version row instead of rewriting older versions.
 - The current schedule is the latest schedule version whose `effectiveFrom` is not later than the relevant day.
-- If a schedule change is saved after today already has an explicit state, the new schedule version starts tomorrow.
-- Schedule rules support Weekly selection plus Intervals: Daily, Weekdays, Weekends, Weekly, Biweekly, and Custom every 2 to 20 days.
-- Custom `Every 14 days` uses the same schedule math as Biweekly and is summarized as `Biweekly` on cards and details.
+- If a schedule change is saved, the new schedule version uses the resolved `Apply From` date shown in Edit. Weekly schedules resolve to the nearest selected weekday without explicit state; Every-N-days schedules use the resolved date as their new interval anchor.
+- Schedule rules support weekday selection plus Intervals `Every N days`, limited to 2 through 5 days.
+- Weekday summaries are canonicalized as Daily for Monday through Sunday, Weekdays for Monday through Friday, Weekends for Saturday and Sunday, Weekly for one selected weekday, and Custom for other weekday combinations.
 - Create and Edit screens edit schedule days from an in-place popover instead of pushing a separate Schedule screen.
 - Details screens show the schedule in a read-only popover.
-- Schedule popovers use full weekday names, Intervals single-selection rows, no row dividers, and compact row spacing.
+- Schedule popovers use full weekday names, an Intervals row with a native Stepper, no row dividers, and compact row spacing.
 - Schedule rows open popovers without a pressed-row visual effect.
 - Create/Edit schedule popovers include `Use schedule for history?` only on flows that expose that option.
 - Schedule ordering uses:

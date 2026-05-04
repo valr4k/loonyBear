@@ -22,6 +22,7 @@ protocol PillRepository {
     func createPill(from draft: PillDraft) throws -> UUID
     func updatePill(from draft: EditPillDraft) throws
     func deletePill(id: UUID) throws
+    func setPillArchived(id: UUID, isArchived: Bool) throws
     func markTakenToday(id: UUID) throws
     func markPillTaken(id: UUID, on day: Date) throws
     func skipPillToday(id: UUID) throws

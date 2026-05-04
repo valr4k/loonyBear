@@ -188,6 +188,19 @@ final class PillAppState: ObservableObject {
         sideEffectCoordinator.handleDeletion(forPillID: id)
     }
 
+    func setPillArchived(id: UUID, isArchived: Bool) async {
+        let didChange = await writeCoordinator.performMutation(
+            refresh: refreshDashboard,
+            setError: { self.actionErrorMessage = $0 },
+            refreshOnFailure: true
+        ) {
+            try self.repository.setPillArchived(id: id, isArchived: isArchived)
+        }
+        guard didChange else { return }
+
+        sideEffectCoordinator.handleArchiveChange(forPillID: id, isArchived: isArchived)
+    }
+
     func movePills(from offsets: IndexSet, to destination: Int) async {
         _ = await writeCoordinator.performMutation(
             refresh: refreshDashboard,

@@ -6,35 +6,51 @@ struct EditHabitView: View {
 
     private let onSaveSuccess: () -> Void
     private let onDeleteSuccess: () -> Void
+    private let onArchiveSuccess: () -> Void
     private let showsCloseButton: Bool
     private let requiredPastScheduledDays: Set<Date>
     private let scheduledDates: Set<Date>
+    private let scheduleHistory: [HabitScheduleVersion]
     private let activeOverdueDay: Date?
+    private let originalScheduleRule: ScheduleRule
     @State private var draft: EditHabitDraft
+    @State private var pendingScheduleRule: ScheduleRule?
     @State private var validationMessage: String?
     @State private var historyValidationMessage: String?
     @State private var displayedMonth: Date
+    @State private var effectiveFromSelection: Date
+    @State private var hasManualEffectiveFromSelection = false
+    @State private var effectiveFromInfoMessage: String?
+    @State private var effectiveFromInfoDismissTask: Task<Void, Never>?
     @State private var isSaving = false
     @State private var isShowingDeleteConfirmation = false
+    @State private var isShowingArchiveConfirmation = false
     @State private var isShowingNotificationSettingsAlert = false
     @State private var isHistoryWarningDismissed = false
+    @State private var isScheduleWarningDismissed = false
+    @State private var isArchived: Bool
 
     init(
         details: HabitDetailsProjection,
         showsCloseButton: Bool = true,
         onSaveSuccess: @escaping () -> Void = {},
-        onDeleteSuccess: @escaping () -> Void = {}
+        onDeleteSuccess: @escaping () -> Void = {},
+        onArchiveSuccess: @escaping () -> Void = {}
     ) {
         self.onSaveSuccess = onSaveSuccess
         self.onDeleteSuccess = onDeleteSuccess
+        self.onArchiveSuccess = onArchiveSuccess
         self.showsCloseButton = showsCloseButton
         requiredPastScheduledDays = details.requiredPastScheduledDays
         scheduledDates = details.scheduledDates
+        scheduleHistory = details.scheduleHistory
         activeOverdueDay = details.activeOverdueDay
+        originalScheduleRule = details.scheduleRule
         _draft = State(initialValue: EditHabitDraft(
             id: details.id,
             type: details.type,
             startDate: details.startDate,
+            endDate: details.endDate,
             name: details.name,
             scheduleRule: details.scheduleRule,
             reminderEnabled: details.reminderEnabled,
@@ -42,14 +58,15 @@ struct EditHabitView: View {
             completedDays: details.completedDays,
             skippedDays: details.skippedDays
         ))
-        _displayedMonth = State(initialValue: Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: Date())) ?? Date())
+        _displayedMonth = State(initialValue: Self.initialDisplayedMonth(startDate: details.startDate))
+        _effectiveFromSelection = State(initialValue: Self.initialEffectiveFrom(startDate: details.startDate))
+        _isArchived = State(initialValue: details.isArchived)
     }
 
     var body: some View {
         AppScreen(backgroundStyle: .habits, topPadding: 8) {
             nameSection
-            notificationsSection
-            historySection
+            scheduleSection
 
             VStack(alignment: .leading, spacing: 8) {
                 AppFormSectionHeader(title: "Calendar")
@@ -58,7 +75,7 @@ struct EditHabitView: View {
                     HabitHistoryCalendarView(
                         month: displayedMonth,
                         editableDays: editableHistoryDays,
-                        scheduledDates: scheduledDates,
+                        scheduledDates: previewScheduledDates,
                         completedDays: $draft.completedDays,
                         skippedDays: $draft.skippedDays,
                         availableMonths: availableMonths,
@@ -75,30 +92,20 @@ struct EditHabitView: View {
                 AppHelperText(text: AppCopy.habitHistoryHint)
             }
 
-            Button(role: .destructive) {
-                isShowingDeleteConfirmation = true
-            } label: {
-                Label("Delete", systemImage: "trash")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.capsule)
-            .controlSize(.large)
-            .frame(maxWidth: .infinity)
-            .disabled(isSaving)
+            actionButtons
 
             if let validationMessage {
                 AppValidationBanner(message: validationMessage)
             }
         }
         .overlay(alignment: .bottom) {
-            floatingHistoryWarningBanner
+            floatingBottomBanners
         }
         .contentShape(Rectangle())
         .onTapGesture {
             AppDescriptionFieldSupport.dismissKeyboard()
         }
-        .navigationTitle(draft.type.sectionTitle)
+        .navigationTitle("Edit Habit")
         .navigationBarTitleDisplayMode(.inline)
         .scrollDismissesKeyboard(.immediately)
         .alert("Delete Habit?", isPresented: $isShowingDeleteConfirmation) {
@@ -109,6 +116,15 @@ struct EditHabitView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This habit will be permanently deleted.")
+        }
+        .alert(archiveConfirmationTitle, isPresented: $isShowingArchiveConfirmation) {
+            Button(archiveActionTitle) {
+                setHabitArchived(!isArchived)
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(archiveConfirmationMessage)
         }
         .toolbar {
             if showsCloseButton {
@@ -145,12 +161,22 @@ struct EditHabitView: View {
                 }
             }
         }
+        .onChange(of: draft.scheduleRule) { _, _ in
+            handleScheduleRuleChange()
+            resolveEffectiveFromSelection(showAdjustmentBanner: false)
+        }
+        .onAppear {
+            applyPendingScheduleRuleIfNeeded()
+            resolveEffectiveFromSelection(showAdjustmentBanner: false)
+        }
         .appNotificationSettingsAlert(isPresented: $isShowingNotificationSettingsAlert)
         .onChange(of: draft.completedDays) { _, _ in
             historyValidationMessage = nil
+            resolveEffectiveFromSelection(showAdjustmentBanner: false)
         }
         .onChange(of: draft.skippedDays) { _, _ in
             historyValidationMessage = nil
+            resolveEffectiveFromSelection(showAdjustmentBanner: false)
         }
         .onChange(of: hasMissingPastDays) { _, hasMissingPastDays in
             if !hasMissingPastDays {
@@ -160,7 +186,12 @@ struct EditHabitView: View {
         .animation(.easeInOut(duration: 0.18), value: validationMessage)
         .animation(.easeInOut(duration: 0.18), value: historyValidationMessage)
         .animation(.easeInOut(duration: 0.18), value: floatingHistoryWarningMessage)
+        .animation(.easeInOut(duration: 0.18), value: effectiveFromInfoMessage)
         .animation(.easeInOut(duration: 0.18), value: isHistoryWarningDismissed)
+        .animation(.easeInOut(duration: 0.18), value: isScheduleWarningDismissed)
+        .onDisappear {
+            effectiveFromInfoDismissTask?.cancel()
+        }
     }
 
     private var nameSection: some View {
@@ -169,25 +200,69 @@ struct EditHabitView: View {
         }
     }
 
-    private var historySection: some View {
-        AppFormCardSection(title: "History") {
-            AppStartDateValueRow(date: draft.startDate)
+    private var scheduleSection: some View {
+        AppEditScheduleSection(
+            reminderEnabled: $draft.reminderEnabled,
+            reminderDate: $draft.reminderTime.dateBinding(fallback: ReminderTime.default()),
+            repeatSummary: draft.scheduleRule.compactSummary,
+            effectiveFrom: effectiveFromBinding,
+            effectiveFromRange: effectiveFromRange,
+            isEffectiveFromEnabled: isEffectiveFromEnabled,
+            endDate: $draft.endDate,
+            endDateRange: selectableEndDateRange,
+            endDateFallback: draft.startDate,
+            endDateTitle: "Goal Date",
+            endDateEmptyTitle: "Forever",
+            reminderTimeTap: dismissKeyboardForNonTextControl,
+            repeatTap: dismissKeyboardForNonTextControl,
+            effectiveFromTap: dismissKeyboardForNonTextControl,
+            endDateTap: dismissKeyboardForNonTextControl
+        ) {
+            AppCreateRepeatEditorScreen(
+                backgroundStyle: .habits,
+                scheduleRule: draft.scheduleRule,
+                startDate: draft.startDate,
+                onTap: dismissKeyboardForNonTextControl
+            ) { scheduleRule in
+                stageScheduleRule(scheduleRule)
+            }
         }
     }
 
-    private var notificationsSection: some View {
-        AppNotificationSettingsSection(
-            scheduleSummary: draft.scheduleRule.compactSummary,
-            scheduleTap: dismissKeyboardForNonTextControl,
-            reminderEnabled: $draft.reminderEnabled,
-            reminderDate: $draft.reminderTime.dateBinding(fallback: ReminderTime.default()),
-            reminderTimeTap: dismissKeyboardForNonTextControl
-        ) {
-            EditHabitScheduleView(
-                scheduleRule: $draft.scheduleRule,
-                dismissKeyboardForNonTextControl: dismissKeyboardForNonTextControl
-            )
+    private var actionButtons: some View {
+        VStack(spacing: 10) {
+            archiveRestoreButton
+            deleteButton
         }
+    }
+
+    private var deleteButton: some View {
+        Button(role: .destructive) {
+            isShowingDeleteConfirmation = true
+        } label: {
+            Label("Delete", systemImage: "trash")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .controlSize(.large)
+        .frame(maxWidth: .infinity)
+        .disabled(isSaving)
+    }
+
+    private var archiveRestoreButton: some View {
+        Button {
+            isShowingArchiveConfirmation = true
+        } label: {
+            Label(archiveActionTitle, systemImage: archiveActionSystemImage)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .controlSize(.large)
+        .frame(maxWidth: .infinity)
+        .tint(.gray)
+        .disabled(isSaving || (isArchived && !isFormValid))
     }
 
     private var editableHistoryDays: Set<Date> {
@@ -195,14 +270,101 @@ struct EditHabitView: View {
     }
 
     private var availableMonths: [Date] {
-        HistoryMonthWindow.months(containing: editableHistoryDays)
+        let months = HistoryMonthWindow.months(containing: editableHistoryDays)
+        if !months.isEmpty {
+            return months
+        }
+        return [HistoryMonthWindow.displayMonth(startDate: draft.startDate)]
     }
 
     private var isFormValid: Bool {
-        !draft.trimmedName.isEmpty && draft.scheduleRule.isValidSelection
+        !draft.trimmedName.isEmpty &&
+            draft.scheduleRule.isValidSelection &&
+            isScheduleEffectiveFromValid &&
+            isEndDateValid
+    }
+
+    private var hasScheduleChanged: Bool {
+        draft.scheduleRule != originalScheduleRule
+    }
+
+    private var shouldUseScheduleEffectiveFrom: Bool {
+        hasScheduleChanged || isArchived
+    }
+
+    private var isScheduleEffectiveFromValid: Bool {
+        !shouldUseScheduleEffectiveFrom || currentEffectiveFromResolution != nil
+    }
+
+    private var isEffectiveFromEnabled: Bool {
+        guard let resolution = currentEffectiveFromResolution else {
+            return false
+        }
+        return isArchived || (hasScheduleChanged && resolution.resolvedDate != effectiveFromBaseDate)
+    }
+
+    private var previewScheduledDates: Set<Date> {
+        guard shouldUseScheduleEffectiveFrom, let effectiveFrom = currentEffectiveFromResolution?.resolvedDate else {
+            return scheduledDates
+        }
+
+        return SchedulePreviewSupport.scheduledDays(
+            startDate: draft.startDate,
+            through: HistoryMonthWindow.detailsCalendarEndDate(
+                startDate: draft.startDate,
+                today: Date(),
+                calendar: Calendar.current
+            ),
+            schedules: scheduleHistory,
+            replacementRule: draft.scheduleRule,
+            effectiveFrom: effectiveFrom,
+            calendar: Calendar.current
+        )
+    }
+
+    private var effectiveFromRange: ClosedRange<Date> {
+        let today = Calendar.current.startOfDay(for: Date())
+        let lowerBound = max(today, Calendar.current.startOfDay(for: draft.startDate))
+        let upperBound = max(
+            lowerBound,
+            HistoryMonthWindow.endOfSecondNextMonth(from: today, calendar: Calendar.current)
+        )
+        return lowerBound ... upperBound
+    }
+
+    private var effectiveFromBaseDate: Date {
+        effectiveFromRange.lowerBound
+    }
+
+    private var selectableEndDateRange: PartialRangeFrom<Date> {
+        let today = Calendar.current.startOfDay(for: Date())
+        var lowerBound = max(today, Calendar.current.startOfDay(for: draft.startDate))
+        if shouldUseScheduleEffectiveFrom, let effectiveFrom = currentEffectiveFromResolution?.resolvedDate {
+            lowerBound = max(lowerBound, effectiveFrom)
+        }
+        return lowerBound...
+    }
+
+    private var isEndDateValid: Bool {
+        guard let endDate = draft.endDate else {
+            return true
+        }
+        return Calendar.current.startOfDay(for: endDate) >= selectableEndDateRange.lowerBound
+    }
+
+    private var effectiveFromBinding: Binding<Date> {
+        Binding(
+            get: { effectiveFromSelection },
+            set: { newValue in
+                hasManualEffectiveFromSelection = true
+                effectiveFromSelection = Calendar.current.startOfDay(for: newValue)
+                resolveEffectiveFromSelection(showAdjustmentBanner: true)
+            }
+        )
     }
 
     private var currentMissingPastDays: [Date] {
+        guard !isArchived else { return [] }
         let normalized = normalizedDraft()
         return EditableHistoryValidation.missingPastDays(
             editableDays: requiredPastScheduledDays,
@@ -226,24 +388,65 @@ struct EditHabitView: View {
     }
 
     @ViewBuilder
-    private var floatingHistoryWarningBanner: some View {
-        if let message = floatingHistoryWarningMessage, !isHistoryWarningDismissed {
-            AppFloatingWarningBanner(message: message) {
-                isHistoryWarningDismissed = true
+    private var floatingBottomBanners: some View {
+        VStack(spacing: 10) {
+            if let message = scheduleWarningMessage, !isScheduleWarningDismissed {
+                AppFloatingWarningBanner(message: message) {
+                    isScheduleWarningDismissed = true
+                }
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 14)
-            .zIndex(1)
+
+            if let message = floatingHistoryWarningMessage, !isHistoryWarningDismissed {
+                AppFloatingWarningBanner(message: message) {
+                    isHistoryWarningDismissed = true
+                }
+            }
+
+            if let message = effectiveFromInfoMessage {
+                AppFloatingInfoBanner(message: message) {
+                    dismissEffectiveFromInfo()
+                }
+            }
         }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 14)
+        .zIndex(1)
+    }
+
+    private var scheduleWarningMessage: String? {
+        draft.scheduleRule.isValidSelection ? nil : AppCopy.chooseAtLeastOneDay
     }
 
     private var shouldShowNameValidation: Bool {
         draft.name.isEmpty == false && draft.trimmedName.isEmpty
     }
 
+    private var archiveActionTitle: String {
+        isArchived ? "Restore" : "Archive"
+    }
+
+    private var archiveActionSystemImage: String {
+        isArchived ? "arrow.uturn.backward" : "archivebox"
+    }
+
+    private var archiveConfirmationTitle: String {
+        isArchived ? "Restore Habit?" : "Archive Habit?"
+    }
+
+    private var archiveConfirmationMessage: String {
+        isArchived
+            ? "Save changes and move this habit back to its active section."
+            : "This habit will move to Archived."
+    }
+
     private func save() {
+        applyPendingScheduleRuleIfNeeded()
+
         guard isFormValid else {
-            validationMessage = draft.trimmedName.isEmpty ? "Habit name is required." : AppCopy.chooseAtLeastOneDay
+            if !draft.scheduleRule.isValidSelection {
+                isScheduleWarningDismissed = false
+            }
+            validationMessage = draft.trimmedName.isEmpty ? "Habit name is required." : nil
             return
         }
 
@@ -266,7 +469,9 @@ struct EditHabitView: View {
                 onSaveSuccess()
                 dismiss()
 
-                await appState.syncNotificationsAfterHabitUpdate(from: savedDraft)
+                if !isArchived {
+                    await appState.syncNotificationsAfterHabitUpdate(from: savedDraft)
+                }
             } catch {
                 if let error = error as? EditableHistoryValidationError {
                     historyValidationMessage = error.localizedDescription
@@ -279,6 +484,24 @@ struct EditHabitView: View {
                 isSaving = false
             }
         }
+    }
+
+    private func handleScheduleRuleChange() {
+        isScheduleWarningDismissed = false
+        if draft.scheduleRule.isValidSelection, validationMessage == AppCopy.chooseAtLeastOneDay {
+            validationMessage = nil
+        }
+    }
+
+    private func stageScheduleRule(_ scheduleRule: ScheduleRule) {
+        pendingScheduleRule = scheduleRule
+    }
+
+    private func applyPendingScheduleRuleIfNeeded() {
+        guard let scheduleRule = pendingScheduleRule else { return }
+        pendingScheduleRule = nil
+        guard draft.scheduleRule != scheduleRule else { return }
+        draft.scheduleRule = scheduleRule
     }
 
     private func deleteHabit() {
@@ -300,10 +523,153 @@ struct EditHabitView: View {
         }
     }
 
+    private func setHabitArchived(_ archived: Bool) {
+        if !archived, isArchived {
+            restoreHabit()
+            return
+        }
+
+        isSaving = true
+        validationMessage = nil
+        historyValidationMessage = nil
+
+        Task {
+            await appState.setHabitArchived(id: draft.id, isArchived: archived)
+            if let errorMessage = appState.actionErrorMessage {
+                validationMessage = errorMessage
+                isSaving = false
+                return
+            }
+
+            isArchived = archived
+            isSaving = false
+            onArchiveSuccess()
+            dismiss()
+        }
+    }
+
+    private func restoreHabit() {
+        applyPendingScheduleRuleIfNeeded()
+
+        guard isFormValid else {
+            if !draft.scheduleRule.isValidSelection {
+                isScheduleWarningDismissed = false
+            }
+            validationMessage = draft.trimmedName.isEmpty ? "Habit name is required." : nil
+            return
+        }
+
+        isSaving = true
+        validationMessage = nil
+        historyValidationMessage = nil
+        let restoredDraft = normalizedDraft()
+
+        Task {
+            do {
+                try await appState.updateHabit(from: restoredDraft)
+                await appState.setHabitArchived(id: draft.id, isArchived: false)
+                if let errorMessage = appState.actionErrorMessage {
+                    validationMessage = errorMessage
+                    isSaving = false
+                    return
+                }
+
+                isArchived = false
+                isSaving = false
+                onArchiveSuccess()
+                dismiss()
+            } catch {
+                if let error = error as? EditableHistoryValidationError {
+                    historyValidationMessage = error.localizedDescription
+                    if case .missingHabitPastDays(let days) = error, let firstDay = days.first {
+                        displayedMonth = month(containing: firstDay)
+                    }
+                } else {
+                    validationMessage = appState.actionErrorMessage ?? error.localizedDescription
+                }
+                isSaving = false
+            }
+        }
+    }
+
     private func normalizedDraft() -> EditHabitDraft {
         var normalized = draft
         normalized.skippedDays.subtract(normalized.completedDays)
+        normalized.scheduleEffectiveFrom = shouldUseScheduleEffectiveFrom ? currentEffectiveFromResolution?.resolvedDate : nil
+        if let endDate = normalized.endDate {
+            normalized.endDate = max(Calendar.current.startOfDay(for: endDate), selectableEndDateRange.lowerBound)
+        }
         return normalized
+    }
+
+    private var currentEffectiveFromResolution: ScheduleEffectiveFromResolution? {
+        effectiveFromResolution(
+            selectedDate: hasManualEffectiveFromSelection ? effectiveFromSelection : effectiveFromBaseDate
+        )
+    }
+
+    private func effectiveFromResolution(selectedDate: Date) -> ScheduleEffectiveFromResolution? {
+        ScheduleEffectiveFromResolver.resolve(
+            scheduleRule: draft.scheduleRule,
+            selectedDate: selectedDate,
+            explicitDays: draft.completedDays.union(draft.skippedDays),
+            minimumDate: effectiveFromRange.lowerBound,
+            maximumDate: effectiveFromRange.upperBound,
+            calendar: Calendar.current
+        )
+    }
+
+    private func resolveEffectiveFromSelection(showAdjustmentBanner: Bool) {
+        guard shouldUseScheduleEffectiveFrom else {
+            draft.scheduleEffectiveFrom = nil
+            hasManualEffectiveFromSelection = false
+            dismissEffectiveFromInfo()
+            return
+        }
+
+        guard let resolution = currentEffectiveFromResolution else {
+            draft.scheduleEffectiveFrom = nil
+            dismissEffectiveFromInfo()
+            return
+        }
+
+        let adjusted = resolution.wasAdjusted
+        if effectiveFromSelection != resolution.resolvedDate {
+            effectiveFromSelection = resolution.resolvedDate
+        }
+        draft.scheduleEffectiveFrom = resolution.resolvedDate
+
+        if adjusted, showAdjustmentBanner {
+            presentEffectiveFromInfo("Apply From set to the next scheduled day.")
+        } else {
+            dismissEffectiveFromInfo()
+        }
+    }
+
+    private func presentEffectiveFromInfo(_ message: String) {
+        effectiveFromInfoDismissTask?.cancel()
+        withAnimation(.easeInOut(duration: 0.18)) {
+            effectiveFromInfoMessage = message
+        }
+
+        effectiveFromInfoDismissTask = Task {
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    effectiveFromInfoMessage = nil
+                }
+            }
+        }
+    }
+
+    private func dismissEffectiveFromInfo() {
+        effectiveFromInfoDismissTask?.cancel()
+        effectiveFromInfoDismissTask = nil
+        withAnimation(.easeInOut(duration: 0.18)) {
+            effectiveFromInfoMessage = nil
+        }
     }
 
     private func historyReviewMessage(for missingPastDays: [Date]) -> String {
@@ -327,6 +693,15 @@ struct EditHabitView: View {
         Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: date)) ?? date
     }
 
+    private static func initialDisplayedMonth(startDate: Date) -> Date {
+        HistoryMonthWindow.displayMonth(startDate: startDate, today: Date(), calendar: Calendar.current)
+    }
+
+    private static func initialEffectiveFrom(startDate: Date) -> Date {
+        let today = Calendar.current.startOfDay(for: Date())
+        return max(today, Calendar.current.startOfDay(for: startDate))
+    }
+
     private func dismissKeyboardForNonTextControl() {
         AppDescriptionFieldSupport.dismissKeyboard()
     }
@@ -334,18 +709,6 @@ struct EditHabitView: View {
     @ViewBuilder
     private func validationText(_ text: String) -> some View {
         AppInlineErrorText(text: text)
-    }
-}
-
-private struct EditHabitScheduleView: View {
-    @Binding var scheduleRule: ScheduleRule
-    let dismissKeyboardForNonTextControl: () -> Void
-
-    var body: some View {
-        AppScheduleEditorPopoverContent(
-            scheduleRule: $scheduleRule,
-            onTap: dismissKeyboardForNonTextControl
-        )
     }
 }
 

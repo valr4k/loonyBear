@@ -305,27 +305,52 @@ struct BackupServiceTests {
         try service.saveFolderBookmark(for: folderURL)
 
         var habitDraft = CreateHabitDraft()
-        habitDraft.name = "Biweekly habit"
+        habitDraft.name = "Interval habit"
         habitDraft.startDate = TestSupport.makeDate(2026, 5, 1)
-        habitDraft.scheduleRule = .intervalPreset(.biweekly)
-        _ = try habitRepository.createHabit(from: habitDraft)
+        habitDraft.endDate = TestSupport.makeDate(2026, 5, 20)
+        habitDraft.scheduleRule = .intervalDays(4)
+        let habitID = try habitRepository.createHabit(from: habitDraft)
 
         var pillDraft = PillDraft()
         pillDraft.name = "Custom pill"
         pillDraft.dosage = "1 tablet"
         pillDraft.startDate = TestSupport.makeDate(2026, 5, 1)
+        pillDraft.endDate = TestSupport.makeDate(2026, 5, 21)
         pillDraft.scheduleRule = .intervalDays(5)
-        _ = try pillRepository.createPill(from: pillDraft)
+        let pillID = try pillRepository.createPill(from: pillDraft)
 
         try service.createBackup()
 
         let archive = try readArchive(from: folderURL, compressionService: compressionService)
         let habitSchedule = try #require(archive.scheduleVersions.first)
         let pillSchedule = try #require(archive.pillScheduleVersions.first)
-        #expect(habitSchedule.scheduleKind == ScheduleRule.Kind.biweekly.rawValue)
-        #expect(habitSchedule.intervalDays == 14)
+        #expect(archive.habits.first?.endDate == habitDraft.endDate)
+        #expect(archive.pills.first?.endDate == pillDraft.endDate)
+        #expect(habitSchedule.scheduleKind == ScheduleRule.Kind.intervalDays.rawValue)
+        #expect(habitSchedule.intervalDays == 4)
         #expect(pillSchedule.scheduleKind == ScheduleRule.Kind.intervalDays.rawValue)
         #expect(pillSchedule.intervalDays == 5)
+
+        let restoredPersistence = PersistenceController(inMemory: true)
+        let restoredHabitRepository = CoreDataHabitRepository(
+            context: restoredPersistence.container.viewContext,
+            makeWriteContext: restoredPersistence.makeBackgroundContext
+        )
+        let restoredPillRepository = CoreDataPillRepository(
+            context: restoredPersistence.container.viewContext,
+            makeWriteContext: restoredPersistence.makeBackgroundContext
+        )
+        let restoreService = makeBackupService(
+            context: restoredPersistence.container.viewContext,
+            persistence: restoredPersistence
+        )
+
+        try restoreService.restoreArchive(archive)
+
+        let restoredHabit = try #require(try restoredHabitRepository.fetchHabitDetails(id: habitID))
+        let restoredPill = try #require(try restoredPillRepository.fetchPillDetails(id: pillID))
+        #expect(restoredHabit.endDate == habitDraft.endDate)
+        #expect(restoredPill.endDate == pillDraft.endDate)
     }
 
     @Test
@@ -1079,6 +1104,64 @@ struct BackupServiceTests {
         let restoredHabit = try #require(try repository.fetchHabitDetails(id: archive.habits[0].id))
         #expect(restoredHabit.skippedDays.contains(archive.completionRecords[0].localDate))
         #expect(!restoredHabit.completedDays.contains(archive.completionRecords[0].localDate))
+    }
+
+    @Test
+    func restoreArchiveMigratesLegacyWeeklyIntervalSevenDaysToWeeklyDay() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let habitRepository = CoreDataHabitRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let pillRepository = CoreDataPillRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = makeBackupService(context: context, persistence: persistence)
+        let sundayEffectiveFrom = TestSupport.makeDate(2026, 3, 1)
+        let archive = makeValidArchive()
+        let legacyArchive = BackupArchive(
+            schemaVersion: archive.schemaVersion,
+            exportedAt: archive.exportedAt,
+            habits: archive.habits,
+            scheduleVersions: [
+                BackupScheduleVersion(
+                    id: archive.scheduleVersions[0].id,
+                    habitId: archive.scheduleVersions[0].habitId,
+                    weekdayMask: 0,
+                    scheduleKind: "weeklyInterval",
+                    intervalDays: 7,
+                    effectiveFrom: sundayEffectiveFrom,
+                    createdAt: sundayEffectiveFrom,
+                    version: 1
+                ),
+            ],
+            completionRecords: archive.completionRecords,
+            ordering: archive.ordering,
+            settings: archive.settings,
+            pills: archive.pills,
+            pillScheduleVersions: [
+                BackupPillScheduleVersion(
+                    id: archive.pillScheduleVersions[0].id,
+                    pillId: archive.pillScheduleVersions[0].pillId,
+                    weekdayMask: 0,
+                    scheduleKind: "weeklyInterval",
+                    intervalDays: 7,
+                    effectiveFrom: sundayEffectiveFrom,
+                    createdAt: sundayEffectiveFrom,
+                    version: 1
+                ),
+            ],
+            pillIntakeRecords: archive.pillIntakeRecords
+        )
+
+        try service.restoreArchive(legacyArchive)
+
+        let restoredHabit = try #require(try habitRepository.fetchHabitDetails(id: archive.habits[0].id))
+        let restoredPill = try #require(try pillRepository.fetchPillDetails(id: archive.pills[0].id))
+        #expect(restoredHabit.scheduleRule == .weekly(.sunday))
+        #expect(restoredPill.scheduleRule == .weekly(.sunday))
     }
 
     @Test

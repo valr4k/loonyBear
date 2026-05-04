@@ -44,10 +44,12 @@ struct MyHabitsView: View {
                                 )
                                 .padding(.horizontal, 10)
                                 .listRowInsets(EdgeInsets())
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
-                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                    if let overdueDay = habit.activeOverdueDay {
+	                                .listRowBackground(Color.clear)
+	                                .listRowSeparator(.hidden)
+	                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
+	                                    if habit.isArchived || habit.startsInFuture {
+	                                        EmptyView()
+	                                    } else if let overdueDay = habit.activeOverdueDay {
                                         Button {
                                             Task {
                                                 await appState.completeHabitDay(id: habit.id, on: overdueDay)
@@ -102,22 +104,22 @@ struct MyHabitsView: View {
                                         }
                                         .tint(.red)
                                     }
-                                }
-                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    Button {
-                                        onShowHabitInfo(habit)
-                                    } label: {
-                                        Image(systemName: "info")
-                                    }
-                                    .tint(.indigo)
+	                                }
+	                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+	                                    Button {
+	                                        onShowHabitInfo(habit)
+	                                    } label: {
+	                                        Image(systemName: "info")
+	                                    }
+	                                    .tint(.indigo)
 
-                                    Button {
-                                        onEditHabit(habit)
-                                    } label: {
-                                        Image(systemName: "pencil")
-                                    }
-                                    .tint(.blue)
-                                }
+	                                    Button {
+	                                        onEditHabit(habit)
+	                                    } label: {
+	                                        Image(systemName: "pencil")
+	                                    }
+	                                    .tint(.blue)
+	                                }
                             }
                         } header: {
                             Text(section.title)
@@ -200,6 +202,9 @@ private struct HabitCardView: View {
                 Text(habit.scheduleSummary)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .allowsTightening(true)
 
                 Text("Current streak: \(DayCountFormatter.compactDurationString(for: habit.currentStreak))")
                     .font(.caption)
@@ -209,7 +214,12 @@ private struct HabitCardView: View {
 
             Color.clear
                 .overlay(alignment: .topTrailing) {
-                    if habit.reminderText != nil || activeOverdueLabel != nil {
+                    if let futureStartLabel {
+                        Text(futureStartLabel)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: true, vertical: false)
+                    } else if habit.reminderText != nil || activeOverdueLabel != nil {
                         VStack(alignment: .trailing, spacing: 2) {
                             if let reminderText = habit.reminderText {
                                 Text(reminderText)
@@ -264,6 +274,11 @@ private struct HabitCardView: View {
     private var activeOverdueLabel: String? {
         guard let overdueDay = habit.activeOverdueDay else { return nil }
         return OverdueDayLabel.text(for: overdueDay, now: currentTime)
+    }
+
+    private var futureStartLabel: String? {
+        guard habit.startsInFuture, let futureStartDate = habit.futureStartDate else { return nil }
+        return FutureStartLabel.text(for: futureStartDate)
     }
 }
 

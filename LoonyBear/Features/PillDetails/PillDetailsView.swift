@@ -11,7 +11,6 @@ struct PillDetailsView: View {
     @State private var isLoadingDetails = true
     @State private var needsReloadOnAppear = false
     @State private var isShowingEdit = false
-    @State private var isShowingSchedulePopover = false
     @State private var isCalendarWarningDismissed = false
     @State private var displayedMonth: Date = {
         var calendar = Calendar.autoupdatingCurrent
@@ -53,30 +52,28 @@ struct PillDetailsView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    AppFormSectionHeader(title: "Notifications")
+                    AppFormSectionHeader(title: "Streak")
 
                     AppCard {
                         AppPlainValueRow(
-                            title: "Schedule",
-                            value: details.scheduleRule.compactSummary,
-                            valueColor: AnyShapeStyle(.secondary),
-                            showsChevron: true
+                            title: "Taken for",
+                            value: DayCountFormatter.compactDurationString(for: details.totalTakenDays),
+                            valueColor: AnyShapeStyle(.secondary)
                         )
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            isShowingSchedulePopover = true
-                        }
-                        .popover(
-                            isPresented: $isShowingSchedulePopover,
-                            attachmentAnchor: .point(.trailing),
-                            arrowEdge: .trailing
-                        ) {
-                            AppReadOnlySchedulePopoverContent(scheduleRule: details.scheduleRule)
-                                .presentationBackground(.clear)
-                        }
+                    }
+                }
 
-                        AppSectionDivider()
+                VStack(alignment: .leading, spacing: 8) {
+                    AppFormSectionHeader(title: "Schedule")
+
+                    AppCard {
                         AppPlainValueRow(title: "Reminder", value: details.reminderTime?.formatted ?? "Off")
+                        AppSectionDivider()
+                        AppPlainValueRow(
+                            title: "Repeat",
+                            value: scheduleDisplayText(for: details),
+                            valueColor: AnyShapeStyle(.secondary)
+                        )
                     }
                 }
 
@@ -86,7 +83,7 @@ struct PillDetailsView: View {
                     AppCard {
                         AppPlainValueRow(title: "Start Date", value: details.startDate.formatted(date: .abbreviated, time: .omitted))
                         AppSectionDivider()
-                        AppPlainValueRow(title: "Taken for", value: DayCountFormatter.compactDurationString(for: details.totalTakenDays), valueColor: AnyShapeStyle(.secondary))
+                        AppPlainValueRow(title: "End Date", value: endDateText(for: details.endDate))
                     }
                 }
 
@@ -194,6 +191,9 @@ struct PillDetailsView: View {
                 },
                 onDeleteSuccess: {
                     dismiss()
+                },
+                onArchiveSuccess: {
+                    dismiss()
                 }
             )
             .appTintedBackButton()
@@ -229,6 +229,7 @@ struct PillDetailsView: View {
         switch pillAppState.loadPillDetailsState(id: pill.id) {
         case .found(let loadedDetails):
             details = loadedDetails
+            displayedMonth = HistoryMonthWindow.displayMonth(startDate: loadedDetails.startDate)
             detailErrorMessage = nil
             isIntegrityError = false
         case .notFound:
@@ -244,7 +245,26 @@ struct PillDetailsView: View {
     }
 
     private func availableMonths(for startDate: Date) -> [Date] {
-        HistoryMonthWindow.months(from: startDate)
+        HistoryMonthWindow.months(
+            from: startDate,
+            through: HistoryMonthWindow.detailsCalendarEndDate(startDate: startDate),
+            calendar: Calendar.current
+        )
+    }
+
+    private func scheduleDisplayText(for details: PillDetailsProjection) -> String {
+        DashboardScheduleSummary.text(
+            latestSchedule: details.scheduleHistory.sorted(by: CoreDataScheduleSupport.isNewerSchedule).first,
+            startDate: details.startDate,
+            endDate: details.endDate,
+            schedules: details.scheduleHistory,
+            today: Calendar.current.startOfDay(for: Date()),
+            calendar: Calendar.current
+        )
+    }
+
+    private func endDateText(for endDate: Date?) -> String {
+        endDate?.formatted(date: .abbreviated, time: .omitted) ?? "Never"
     }
 
     private func calendarReviewMessage(for details: PillDetailsProjection) -> String? {

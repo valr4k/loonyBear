@@ -20,11 +20,11 @@ final class WidgetSyncService {
     }
 
     func syncSnapshot(from dashboard: DashboardProjection) {
-        let sections = dashboard.sections.map { section in
+        let sections = dashboard.sections.filter { $0.id != .archived }.map { section in
             WidgetSectionSnapshot(
                 type: section.id.rawValue,
                 title: section.title,
-                habits: section.habits.map { habit in
+                habits: section.habits.filter { !$0.isArchived }.map { habit in
                     WidgetHabitSnapshot(
                         id: habit.id,
                         name: habit.name,

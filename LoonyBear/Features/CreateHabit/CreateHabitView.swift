@@ -8,15 +8,17 @@ struct CreateHabitView: View {
     @State private var validationMessage: String?
     @State private var createLimitWarningMessage: String?
     @State private var isCreateLimitWarningDismissed = false
+    @State private var isScheduleWarningDismissed = false
+    @State private var pendingScheduleRule: ScheduleRule?
     @State private var isSaving = false
+    @State private var hasInitialized = false
     @State private var isShowingNotificationSettingsAlert = false
 
     var body: some View {
         AppScreen(backgroundStyle: .habits, topPadding: 8) {
             VStack(alignment: .leading, spacing: 20) {
                 headerSection
-                notificationsSection
-                historySection
+                scheduleSection
                 if let validationMessage {
                     AppValidationBanner(message: validationMessage)
                 }
@@ -27,7 +29,7 @@ struct CreateHabitView: View {
             }
         }
         .overlay(alignment: .bottom) {
-            createLimitWarningBanner
+            floatingBottomBanners
         }
         .navigationTitle("Create Habit")
         .navigationBarTitleDisplayMode(.inline)
@@ -54,10 +56,11 @@ struct CreateHabitView: View {
             }
         }
         .onAppear {
-            validationMessage = nil
-            createLimitWarningMessage = nil
-            isCreateLimitWarningDismissed = false
-            appState.clearCreateHabitError()
+            initializeIfNeeded()
+            applyPendingScheduleRuleIfNeeded()
+        }
+        .onChange(of: draft.scheduleRule) { _, _ in
+            handleScheduleRuleChange()
         }
         .onChange(of: draft.reminderEnabled) { _, isEnabled in
             guard isEnabled else { return }
@@ -76,6 +79,7 @@ struct CreateHabitView: View {
         .animation(.easeInOut(duration: 0.18), value: validationMessage)
         .animation(.easeInOut(duration: 0.18), value: createLimitWarningMessage)
         .animation(.easeInOut(duration: 0.18), value: isCreateLimitWarningDismissed)
+        .animation(.easeInOut(duration: 0.18), value: isScheduleWarningDismissed)
     }
 
     private var headerSection: some View {
@@ -103,38 +107,53 @@ struct CreateHabitView: View {
         }
     }
 
-    private var historySection: some View {
-        AppFormCardSection(title: "History") {
-            AppStartDatePickerRow(
-                date: $draft.startDate,
-                range: selectableStartDateRange,
-                onTap: dismissKeyboardForNonTextControl
-            )
-        }
-    }
-
-    private var notificationsSection: some View {
-        AppNotificationSettingsSection(
-            scheduleSummary: draft.scheduleRule.compactSummary,
-            scheduleTap: dismissKeyboardForNonTextControl,
+    private var scheduleSection: some View {
+        AppCreateScheduleSection(
+            startDate: startDateBinding,
+            startDateRange: selectableStartDateRange,
             reminderEnabled: $draft.reminderEnabled,
             reminderDate: $draft.reminderTime.dateBinding(fallback: ReminderTime(hour: 20, minute: 0)),
-            reminderTimeTap: dismissKeyboardForNonTextControl
+            endDate: $draft.endDate,
+            endDateRange: selectableEndDateRange,
+            endDateTitle: "Goal Date",
+            endDateEmptyTitle: "Forever",
+            repeatSummary: draft.scheduleRule.compactSummary,
+            startDateTap: dismissKeyboardForNonTextControl,
+            reminderTimeTap: dismissKeyboardForNonTextControl,
+            repeatTap: dismissKeyboardForNonTextControl,
+            endDateTap: dismissKeyboardForNonTextControl
         ) {
-            CreateHabitScheduleView(
-                scheduleRule: $draft.scheduleRule,
-                useScheduleForHistory: $draft.useScheduleForHistory,
-                dismissKeyboardForNonTextControl: dismissKeyboardForNonTextControl
+            AppCreateRepeatEditorScreen(
+                backgroundStyle: .habits,
+                scheduleRule: draft.scheduleRule,
+                startDate: draft.startDate,
+                onTap: dismissKeyboardForNonTextControl,
+                onSave: stageScheduleRule
             )
         }
     }
 
     private var selectableStartDateRange: ClosedRange<Date> {
-        StartDateSelectionWindow.range(offset: DateComponents(day: -29))
+        StartDateSelectionWindow.range(offset: DateComponents(year: -5))
+    }
+
+    private var selectableEndDateRange: PartialRangeFrom<Date> {
+        let today = Calendar.current.startOfDay(for: Date())
+        let lowerBound = max(today, Calendar.current.startOfDay(for: draft.startDate))
+        return lowerBound...
     }
 
     private var isFormValid: Bool {
         !draft.trimmedName.isEmpty && draft.scheduleRule.isValidSelection
+    }
+
+    private var startDateBinding: Binding<Date> {
+        Binding(
+            get: { draft.startDate },
+            set: { newValue in
+                draft.startDate = Calendar.current.startOfDay(for: newValue)
+            }
+        )
     }
 
     private var shouldShowNameValidation: Bool {
@@ -142,10 +161,20 @@ struct CreateHabitView: View {
     }
 
     @ViewBuilder
-    private var createLimitWarningBanner: some View {
-        if let message = createLimitWarningMessage, !isCreateLimitWarningDismissed {
-            AppFloatingWarningBanner(message: message) {
-                isCreateLimitWarningDismissed = true
+    private var floatingBottomBanners: some View {
+        if shouldShowFloatingBottomBanners {
+            VStack(spacing: 10) {
+                if let message = scheduleWarningMessage, !isScheduleWarningDismissed {
+                    AppFloatingWarningBanner(message: message) {
+                        isScheduleWarningDismissed = true
+                    }
+                }
+
+                if let message = createLimitWarningMessage, !isCreateLimitWarningDismissed {
+                    AppFloatingWarningBanner(message: message) {
+                        isCreateLimitWarningDismissed = true
+                    }
+                }
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 14)
@@ -153,19 +182,29 @@ struct CreateHabitView: View {
         }
     }
 
+    private var shouldShowFloatingBottomBanners: Bool {
+        (scheduleWarningMessage != nil && !isScheduleWarningDismissed)
+            || (createLimitWarningMessage != nil && !isCreateLimitWarningDismissed)
+    }
+
+    private var scheduleWarningMessage: String? {
+        draft.scheduleRule.isValidSelection ? nil : AppCopy.chooseAtLeastOneDay
+    }
+
     private func saveHabit() {
         guard isFormValid else {
             createLimitWarningMessage = nil
-            validationMessage = draft.trimmedName.isEmpty
-                ? "Habit name is required."
-                : AppCopy.chooseAtLeastOneDay
+            if !draft.scheduleRule.isValidSelection {
+                isScheduleWarningDismissed = false
+            }
+            validationMessage = draft.trimmedName.isEmpty ? "Habit name is required." : nil
             return
         }
 
         isSaving = true
         validationMessage = nil
         createLimitWarningMessage = nil
-        let savedDraft = draft
+        let savedDraft = normalizedDraft()
 
         Task {
             do {
@@ -187,6 +226,13 @@ struct CreateHabitView: View {
         }
     }
 
+    private func handleScheduleRuleChange() {
+        isScheduleWarningDismissed = false
+        if draft.scheduleRule.isValidSelection, validationMessage == AppCopy.chooseAtLeastOneDay {
+            validationMessage = nil
+        }
+    }
+
     private func isCreateLimitError(_ error: Error, message: String) -> Bool {
         if let createHabitError = error as? CreateHabitError, createHabitError == .tooManyHabits {
             return true
@@ -200,6 +246,38 @@ struct CreateHabitView: View {
         isCreateLimitWarningDismissed = false
     }
 
+    private func normalizedDraft() -> CreateHabitDraft {
+        var normalized = draft
+        normalized.useScheduleForHistory = true
+        if let endDate = normalized.endDate {
+            let today = Calendar.current.startOfDay(for: Date())
+            let lowerBound = max(today, Calendar.current.startOfDay(for: normalized.startDate))
+            normalized.endDate = max(Calendar.current.startOfDay(for: endDate), lowerBound)
+        }
+        return normalized
+    }
+
+    private func initializeIfNeeded() {
+        guard !hasInitialized else { return }
+        validationMessage = nil
+        createLimitWarningMessage = nil
+        isCreateLimitWarningDismissed = false
+        isScheduleWarningDismissed = false
+        appState.clearCreateHabitError()
+        hasInitialized = true
+    }
+
+    private func stageScheduleRule(_ scheduleRule: ScheduleRule) {
+        pendingScheduleRule = scheduleRule
+    }
+
+    private func applyPendingScheduleRuleIfNeeded() {
+        guard let scheduleRule = pendingScheduleRule else { return }
+        pendingScheduleRule = nil
+        guard draft.scheduleRule != scheduleRule else { return }
+        draft.scheduleRule = scheduleRule
+    }
+
     private func dismissKeyboardForNonTextControl() {
         AppDescriptionFieldSupport.dismissKeyboard()
     }
@@ -208,21 +286,4 @@ struct CreateHabitView: View {
 #Preview {
     CreateHabitView()
         .environmentObject(AppEnvironment.preview.appState)
-}
-
-private struct CreateHabitScheduleView: View {
-    @Binding var scheduleRule: ScheduleRule
-    @Binding var useScheduleForHistory: Bool
-    let dismissKeyboardForNonTextControl: () -> Void
-
-    var body: some View {
-        AppScheduleEditorPopoverContent(
-            scheduleRule: $scheduleRule,
-            onTap: dismissKeyboardForNonTextControl,
-            useScheduleForHistory: $useScheduleForHistory,
-            helperText: useScheduleForHistory
-                ? AppCopy.habitHistoryFollowsSchedule
-                : AppCopy.habitHistoryCountsEveryDay
-        )
-    }
 }

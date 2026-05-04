@@ -136,6 +136,23 @@ final class HabitAppState: ObservableObject {
         }
     }
 
+    func setHabitArchived(id: UUID, isArchived: Bool) async {
+        let didChange = await writeCoordinator.performMutation(
+            refresh: refreshDashboard,
+            setError: { self.actionErrorMessage = $0 },
+            refreshOnFailure: true
+        ) {
+            try self.repository.setHabitArchived(id: id, isArchived: isArchived)
+        }
+        guard didChange else { return }
+
+        sideEffectCoordinator.handleArchiveChange(
+            forHabitID: id,
+            dashboard: dashboard,
+            isArchived: isArchived
+        )
+    }
+
     func clearActionError() {
         actionErrorMessage = nil
     }

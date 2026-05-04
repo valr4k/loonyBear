@@ -348,7 +348,10 @@ final class BackupService {
                         name: name,
                         sortOrder: Int(habit.value(forKey: "sortOrder") as? Int32 ?? 0),
                         startDate: startDate,
+                        activeFrom: habit.value(forKey: "activeFrom") as? Date,
+                        endDate: habit.value(forKey: "endDate") as? Date,
                         historyMode: historyModeRaw,
+                        isArchived: habit.boolValue(forKey: "isArchived"),
                         reminderEnabled: reminderEnabled,
                         reminderTime: reminderTime.map { BackupReminderTime(hour: $0.hour, minute: $0.minute) },
                         createdAt: createdAt,
@@ -494,7 +497,10 @@ final class BackupService {
                         details: pill.value(forKey: "detailsText") as? String,
                         sortOrder: Int(pill.value(forKey: "sortOrder") as? Int32 ?? 0),
                         startDate: startDate,
+                        activeFrom: pill.value(forKey: "activeFrom") as? Date,
+                        endDate: pill.value(forKey: "endDate") as? Date,
                         historyMode: historyModeRaw,
+                        isArchived: pill.boolValue(forKey: "isArchived"),
                         reminderEnabled: reminderEnabled,
                         reminderTime: reminderTime.map { BackupReminderTime(hour: $0.hour, minute: $0.minute) },
                         createdAt: createdAt,
@@ -620,7 +626,10 @@ final class BackupService {
                     object.setValue(habit.name, forKey: "name")
                     object.setValue(Int32(habit.sortOrder), forKey: "sortOrder")
                     object.setValue(habit.startDate, forKey: "startDate")
+                    object.setValue(habit.activeFrom, forKey: "activeFrom")
+                    object.setValue(habit.endDate, forKey: "endDate")
                     object.setValue(habit.historyMode, forKey: "historyModeRaw")
+                    object.setValue(habit.isArchived, forKey: "isArchived")
                     object.setValue(habit.reminderEnabled, forKey: "reminderEnabled")
                     object.setValue(habit.reminderTime.map { Int16($0.hour) }, forKey: "reminderHour")
                     object.setValue(habit.reminderTime.map { Int16($0.minute) }, forKey: "reminderMinute")
@@ -638,9 +647,14 @@ final class BackupService {
                     let object = NSEntityDescription.insertNewObject(forEntityName: "HabitScheduleVersion", into: context)
                     object.setValue(version.id, forKey: "id")
                     object.setValue(version.habitId, forKey: "habitID")
-                    object.setValue(Int16(version.weekdayMask), forKey: "weekdayMask")
-                    object.setValue(version.scheduleKind, forKey: "scheduleKindRaw")
-                    object.setValue(Int16(version.intervalDays ?? ScheduleRule.defaultIntervalDays), forKey: "intervalDays")
+                    if let rule = restoredScheduleRule(
+                        kindRaw: version.scheduleKind,
+                        weekdayMask: version.weekdayMask,
+                        intervalDays: version.intervalDays,
+                        effectiveFrom: version.effectiveFrom
+                    ) {
+                        CoreDataScheduleSupport.apply(rule, to: object)
+                    }
                     object.setValue(version.effectiveFrom, forKey: "effectiveFrom")
                     object.setValue(version.createdAt, forKey: "createdAt")
                     object.setValue(Int32(version.version), forKey: "version")
@@ -665,7 +679,10 @@ final class BackupService {
                     object.setValue(pill.details, forKey: "detailsText")
                     object.setValue(Int32(pill.sortOrder), forKey: "sortOrder")
                     object.setValue(pill.startDate, forKey: "startDate")
+                    object.setValue(pill.activeFrom, forKey: "activeFrom")
+                    object.setValue(pill.endDate, forKey: "endDate")
                     object.setValue(pill.historyMode, forKey: "historyModeRaw")
+                    object.setValue(pill.isArchived, forKey: "isArchived")
                     object.setValue(pill.reminderEnabled, forKey: "reminderEnabled")
                     object.setValue(pill.reminderTime.map { Int16($0.hour) }, forKey: "reminderHour")
                     object.setValue(pill.reminderTime.map { Int16($0.minute) }, forKey: "reminderMinute")
@@ -683,9 +700,14 @@ final class BackupService {
                     let object = NSEntityDescription.insertNewObject(forEntityName: "PillScheduleVersion", into: context)
                     object.setValue(version.id, forKey: "id")
                     object.setValue(version.pillId, forKey: "pillID")
-                    object.setValue(Int16(version.weekdayMask), forKey: "weekdayMask")
-                    object.setValue(version.scheduleKind, forKey: "scheduleKindRaw")
-                    object.setValue(Int16(version.intervalDays ?? ScheduleRule.defaultIntervalDays), forKey: "intervalDays")
+                    if let rule = restoredScheduleRule(
+                        kindRaw: version.scheduleKind,
+                        weekdayMask: version.weekdayMask,
+                        intervalDays: version.intervalDays,
+                        effectiveFrom: version.effectiveFrom
+                    ) {
+                        CoreDataScheduleSupport.apply(rule, to: object)
+                    }
                     object.setValue(version.effectiveFrom, forKey: "effectiveFrom")
                     object.setValue(version.createdAt, forKey: "createdAt")
                     object.setValue(Int32(version.version), forKey: "version")
@@ -843,10 +865,11 @@ final class BackupService {
                 )
                 continue
             }
-            guard ScheduleRule.make(
+            guard restoredScheduleRule(
                 kindRaw: schedule.scheduleKind,
                 weekdayMask: schedule.weekdayMask,
-                intervalDays: schedule.intervalDays ?? ScheduleRule.defaultIntervalDays
+                intervalDays: schedule.intervalDays,
+                effectiveFrom: schedule.effectiveFrom
             ) != nil else {
                 report.append(
                     area: "backup.restore",
@@ -943,10 +966,11 @@ final class BackupService {
                 )
                 continue
             }
-            guard ScheduleRule.make(
+            guard restoredScheduleRule(
                 kindRaw: schedule.scheduleKind,
                 weekdayMask: schedule.weekdayMask,
-                intervalDays: schedule.intervalDays ?? ScheduleRule.defaultIntervalDays
+                intervalDays: schedule.intervalDays,
+                effectiveFrom: schedule.effectiveFrom
             ) != nil else {
                 report.append(
                     area: "backup.restore",
@@ -1148,6 +1172,20 @@ final class BackupService {
         case .none:
             throw BackupServiceError.internalFailure
         }
+    }
+
+    private func restoredScheduleRule(
+        kindRaw: String?,
+        weekdayMask: Int,
+        intervalDays: Int?,
+        effectiveFrom: Date
+    ) -> ScheduleRule? {
+        ScheduleRule.make(
+            kindRaw: kindRaw,
+            weekdayMask: weekdayMask,
+            intervalDays: intervalDays ?? ScheduleRule.defaultIntervalDays,
+            effectiveFrom: effectiveFrom
+        )
     }
 
     private func coordinateFolderRead<T>(at folderURL: URL, _ accessor: (URL) throws -> T) throws -> T {

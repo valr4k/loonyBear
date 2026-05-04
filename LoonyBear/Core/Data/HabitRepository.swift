@@ -13,5 +13,6 @@ protocol HabitRepository {
     func clearHabitDayStateToday(id: UUID) throws
     func clearHabitDayState(id: UUID, on day: Date) throws
     func deleteHabit(id: UUID) throws
+    func setHabitArchived(id: UUID, isArchived: Bool) throws
     func updateHabit(from draft: EditHabitDraft) throws
 }

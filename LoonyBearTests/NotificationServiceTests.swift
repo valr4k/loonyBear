@@ -252,6 +252,37 @@ struct NotificationServiceTests {
     }
 
     @Test
+    func habitPlanningStopsAtEndDateWithoutNotificationCenter() {
+        let clock = makeUTCClock()
+        let calendar = clock.calendar
+        let now = makeUTCDate(year: 2026, month: 5, day: 1, hour: 8, minute: 0)
+        let startDate = calendar.startOfDay(for: now)
+        let endDate = calendar.date(byAdding: .day, value: 1, to: startDate)!
+
+        let habit = HabitReminderConfiguration(
+            id: UUID(),
+            name: "Ending habit",
+            startDate: startDate,
+            endDate: endDate,
+            scheduleDays: .daily,
+            scheduleRule: .intervalDays(2),
+            reminderEnabled: true,
+            reminderTime: ReminderTime(hour: 9, minute: 0),
+            completedDays: [],
+            skippedDays: []
+        )
+
+        let candidates = ReminderPlanningSupport.habitCandidates(
+            reminders: [habit],
+            now: now,
+            schedulingWindowDays: 4,
+            calendar: calendar
+        )
+
+        #expect(candidates.map(\.localDate) == [startDate])
+    }
+
+    @Test
     func habitPlanningUsesScheduleEffectiveFromForEditedIntervalsWithoutNotificationCenter() {
         let clock = makeUTCClock()
         let calendar = clock.calendar
@@ -350,6 +381,38 @@ struct NotificationServiceTests {
         )
 
         #expect(candidates.map(\.localDate) == [anchorDate, thirdActiveDay])
+    }
+
+    @Test
+    func pillPlanningStopsAtEndDateWithoutNotificationCenter() {
+        let clock = makeUTCClock()
+        let calendar = clock.calendar
+        let now = makeUTCDate(year: 2026, month: 5, day: 1, hour: 8, minute: 0)
+        let startDate = calendar.startOfDay(for: now)
+        let endDate = calendar.date(byAdding: .day, value: 1, to: startDate)!
+
+        let pill = PillReminderConfiguration(
+            id: UUID(),
+            name: "Ending pill",
+            dosage: "1 tablet",
+            startDate: startDate,
+            endDate: endDate,
+            scheduleDays: .daily,
+            scheduleRule: .intervalDays(2),
+            reminderEnabled: true,
+            reminderTime: ReminderTime(hour: 9, minute: 0),
+            takenDays: [],
+            skippedDays: []
+        )
+
+        let candidates = ReminderPlanningSupport.pillCandidates(
+            reminders: [pill],
+            now: now,
+            schedulingWindowDays: 4,
+            calendar: calendar
+        )
+
+        #expect(candidates.map(\.localDate) == [startDate])
     }
 
     @Test

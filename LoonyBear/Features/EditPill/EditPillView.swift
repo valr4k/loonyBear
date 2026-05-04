@@ -7,20 +7,31 @@ struct EditPillView: View {
 
     private let onSaveSuccess: () -> Void
     private let onDeleteSuccess: () -> Void
+    private let onArchiveSuccess: () -> Void
     private let showsCloseButton: Bool
     private let requiredPastScheduledDays: Set<Date>
     private let scheduledDates: Set<Date>
+    private let scheduleHistory: [PillScheduleVersion]
     private let activeOverdueDay: Date?
+    private let originalScheduleRule: ScheduleRule
     @FocusState private var focusedField: Field?
     @State private var draft: EditPillDraft
+    @State private var pendingScheduleRule: ScheduleRule?
     @State private var displayedMonth: Date
+    @State private var effectiveFromSelection: Date
+    @State private var hasManualEffectiveFromSelection = false
     @State private var validationMessage: String?
     @State private var historyValidationMessage: String?
+    @State private var effectiveFromInfoMessage: String?
+    @State private var effectiveFromInfoDismissTask: Task<Void, Never>?
     @State private var isSaving = false
     @State private var isDismissingKeyboardForNonTextControl = false
     @State private var isShowingDeleteConfirmation = false
+    @State private var isShowingArchiveConfirmation = false
     @State private var isShowingNotificationSettingsAlert = false
     @State private var isHistoryWarningDismissed = false
+    @State private var isScheduleWarningDismissed = false
+    @State private var isArchived: Bool
 
     private enum Field: Hashable {
         case description
@@ -30,35 +41,41 @@ struct EditPillView: View {
         details: PillDetailsProjection,
         showsCloseButton: Bool = true,
         onSaveSuccess: @escaping () -> Void = {},
-        onDeleteSuccess: @escaping () -> Void = {}
+        onDeleteSuccess: @escaping () -> Void = {},
+        onArchiveSuccess: @escaping () -> Void = {}
     ) {
         self.onSaveSuccess = onSaveSuccess
         self.onDeleteSuccess = onDeleteSuccess
+        self.onArchiveSuccess = onArchiveSuccess
         self.showsCloseButton = showsCloseButton
         requiredPastScheduledDays = details.requiredPastScheduledDays
         scheduledDates = details.scheduledDates
+        scheduleHistory = details.scheduleHistory
         activeOverdueDay = details.activeOverdueDay
+        originalScheduleRule = details.scheduleRule
         _draft = State(initialValue: EditPillDraft(
             id: details.id,
             name: details.name,
             dosage: details.dosage,
             details: details.details ?? "",
             startDate: details.startDate,
+            endDate: details.endDate,
             scheduleRule: details.scheduleRule,
             reminderEnabled: details.reminderEnabled,
             reminderTime: details.reminderTime ?? ReminderTime.default(),
             takenDays: details.takenDays,
             skippedDays: details.skippedDays
         ))
-        _displayedMonth = State(initialValue: Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: Date())) ?? Date())
+        _displayedMonth = State(initialValue: Self.initialDisplayedMonth(startDate: details.startDate))
+        _effectiveFromSelection = State(initialValue: Self.initialEffectiveFrom(startDate: details.startDate))
+        _isArchived = State(initialValue: details.isArchived)
     }
 
     var body: some View {
         ScrollViewReader { proxy in
             AppScreen(backgroundStyle: .pills, topPadding: 8) {
                 detailsSection
-                notificationsSection
-                historySection
+                scheduleSection
 
                 VStack(alignment: .leading, spacing: 8) {
                     AppFormSectionHeader(title: "Calendar")
@@ -67,7 +84,7 @@ struct EditPillView: View {
                         PillHistoryCalendarView(
                             month: displayedMonth,
                             editableDays: editableHistoryDays,
-                            scheduledDates: scheduledDates,
+                            scheduledDates: previewScheduledDates,
                             takenDays: $draft.takenDays,
                             skippedDays: $draft.skippedDays,
                             availableMonths: availableMonths,
@@ -86,31 +103,21 @@ struct EditPillView: View {
 
                 descriptionSection
 
-                Button(role: .destructive) {
-                    isShowingDeleteConfirmation = true
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.capsule)
-                .controlSize(.large)
-                .frame(maxWidth: .infinity)
-                .disabled(isSaving)
+                actionButtons
 
                 if let validationMessage {
                     AppValidationBanner(message: validationMessage)
                 }
             }
             .overlay(alignment: .bottom) {
-                floatingHistoryWarningBanner
+                floatingBottomBanners
             }
             .contentShape(Rectangle())
             .onTapGesture {
                 focusedField = nil
                 AppDescriptionFieldSupport.dismissKeyboard()
             }
-            .navigationTitle(draft.name.isEmpty ? "Edit Pill" : draft.name)
+            .navigationTitle("Edit Pill")
             .navigationBarTitleDisplayMode(.inline)
             .scrollDismissesKeyboard(.immediately)
             .alert("Delete Pill?", isPresented: $isShowingDeleteConfirmation) {
@@ -121,6 +128,15 @@ struct EditPillView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This pill will be permanently deleted.")
+            }
+            .alert(archiveConfirmationTitle, isPresented: $isShowingArchiveConfirmation) {
+                Button(archiveActionTitle) {
+                    setPillArchived(!isArchived)
+                }
+
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(archiveConfirmationMessage)
             }
             .safeAreaInset(edge: .bottom) {
                 Color.clear
@@ -170,12 +186,24 @@ struct EditPillView: View {
                     }
                 }
             }
+            .onChange(of: draft.scheduleRule) { _, _ in
+                handleScheduleRuleChange()
+                resolveEffectiveFromSelection(showAdjustmentBanner: false)
+                clearEndDateForNeverRepeat(showInfo: true)
+            }
+            .onAppear {
+                applyPendingScheduleRuleIfNeeded()
+                resolveEffectiveFromSelection(showAdjustmentBanner: false)
+                clearEndDateForNeverRepeat(showInfo: false)
+            }
             .appNotificationSettingsAlert(isPresented: $isShowingNotificationSettingsAlert)
             .onChange(of: draft.takenDays) { _, _ in
                 historyValidationMessage = nil
+                resolveEffectiveFromSelection(showAdjustmentBanner: false)
             }
             .onChange(of: draft.skippedDays) { _, _ in
                 historyValidationMessage = nil
+                resolveEffectiveFromSelection(showAdjustmentBanner: false)
             }
             .onChange(of: hasMissingPastDays) { _, hasMissingPastDays in
                 if !hasMissingPastDays {
@@ -196,7 +224,12 @@ struct EditPillView: View {
             .animation(.easeInOut(duration: 0.18), value: validationMessage)
             .animation(.easeInOut(duration: 0.18), value: historyValidationMessage)
             .animation(.easeInOut(duration: 0.18), value: floatingHistoryWarningMessage)
+            .animation(.easeInOut(duration: 0.18), value: effectiveFromInfoMessage)
             .animation(.easeInOut(duration: 0.18), value: isHistoryWarningDismissed)
+            .animation(.easeInOut(duration: 0.18), value: isScheduleWarningDismissed)
+            .onDisappear {
+                effectiveFromInfoDismissTask?.cancel()
+            }
         }
     }
 
@@ -204,24 +237,32 @@ struct EditPillView: View {
         AppPillDetailsCard(name: $draft.name, dosage: $draft.dosage)
     }
 
-    private var historySection: some View {
-        AppFormCardSection(title: "History") {
-            AppStartDateValueRow(date: draft.startDate)
-        }
-    }
-
-    private var notificationsSection: some View {
-        AppNotificationSettingsSection(
-            scheduleSummary: draft.scheduleRule.compactSummary,
-            scheduleTap: dismissKeyboardForNonTextControl,
+    private var scheduleSection: some View {
+        AppEditScheduleSection(
             reminderEnabled: $draft.reminderEnabled,
             reminderDate: $draft.reminderTime.dateBinding(fallback: ReminderTime.default()),
-            reminderTimeTap: dismissKeyboardForNonTextControl
+            repeatSummary: draft.scheduleRule.compactSummary,
+            effectiveFrom: effectiveFromBinding,
+            effectiveFromRange: effectiveFromRange,
+            isEffectiveFromEnabled: isEffectiveFromEnabled,
+            endDate: $draft.endDate,
+            endDateRange: selectableEndDateRange,
+            endDateFallback: draft.startDate,
+            isEndDateEnabled: !draft.scheduleRule.isOneTime,
+            reminderTimeTap: dismissKeyboardForNonTextControl,
+            repeatTap: dismissKeyboardForNonTextControl,
+            effectiveFromTap: dismissKeyboardForNonTextControl,
+            endDateTap: dismissKeyboardForNonTextControl
         ) {
-            EditPillScheduleView(
-                scheduleRule: $draft.scheduleRule,
-                dismissKeyboardForNonTextControl: dismissKeyboardForNonTextControl
-            )
+            AppCreateRepeatEditorScreen(
+                backgroundStyle: .pills,
+                scheduleRule: draft.scheduleRule,
+                startDate: draft.startDate,
+                allowsNeverRepeat: true,
+                onTap: dismissKeyboardForNonTextControl
+            ) { scheduleRule in
+                stageScheduleRule(scheduleRule)
+            }
         }
     }
 
@@ -237,19 +278,143 @@ struct EditPillView: View {
         .id(Field.description)
     }
 
+    private var actionButtons: some View {
+        VStack(spacing: 10) {
+            archiveRestoreButton
+            deleteButton
+        }
+    }
+
+    private var deleteButton: some View {
+        Button(role: .destructive) {
+            isShowingDeleteConfirmation = true
+        } label: {
+            Label("Delete", systemImage: "trash")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .controlSize(.large)
+        .frame(maxWidth: .infinity)
+        .disabled(isSaving)
+    }
+
+    private var archiveRestoreButton: some View {
+        Button {
+            isShowingArchiveConfirmation = true
+        } label: {
+            Label(archiveActionTitle, systemImage: archiveActionSystemImage)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .controlSize(.large)
+        .frame(maxWidth: .infinity)
+        .tint(.gray)
+        .disabled(isSaving || (isArchived && !isFormValid))
+    }
+
     private var editableHistoryDays: Set<Date> {
         EditableHistoryWindow.dates(startDate: draft.startDate)
     }
 
     private var availableMonths: [Date] {
-        HistoryMonthWindow.months(containing: editableHistoryDays)
+        let months = HistoryMonthWindow.months(containing: editableHistoryDays)
+        if !months.isEmpty {
+            return months
+        }
+        return [HistoryMonthWindow.displayMonth(startDate: draft.startDate)]
     }
 
     private var isFormValid: Bool {
-        !draft.trimmedName.isEmpty && !draft.trimmedDosage.isEmpty && draft.scheduleRule.isValidSelection
+        !draft.trimmedName.isEmpty &&
+            !draft.trimmedDosage.isEmpty &&
+            draft.scheduleRule.isValidSelection &&
+            isScheduleEffectiveFromValid &&
+            isEndDateValid
+    }
+
+    private var hasScheduleChanged: Bool {
+        draft.scheduleRule != originalScheduleRule
+    }
+
+    private var shouldUseScheduleEffectiveFrom: Bool {
+        hasScheduleChanged || isArchived
+    }
+
+    private var isScheduleEffectiveFromValid: Bool {
+        !shouldUseScheduleEffectiveFrom || currentEffectiveFromResolution != nil
+    }
+
+    private var isEffectiveFromEnabled: Bool {
+        guard let resolution = currentEffectiveFromResolution else {
+            return false
+        }
+        return isArchived || (hasScheduleChanged && resolution.resolvedDate != effectiveFromBaseDate)
+    }
+
+    private var previewScheduledDates: Set<Date> {
+        guard shouldUseScheduleEffectiveFrom, let effectiveFrom = currentEffectiveFromResolution?.resolvedDate else {
+            return scheduledDates
+        }
+
+        return SchedulePreviewSupport.scheduledDays(
+            startDate: draft.startDate,
+            through: HistoryMonthWindow.detailsCalendarEndDate(
+                startDate: draft.startDate,
+                today: Date(),
+                calendar: Calendar.current
+            ),
+            schedules: scheduleHistory,
+            replacementRule: draft.scheduleRule,
+            effectiveFrom: effectiveFrom,
+            calendar: Calendar.current
+        )
+    }
+
+    private var effectiveFromRange: ClosedRange<Date> {
+        let today = Calendar.current.startOfDay(for: Date())
+        let lowerBound = max(today, Calendar.current.startOfDay(for: draft.startDate))
+        let upperBound = max(
+            lowerBound,
+            HistoryMonthWindow.endOfSecondNextMonth(from: today, calendar: Calendar.current)
+        )
+        return lowerBound ... upperBound
+    }
+
+    private var effectiveFromBaseDate: Date {
+        effectiveFromRange.lowerBound
+    }
+
+    private var selectableEndDateRange: PartialRangeFrom<Date> {
+        let today = Calendar.current.startOfDay(for: Date())
+        var lowerBound = max(today, Calendar.current.startOfDay(for: draft.startDate))
+        if shouldUseScheduleEffectiveFrom, let effectiveFrom = currentEffectiveFromResolution?.resolvedDate {
+            lowerBound = max(lowerBound, effectiveFrom)
+        }
+        return lowerBound...
+    }
+
+    private var isEndDateValid: Bool {
+        guard !draft.scheduleRule.isOneTime, let endDate = draft.endDate else {
+            return true
+        }
+        return Calendar.current.startOfDay(for: endDate) >= selectableEndDateRange.lowerBound
+    }
+
+    private var effectiveFromBinding: Binding<Date> {
+        Binding(
+            get: { effectiveFromSelection },
+            set: { newValue in
+                hasManualEffectiveFromSelection = true
+                effectiveFromSelection = Calendar.current.startOfDay(for: newValue)
+                resolveEffectiveFromSelection(showAdjustmentBanner: true)
+            }
+        )
     }
 
     private var currentMissingPastDays: [Date] {
+        guard !isArchived else { return [] }
         let normalized = normalizedDraft()
         return EditableHistoryValidation.missingPastDays(
             editableDays: requiredPastScheduledDays,
@@ -273,15 +438,33 @@ struct EditPillView: View {
     }
 
     @ViewBuilder
-    private var floatingHistoryWarningBanner: some View {
-        if let message = floatingHistoryWarningMessage, !isHistoryWarningDismissed {
-            AppFloatingWarningBanner(message: message) {
-                isHistoryWarningDismissed = true
+    private var floatingBottomBanners: some View {
+        VStack(spacing: 10) {
+            if let message = scheduleWarningMessage, !isScheduleWarningDismissed {
+                AppFloatingWarningBanner(message: message) {
+                    isScheduleWarningDismissed = true
+                }
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 14)
-            .zIndex(1)
+
+            if let message = floatingHistoryWarningMessage, !isHistoryWarningDismissed {
+                AppFloatingWarningBanner(message: message) {
+                    isHistoryWarningDismissed = true
+                }
+            }
+
+            if let message = effectiveFromInfoMessage {
+                AppFloatingInfoBanner(message: message) {
+                    dismissEffectiveFromInfo()
+                }
+            }
         }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 14)
+        .zIndex(1)
+    }
+
+    private var scheduleWarningMessage: String? {
+        draft.scheduleRule.isValidSelection ? nil : AppCopy.chooseAtLeastOneDay
     }
 
     private var shouldShowDescriptionInset: Bool {
@@ -292,9 +475,32 @@ struct EditPillView: View {
         )
     }
 
+    private var archiveActionTitle: String {
+        isArchived ? "Restore" : "Archive"
+    }
+
+    private var archiveActionSystemImage: String {
+        isArchived ? "arrow.uturn.backward" : "archivebox"
+    }
+
+    private var archiveConfirmationTitle: String {
+        isArchived ? "Restore Pill?" : "Archive Pill?"
+    }
+
+    private var archiveConfirmationMessage: String {
+        isArchived
+            ? "Save changes and move this pill back to its active section."
+            : "This pill will move to Archived."
+    }
+
     private func save() {
+        applyPendingScheduleRuleIfNeeded()
+
         guard isFormValid else {
-            validationMessage = invalidMessage
+            if !draft.scheduleRule.isValidSelection {
+                isScheduleWarningDismissed = false
+            }
+            validationMessage = nonScheduleInvalidMessage
             return
         }
 
@@ -317,7 +523,9 @@ struct EditPillView: View {
                 onSaveSuccess()
                 dismiss()
 
-                await pillAppState.syncNotificationsAfterPillUpdate(from: savedDraft)
+                if !isArchived {
+                    await pillAppState.syncNotificationsAfterPillUpdate(from: savedDraft)
+                }
             } catch {
                 if let error = error as? EditableHistoryValidationError {
                     historyValidationMessage = error.localizedDescription
@@ -329,6 +537,33 @@ struct EditPillView: View {
                 }
                 isSaving = false
             }
+        }
+    }
+
+    private func handleScheduleRuleChange() {
+        isScheduleWarningDismissed = false
+        if draft.scheduleRule.isValidSelection, validationMessage == AppCopy.chooseAtLeastOneDay {
+            validationMessage = nil
+        }
+    }
+
+    private func stageScheduleRule(_ scheduleRule: ScheduleRule) {
+        pendingScheduleRule = scheduleRule
+    }
+
+    private func applyPendingScheduleRuleIfNeeded() {
+        guard let scheduleRule = pendingScheduleRule else { return }
+        pendingScheduleRule = nil
+        guard draft.scheduleRule != scheduleRule else { return }
+        draft.scheduleRule = scheduleRule
+    }
+
+    private func clearEndDateForNeverRepeat(showInfo: Bool) {
+        guard draft.scheduleRule.isOneTime, draft.endDate != nil else { return }
+        draft.endDate = nil
+
+        if showInfo {
+            presentEffectiveFromInfo(AppCopy.endDateRemovedForNeverRepeat)
         }
     }
 
@@ -351,10 +586,156 @@ struct EditPillView: View {
         }
     }
 
+    private func setPillArchived(_ archived: Bool) {
+        if !archived, isArchived {
+            restorePill()
+            return
+        }
+
+        isSaving = true
+        validationMessage = nil
+        historyValidationMessage = nil
+
+        Task {
+            await pillAppState.setPillArchived(id: draft.id, isArchived: archived)
+            if let errorMessage = pillAppState.actionErrorMessage {
+                validationMessage = errorMessage
+                isSaving = false
+                return
+            }
+
+            isArchived = archived
+            isSaving = false
+            onArchiveSuccess()
+            dismiss()
+        }
+    }
+
+    private func restorePill() {
+        applyPendingScheduleRuleIfNeeded()
+
+        guard isFormValid else {
+            if !draft.scheduleRule.isValidSelection {
+                isScheduleWarningDismissed = false
+            }
+            validationMessage = nonScheduleInvalidMessage
+            return
+        }
+
+        isSaving = true
+        validationMessage = nil
+        historyValidationMessage = nil
+        let restoredDraft = normalizedDraft()
+
+        Task {
+            do {
+                try await pillAppState.updatePill(from: restoredDraft)
+                await pillAppState.setPillArchived(id: draft.id, isArchived: false)
+                if let errorMessage = pillAppState.actionErrorMessage {
+                    validationMessage = errorMessage
+                    isSaving = false
+                    return
+                }
+
+                isArchived = false
+                isSaving = false
+                onArchiveSuccess()
+                dismiss()
+            } catch {
+                if let error = error as? EditableHistoryValidationError {
+                    historyValidationMessage = error.localizedDescription
+                    if case .missingPillPastDays(let days) = error, let firstDay = days.first {
+                        displayedMonth = month(containing: firstDay)
+                    }
+                } else {
+                    validationMessage = pillAppState.actionErrorMessage ?? error.localizedDescription
+                }
+                isSaving = false
+            }
+        }
+    }
+
     private func normalizedDraft() -> EditPillDraft {
         var normalized = draft
         normalized.skippedDays.subtract(normalized.takenDays)
+        normalized.scheduleEffectiveFrom = shouldUseScheduleEffectiveFrom ? currentEffectiveFromResolution?.resolvedDate : nil
+        if normalized.scheduleRule.isOneTime {
+            normalized.endDate = nil
+        }
+        if let endDate = normalized.endDate {
+            normalized.endDate = max(Calendar.current.startOfDay(for: endDate), selectableEndDateRange.lowerBound)
+        }
         return normalized
+    }
+
+    private var currentEffectiveFromResolution: ScheduleEffectiveFromResolution? {
+        effectiveFromResolution(
+            selectedDate: hasManualEffectiveFromSelection ? effectiveFromSelection : effectiveFromBaseDate
+        )
+    }
+
+    private func effectiveFromResolution(selectedDate: Date) -> ScheduleEffectiveFromResolution? {
+        ScheduleEffectiveFromResolver.resolve(
+            scheduleRule: draft.scheduleRule,
+            selectedDate: selectedDate,
+            explicitDays: draft.takenDays.union(draft.skippedDays),
+            minimumDate: effectiveFromRange.lowerBound,
+            maximumDate: effectiveFromRange.upperBound,
+            calendar: Calendar.current
+        )
+    }
+
+    private func resolveEffectiveFromSelection(showAdjustmentBanner: Bool) {
+        guard shouldUseScheduleEffectiveFrom else {
+            draft.scheduleEffectiveFrom = nil
+            hasManualEffectiveFromSelection = false
+            dismissEffectiveFromInfo()
+            return
+        }
+
+        guard let resolution = currentEffectiveFromResolution else {
+            draft.scheduleEffectiveFrom = nil
+            dismissEffectiveFromInfo()
+            return
+        }
+
+        let adjusted = resolution.wasAdjusted
+        if effectiveFromSelection != resolution.resolvedDate {
+            effectiveFromSelection = resolution.resolvedDate
+        }
+        draft.scheduleEffectiveFrom = resolution.resolvedDate
+
+        if adjusted, showAdjustmentBanner {
+            presentEffectiveFromInfo("Apply From set to the next scheduled day.")
+        } else {
+            dismissEffectiveFromInfo()
+        }
+    }
+
+    private func presentEffectiveFromInfo(_ message: String) {
+        effectiveFromInfoDismissTask?.cancel()
+        withAnimation(.easeInOut(duration: 0.18)) {
+            effectiveFromInfoMessage = message
+        }
+
+        effectiveFromInfoDismissTask = Task {
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    effectiveFromInfoMessage = nil
+                }
+            }
+        }
+    }
+
+    private func dismissEffectiveFromInfo() {
+        effectiveFromInfoDismissTask?.cancel()
+        effectiveFromInfoDismissTask = nil
+        withAnimation(.easeInOut(duration: 0.18)) {
+            effectiveFromInfoMessage = nil
+        }
     }
 
     private func historyReviewMessage(for missingPastDays: [Date]) -> String {
@@ -378,14 +759,23 @@ struct EditPillView: View {
         Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: date)) ?? date
     }
 
-    private var invalidMessage: String {
+    private static func initialDisplayedMonth(startDate: Date) -> Date {
+        HistoryMonthWindow.displayMonth(startDate: startDate, today: Date(), calendar: Calendar.current)
+    }
+
+    private static func initialEffectiveFrom(startDate: Date) -> Date {
+        let today = Calendar.current.startOfDay(for: Date())
+        return max(today, Calendar.current.startOfDay(for: startDate))
+    }
+
+    private var nonScheduleInvalidMessage: String? {
         if draft.trimmedName.isEmpty {
             return "Pill name is required."
         }
         if draft.trimmedDosage.isEmpty {
             return "Dosage is required."
         }
-        return AppCopy.chooseAtLeastOneDay
+        return nil
     }
 
     private func dismissKeyboardForNonTextControl() {
@@ -394,18 +784,6 @@ struct EditPillView: View {
             descriptionField: Field.description,
             setFocusedField: { focusedField = $0 },
             setIsDismissingKeyboardForNonTextControl: { isDismissingKeyboardForNonTextControl = $0 }
-        )
-    }
-}
-
-private struct EditPillScheduleView: View {
-    @Binding var scheduleRule: ScheduleRule
-    let dismissKeyboardForNonTextControl: () -> Void
-
-    var body: some View {
-        AppScheduleEditorPopoverContent(
-            scheduleRule: $scheduleRule,
-            onTap: dismissKeyboardForNonTextControl
         )
     }
 }

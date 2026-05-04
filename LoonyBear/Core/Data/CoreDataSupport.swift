@@ -100,14 +100,35 @@ enum EditableHistoryWindow {
     }
 }
 
+enum ActiveCycleStartDate {
+    static func value(
+        for object: NSManagedObject,
+        fallbackStartDate: Date,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Date {
+        let normalizedStartDate = calendar.startOfDay(for: fallbackStartDate)
+        guard let activeFrom = object.dateValue(forKey: "activeFrom") else {
+            return normalizedStartDate
+        }
+        return max(normalizedStartDate, calendar.startOfDay(for: activeFrom))
+    }
+}
+
 enum HistoryMonthWindow {
+    static func monthStart(
+        containing date: Date,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Date {
+        calendar.date(from: calendar.dateComponents([.year, .month], from: date)) ?? calendar.startOfDay(for: date)
+    }
+
     static func months(
         containing dates: Set<Date>,
         calendar: Calendar = .autoupdatingCurrent
     ) -> [Date] {
         let months = Set(
             dates.compactMap { date in
-                calendar.date(from: calendar.dateComponents([.year, .month], from: date))
+                monthStart(containing: date, calendar: calendar)
             }
         )
         return months.sorted()
@@ -123,8 +144,8 @@ enum HistoryMonthWindow {
         guard normalizedStart <= normalizedEnd else { return [] }
 
         var months: [Date] = []
-        var cursor = calendar.date(from: calendar.dateComponents([.year, .month], from: normalizedStart)) ?? normalizedStart
-        let lastMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: normalizedEnd)) ?? normalizedEnd
+        var cursor = monthStart(containing: normalizedStart, calendar: calendar)
+        let lastMonth = monthStart(containing: normalizedEnd, calendar: calendar)
 
         while cursor <= lastMonth {
             months.append(cursor)
@@ -141,7 +162,7 @@ enum HistoryMonthWindow {
         containing date: Date,
         calendar: Calendar = .autoupdatingCurrent
     ) -> Date {
-        let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: date)) ?? date
+        let monthStart = monthStart(containing: date, calendar: calendar)
         guard
             let nextMonth = calendar.date(byAdding: .month, value: 1, to: monthStart),
             let lastDay = calendar.date(byAdding: .day, value: -1, to: nextMonth)
@@ -149,6 +170,42 @@ enum HistoryMonthWindow {
             return calendar.startOfDay(for: date)
         }
         return calendar.startOfDay(for: lastDay)
+    }
+
+    static func endOfSecondNextMonth(
+        from today: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Date {
+        let currentMonthStart = monthStart(containing: today, calendar: calendar)
+        guard
+            let monthAfterSecondNext = calendar.date(byAdding: .month, value: 3, to: currentMonthStart),
+            let lastDay = calendar.date(byAdding: .day, value: -1, to: monthAfterSecondNext)
+        else {
+            return calendar.startOfDay(for: today)
+        }
+        return calendar.startOfDay(for: lastDay)
+    }
+
+    static func displayMonth(
+        startDate: Date,
+        today: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Date {
+        let normalizedStartDate = calendar.startOfDay(for: startDate)
+        let normalizedToday = calendar.startOfDay(for: today)
+        let displayDate = normalizedStartDate > normalizedToday ? normalizedStartDate : normalizedToday
+        return monthStart(containing: displayDate, calendar: calendar)
+    }
+
+    static func detailsCalendarEndDate(
+        startDate: Date,
+        today: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Date {
+        let normalizedStartDate = calendar.startOfDay(for: startDate)
+        let normalizedToday = calendar.startOfDay(for: today)
+        let displayDate = normalizedStartDate > normalizedToday ? normalizedStartDate : normalizedToday
+        return endOfMonth(containing: displayDate, calendar: calendar)
     }
 }
 
@@ -160,7 +217,61 @@ enum StartDateSelectionWindow {
     ) -> ClosedRange<Date> {
         let normalizedToday = calendar.startOfDay(for: today)
         let earliest = calendar.date(byAdding: offset, to: normalizedToday) ?? normalizedToday
-        return earliest ... normalizedToday
+        let latest = HistoryMonthWindow.endOfSecondNextMonth(from: normalizedToday, calendar: calendar)
+        return earliest ... latest
+    }
+}
+
+struct ScheduleEffectiveFromResolution: Equatable {
+    let selectedDate: Date
+    let resolvedDate: Date
+
+    var wasAdjusted: Bool {
+        selectedDate != resolvedDate
+    }
+}
+
+enum ScheduleEffectiveFromResolver {
+    static func resolve(
+        scheduleRule: ScheduleRule,
+        selectedDate: Date,
+        explicitDays: Set<Date>,
+        minimumDate: Date,
+        maximumDate: Date,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> ScheduleEffectiveFromResolution? {
+        let normalizedMinimum = calendar.startOfDay(for: minimumDate)
+        let normalizedMaximum = calendar.startOfDay(for: maximumDate)
+        guard normalizedMinimum <= normalizedMaximum else { return nil }
+
+        let normalizedSelected = max(calendar.startOfDay(for: selectedDate), normalizedMinimum)
+        let normalizedExplicitDays = Set(explicitDays.map { calendar.startOfDay(for: $0) })
+        var candidate = normalizedSelected
+
+        while candidate <= normalizedMaximum {
+            if !normalizedExplicitDays.contains(candidate), ScheduleDateEligibility.isEligible(candidate, for: scheduleRule, calendar: calendar) {
+                return ScheduleEffectiveFromResolution(
+                    selectedDate: normalizedSelected,
+                    resolvedDate: candidate
+                )
+            }
+
+            guard let next = calendar.date(byAdding: .day, value: 1, to: candidate) else {
+                break
+            }
+            candidate = calendar.startOfDay(for: next)
+        }
+
+        return nil
+    }
+}
+
+private enum ScheduleDateEligibility {
+    static func isEligible(_ date: Date, for scheduleRule: ScheduleRule, calendar: Calendar) -> Bool {
+        if case .intervalDays = scheduleRule {
+            return true
+        }
+        return scheduleRule.isScheduled(on: date, anchorDate: date, calendar: calendar)
     }
 }
 
@@ -279,14 +390,145 @@ enum EditableHistoryValidation {
 }
 
 protocol HistoryScheduleVersionLike {
-    var rule: ScheduleRule { get }
-    var effectiveFrom: Date { get }
-    var createdAt: Date { get }
-    var version: Int { get }
+    nonisolated var rule: ScheduleRule { get }
+    nonisolated var effectiveFrom: Date { get }
+    nonisolated var createdAt: Date { get }
+    nonisolated var version: Int { get }
 }
 
 extension HabitScheduleVersion: HistoryScheduleVersionLike {}
 extension PillScheduleVersion: HistoryScheduleVersionLike {}
+
+struct SchedulePreviewVersion: HistoryScheduleVersionLike {
+    let rule: ScheduleRule
+    let effectiveFrom: Date
+    let createdAt: Date
+    let version: Int
+}
+
+enum SchedulePreviewSupport {
+    static func scheduledDays<Schedule: HistoryScheduleVersionLike>(
+        startDate: Date,
+        through endDate: Date,
+        schedules: [Schedule],
+        replacementRule: ScheduleRule,
+        effectiveFrom: Date,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Set<Date> {
+        let previewSchedules = previewSchedules(
+            from: schedules,
+            replacementRule: replacementRule,
+            effectiveFrom: effectiveFrom,
+            calendar: calendar
+        )
+        return HistoryScheduleApplicability.scheduledDays(
+            startDate: startDate,
+            through: endDate,
+            schedules: previewSchedules,
+            calendar: calendar
+        )
+    }
+
+    static func previewSchedules<Schedule: HistoryScheduleVersionLike>(
+        from schedules: [Schedule],
+        replacementRule: ScheduleRule,
+        effectiveFrom: Date,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> [SchedulePreviewVersion] {
+        var previewSchedules = schedules.map { schedule in
+            SchedulePreviewVersion(
+                rule: schedule.rule,
+                effectiveFrom: calendar.startOfDay(for: schedule.effectiveFrom),
+                createdAt: schedule.createdAt,
+                version: schedule.version
+            )
+        }
+        previewSchedules.append(
+            SchedulePreviewVersion(
+                rule: replacementRule,
+                effectiveFrom: calendar.startOfDay(for: effectiveFrom),
+                createdAt: .distantFuture,
+                version: Int.max
+            )
+        )
+        return previewSchedules
+    }
+}
+
+enum DashboardScheduleSummary {
+    static func text<Schedule: HistoryScheduleVersionLike>(
+        latestSchedule: Schedule?,
+        startDate: Date,
+        endDate: Date?,
+        schedules: [Schedule],
+        today: Date,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> String {
+        guard let latestSchedule else {
+            return "No days selected"
+        }
+
+        if case .intervalDays = latestSchedule.rule,
+           let intervalPreview = nextIntervalPreview(
+                latestSchedule: latestSchedule,
+                startDate: startDate,
+                endDate: endDate,
+                schedules: schedules,
+                today: today,
+                calendar: calendar
+           ) {
+            return intervalPreview
+        }
+
+        return latestSchedule.rule.summary
+    }
+
+    private static func nextIntervalPreview<Schedule: HistoryScheduleVersionLike>(
+        latestSchedule: Schedule,
+        startDate: Date,
+        endDate: Date?,
+        schedules: [Schedule],
+        today: Date,
+        calendar: Calendar
+    ) -> String? {
+        guard latestSchedule.rule.isValidSelection else { return nil }
+
+        let normalizedStartDate = calendar.startOfDay(for: startDate)
+        let normalizedToday = calendar.startOfDay(for: today)
+        let normalizedEffectiveFrom = calendar.startOfDay(for: latestSchedule.effectiveFrom)
+        var cursor = max(max(normalizedToday, normalizedStartDate), normalizedEffectiveFrom)
+        let searchLimit = endDate
+            .map { calendar.startOfDay(for: $0) }
+            ?? (calendar.date(byAdding: .day, value: 30, to: cursor) ?? cursor)
+        guard cursor <= searchLimit else { return nil }
+
+        var labels: [String] = []
+        while cursor <= searchLimit, labels.count < 3 {
+            if HistoryScheduleApplicability.isScheduled(
+                on: cursor,
+                startDate: startDate,
+                endDate: endDate,
+                from: schedules,
+                calendar: calendar
+            ) {
+                labels.append(weekdayLabel(for: cursor, calendar: calendar))
+            }
+
+            guard let nextDay = calendar.date(byAdding: .day, value: 1, to: cursor) else {
+                break
+            }
+            cursor = calendar.startOfDay(for: nextDay)
+        }
+
+        guard !labels.isEmpty else { return nil }
+        return "Next: \(labels.joined(separator: ", "))"
+    }
+
+    private static func weekdayLabel(for date: Date, calendar: Calendar) -> String {
+        let weekday = calendar.weekdaySet(for: date)
+        return WeekdaySet.orderedDays.first { $0.1 == weekday }?.0 ?? "Sun"
+    }
+}
 
 enum HistoryScheduleApplicability {
     static func pastEditableDays(
@@ -301,31 +543,36 @@ enum HistoryScheduleApplicability {
     static func pastScheduledEditableDays<Schedule: HistoryScheduleVersionLike>(
         in editableDays: Set<Date>,
         startDate: Date,
+        endDate: Date? = nil,
         schedules: [Schedule],
         today: Date = Date(),
         calendar: Calendar = .autoupdatingCurrent
     ) -> Set<Date> {
         let pastEditableDays = pastEditableDays(in: editableDays, today: today, calendar: calendar)
         return Set(pastEditableDays.filter { day in
-            isScheduled(on: day, startDate: startDate, from: schedules, calendar: calendar)
+            isScheduled(on: day, startDate: startDate, endDate: endDate, from: schedules, calendar: calendar)
         })
     }
 
     static func scheduledDays<Schedule: HistoryScheduleVersionLike>(
         startDate: Date,
         through endDate: Date,
+        limitingTo scheduleEndDate: Date? = nil,
         schedules: [Schedule],
         calendar: Calendar = .autoupdatingCurrent
     ) -> Set<Date> {
         let normalizedStartDate = calendar.startOfDay(for: startDate)
-        let normalizedEndDate = calendar.startOfDay(for: endDate)
+        let normalizedRequestedEndDate = calendar.startOfDay(for: endDate)
+        let normalizedEndDate = scheduleEndDate
+            .map { min(normalizedRequestedEndDate, calendar.startOfDay(for: $0)) }
+            ?? normalizedRequestedEndDate
         guard normalizedStartDate <= normalizedEndDate else { return [] }
 
         var result: Set<Date> = []
         var cursor = normalizedStartDate
 
         while cursor <= normalizedEndDate {
-            if isScheduled(on: cursor, startDate: startDate, from: schedules, calendar: calendar) {
+            if isScheduled(on: cursor, startDate: startDate, endDate: scheduleEndDate, from: schedules, calendar: calendar) {
                 result.insert(cursor)
             }
 
@@ -341,6 +588,7 @@ enum HistoryScheduleApplicability {
     static func pastRequiredEditableDays<Schedule: HistoryScheduleVersionLike>(
         in editableDays: Set<Date>,
         startDate: Date,
+        endDate: Date? = nil,
         schedules: [Schedule],
         historyMode: HabitHistoryMode,
         today: Date = Date(),
@@ -351,6 +599,7 @@ enum HistoryScheduleApplicability {
             return pastScheduledEditableDays(
                 in: editableDays,
                 startDate: startDate,
+                endDate: endDate,
                 schedules: schedules,
                 today: today,
                 calendar: calendar
@@ -367,11 +616,15 @@ enum HistoryScheduleApplicability {
     static func isScheduled<Schedule: HistoryScheduleVersionLike>(
         on day: Date,
         startDate: Date,
+        endDate: Date? = nil,
         from schedules: [Schedule],
         calendar: Calendar = .autoupdatingCurrent
     ) -> Bool {
         let normalizedDay = calendar.startOfDay(for: day)
         guard normalizedDay >= calendar.startOfDay(for: startDate) else {
+            return false
+        }
+        if let endDate, normalizedDay > calendar.startOfDay(for: endDate) {
             return false
         }
 
@@ -412,6 +665,7 @@ enum HistoryScheduleApplicability {
 enum ScheduledOverdueState {
     static func activeOverdueDay<Schedule: HistoryScheduleVersionLike>(
         startDate: Date,
+        endDate: Date? = nil,
         schedules: [Schedule],
         reminderTime: ReminderTime?,
         positiveDays: Set<Date>,
@@ -421,6 +675,7 @@ enum ScheduledOverdueState {
     ) -> Date? {
         guard let latestDueDay = latestScheduledDueDay(
             startDate: startDate,
+            endDate: endDate,
             schedules: schedules,
             reminderTime: reminderTime,
             now: now,
@@ -446,6 +701,7 @@ enum ScheduledOverdueState {
     static func actionableOverdueDay<Schedule: HistoryScheduleVersionLike>(
         anchorDay: Date?,
         startDate: Date,
+        endDate: Date? = nil,
         schedules: [Schedule],
         reminderTime: ReminderTime?,
         positiveDays: Set<Date>,
@@ -458,6 +714,7 @@ enum ScheduledOverdueState {
         let normalizedAnchorDay = calendar.startOfDay(for: anchorDay)
         let dueDays = dueScheduledDays(
             startDate: startDate,
+            endDate: endDate,
             schedules: schedules,
             reminderTime: reminderTime,
             positiveDays: positiveDays,
@@ -471,6 +728,7 @@ enum ScheduledOverdueState {
 
     static func dueScheduledDays<Schedule: HistoryScheduleVersionLike>(
         startDate: Date,
+        endDate: Date? = nil,
         schedules: [Schedule],
         reminderTime: ReminderTime?,
         positiveDays: Set<Date>,
@@ -483,6 +741,7 @@ enum ScheduledOverdueState {
 
         return scheduledDueDays(
             startDate: startDate,
+            endDate: endDate,
             schedules: schedules,
             reminderTime: reminderTime,
             now: now,
@@ -495,6 +754,7 @@ enum ScheduledOverdueState {
 
     private static func scheduledDueDays<Schedule: HistoryScheduleVersionLike>(
         startDate: Date,
+        endDate: Date? = nil,
         schedules: [Schedule],
         reminderTime: ReminderTime?,
         now: Date,
@@ -502,13 +762,15 @@ enum ScheduledOverdueState {
     ) -> [Date] {
         let normalizedStartDate = calendar.startOfDay(for: startDate)
         let normalizedToday = calendar.startOfDay(for: now)
-        guard normalizedStartDate <= normalizedToday else { return [] }
+        let normalizedEndDate = endDate.map { calendar.startOfDay(for: $0) }
+        let finalDueDay = normalizedEndDate.map { min(normalizedToday, $0) } ?? normalizedToday
+        guard normalizedStartDate <= finalDueDay else { return [] }
 
         let normalizedSchedules = sortedSchedules(schedules)
         var dueDays: [Date] = []
         var cursor = normalizedStartDate
 
-        while cursor <= normalizedToday {
+        while cursor <= finalDueDay {
             let dueDate = reminderTime.flatMap {
                 calendar.date(
                     bySettingHour: $0.hour,
@@ -518,7 +780,7 @@ enum ScheduledOverdueState {
                 )
             } ?? cursor
 
-            if isScheduled(cursor, startDate: startDate, schedules: normalizedSchedules, calendar: calendar),
+            if isScheduled(cursor, startDate: startDate, endDate: normalizedEndDate, schedules: normalizedSchedules, calendar: calendar),
                dueDate <= now {
                 dueDays.append(cursor)
             }
@@ -534,13 +796,15 @@ enum ScheduledOverdueState {
 
     private static func latestScheduledDueDay<Schedule: HistoryScheduleVersionLike>(
         startDate: Date,
+        endDate: Date? = nil,
         schedules: [Schedule],
         reminderTime: ReminderTime?,
         now: Date,
         calendar: Calendar
     ) -> Date? {
         let normalizedStartDate = calendar.startOfDay(for: startDate)
-        var cursor = calendar.startOfDay(for: now)
+        let normalizedEndDate = endDate.map { calendar.startOfDay(for: $0) }
+        var cursor = min(calendar.startOfDay(for: now), normalizedEndDate ?? calendar.startOfDay(for: now))
         guard normalizedStartDate <= cursor else { return nil }
 
         let normalizedSchedules = sortedSchedules(schedules)
@@ -556,7 +820,7 @@ enum ScheduledOverdueState {
             } ?? cursor
 
             if dueDate <= now,
-               isScheduled(cursor, startDate: startDate, schedules: normalizedSchedules, calendar: calendar) {
+               isScheduled(cursor, startDate: startDate, endDate: normalizedEndDate, schedules: normalizedSchedules, calendar: calendar) {
                 return cursor
             }
 
@@ -574,11 +838,15 @@ enum ScheduledOverdueState {
     private static func isScheduled<Schedule: HistoryScheduleVersionLike>(
         _ day: Date,
         startDate: Date,
+        endDate: Date? = nil,
         schedules: [Schedule],
         calendar: Calendar
     ) -> Bool {
         let normalizedDay = calendar.startOfDay(for: day)
         guard normalizedDay >= calendar.startOfDay(for: startDate) else {
+            return false
+        }
+        if let endDate, normalizedDay > calendar.startOfDay(for: endDate) {
             return false
         }
 
@@ -600,6 +868,82 @@ enum ScheduledOverdueState {
             }
             return lhs.createdAt < rhs.createdAt
         }
+    }
+}
+
+enum ScheduleLifecycleSupport {
+    static func shouldAutoArchive<Schedule: HistoryScheduleVersionLike>(
+        startDate: Date,
+        endDate: Date?,
+        schedules: [Schedule],
+        positiveDays: Set<Date>,
+        skippedDays: Set<Date>,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Bool {
+        let normalizedPositiveDays = Set(positiveDays.map { calendar.startOfDay(for: $0) })
+        let normalizedSkippedDays = Set(skippedDays.map { calendar.startOfDay(for: $0) })
+        let finalizedDays = normalizedPositiveDays.union(normalizedSkippedDays)
+
+        if let endDate {
+            guard let finalScheduledDay = lastScheduledDay(
+                startDate: startDate,
+                endDate: endDate,
+                schedules: schedules,
+                calendar: calendar
+            ) else {
+                return false
+            }
+            return finalizedDays.contains(finalScheduledDay)
+        }
+
+        guard
+            let latestSchedule = schedules.sorted(by: { lhs, rhs in
+                if lhs.effectiveFrom != rhs.effectiveFrom {
+                    return lhs.effectiveFrom > rhs.effectiveFrom
+                }
+                if lhs.version != rhs.version {
+                    return lhs.version > rhs.version
+                }
+                return lhs.createdAt > rhs.createdAt
+            }).first,
+            latestSchedule.rule == .oneTime
+        else {
+            return false
+        }
+
+        return finalizedDays.contains(calendar.startOfDay(for: latestSchedule.effectiveFrom))
+    }
+
+    static func lastScheduledDay<Schedule: HistoryScheduleVersionLike>(
+        startDate: Date,
+        endDate: Date,
+        schedules: [Schedule],
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Date? {
+        let normalizedStartDate = calendar.startOfDay(for: startDate)
+        var cursor = calendar.startOfDay(for: endDate)
+        guard normalizedStartDate <= cursor else { return nil }
+
+        while cursor >= normalizedStartDate {
+            if HistoryScheduleApplicability.isScheduled(
+                on: cursor,
+                startDate: normalizedStartDate,
+                endDate: endDate,
+                from: schedules,
+                calendar: calendar
+            ) {
+                return cursor
+            }
+
+            guard let previous = calendar.date(byAdding: .day, value: -1, to: cursor) else {
+                break
+            }
+            let previousDay = calendar.startOfDay(for: previous)
+            guard previousDay < cursor else { break }
+            cursor = previousDay
+        }
+
+        return nil
     }
 }
 
@@ -678,7 +1022,7 @@ enum CoreDataScheduleSupport {
             .first
     }
 
-    static func isNewerSchedule<Schedule: HistoryScheduleVersionLike>(_ lhs: Schedule, _ rhs: Schedule) -> Bool {
+    nonisolated static func isNewerSchedule<Schedule: HistoryScheduleVersionLike>(_ lhs: Schedule, _ rhs: Schedule) -> Bool {
         if lhs.effectiveFrom != rhs.effectiveFrom {
             return lhs.effectiveFrom > rhs.effectiveFrom
         }
@@ -694,11 +1038,37 @@ enum CoreDataScheduleSupport {
         object.setValue(Int16(rule.storageIntervalDays), forKey: "intervalDays")
     }
 
+    static func nextVersion(in relationship: NSMutableSet) -> Int32 {
+        let rows = (relationship.allObjects as? [NSManagedObject]) ?? []
+        let maxVersion = rows
+            .map { $0.int32Value(forKey: "version", default: 1) }
+            .max() ?? 0
+        return maxVersion + 1
+    }
+
+    static func deleteScheduleObjects(
+        in relationship: NSMutableSet,
+        onOrAfter effectiveFrom: Date,
+        calendar: Calendar,
+        context: NSManagedObjectContext
+    ) {
+        let cutoff = calendar.startOfDay(for: effectiveFrom)
+        let rows = (relationship.allObjects as? [NSManagedObject]) ?? []
+
+        for row in rows {
+            guard let rowEffectiveFrom = row.dateValue(forKey: "effectiveFrom") else { continue }
+            if calendar.startOfDay(for: rowEffectiveFrom) >= cutoff {
+                context.delete(row)
+            }
+        }
+    }
+
     nonisolated static func rule(from object: NSManagedObject) -> ScheduleRule? {
         ScheduleRule.make(
             kindRaw: object.stringValue(forKey: "scheduleKindRaw"),
             weekdayMask: object.int16Value(forKey: "weekdayMask"),
-            intervalDays: object.int16Value(forKey: "intervalDays", default: Int16(ScheduleRule.defaultIntervalDays))
+            intervalDays: object.int16Value(forKey: "intervalDays", default: Int16(ScheduleRule.defaultIntervalDays)),
+            effectiveFrom: object.dateValue(forKey: "effectiveFrom")
         )
     }
 }
@@ -955,7 +1325,7 @@ extension NSManagedObject {
 }
 
 extension Calendar {
-    func weekdaySet(for date: Date) -> WeekdaySet {
+    nonisolated func weekdaySet(for date: Date) -> WeekdaySet {
         switch component(.weekday, from: date) {
         case 2: return .monday
         case 3: return .tuesday

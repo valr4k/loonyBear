@@ -40,6 +40,17 @@ struct HabitSideEffectCoordinator {
         rescheduleAllReminderNotifications?()
     }
 
+    func handleArchiveChange(forHabitID habitID: UUID, dashboard: DashboardProjection, isArchived: Bool) {
+        widgetSyncService.syncSnapshot(from: dashboard)
+        if isArchived {
+            notificationService.removeNotifications(forHabitID: habitID)
+        } else if let rescheduleAllReminderNotifications {
+            rescheduleAllReminderNotifications()
+        } else {
+            notificationService.rescheduleNotifications(forHabitID: habitID)
+        }
+    }
+
     func prepareReminderNotifications(forHabitID habitID: UUID) async {
         await notificationService.prepareReminderNotifications(forHabitID: habitID)
         rescheduleAllReminderNotifications?()

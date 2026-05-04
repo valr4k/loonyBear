@@ -45,6 +45,9 @@ enum ReminderPlanningSupport {
 
                 let normalizedDay = calendar.startOfDay(for: localDay)
                 guard normalizedDay >= normalizedStartDate else { return nil }
+                if let endDate = reminder.endDate, normalizedDay > calendar.startOfDay(for: endDate) {
+                    return nil
+                }
                 guard isScheduled(normalizedDay, for: reminder, calendar: calendar) else { return nil }
                 guard !reminder.completedDays.contains(normalizedDay) else { return nil }
                 guard !reminder.skippedDays.contains(normalizedDay) else { return nil }
@@ -87,6 +90,9 @@ enum ReminderPlanningSupport {
 
                 let normalizedDay = calendar.startOfDay(for: localDay)
                 guard normalizedDay >= normalizedStartDate else { return nil }
+                if let endDate = reminder.endDate, normalizedDay > calendar.startOfDay(for: endDate) {
+                    return nil
+                }
                 guard isScheduled(normalizedDay, for: reminder, calendar: calendar) else { return nil }
                 guard !reminder.takenDays.contains(normalizedDay) else { return nil }
                 guard !reminder.skippedDays.contains(normalizedDay) else { return nil }
@@ -172,6 +178,7 @@ enum ReminderPlanningSupport {
         return HistoryScheduleApplicability.isScheduled(
             on: day,
             startDate: reminder.startDate,
+            endDate: reminder.endDate,
             from: reminder.scheduleHistory,
             calendar: calendar
         )
@@ -184,6 +191,7 @@ enum ReminderPlanningSupport {
         return HistoryScheduleApplicability.isScheduled(
             on: day,
             startDate: reminder.startDate,
+            endDate: reminder.endDate,
             from: reminder.scheduleHistory,
             calendar: calendar
         )

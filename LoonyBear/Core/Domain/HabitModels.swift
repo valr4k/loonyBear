@@ -16,6 +16,21 @@ enum HabitType: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum HabitSectionID: String, Hashable {
+    case build
+    case quit
+    case archived
+
+    init(type: HabitType) {
+        switch type {
+        case .build:
+            self = .build
+        case .quit:
+            self = .quit
+        }
+    }
+}
+
 enum CompletionSource: String, Codable {
     case swipe = "swipe"
     case manualEdit = "manual edit"
@@ -65,19 +80,19 @@ struct ReminderTime: Codable, Equatable {
 struct WeekdaySet: OptionSet, Codable, Hashable {
     let rawValue: Int
 
-    static let monday = WeekdaySet(rawValue: 1 << 0)
-    static let tuesday = WeekdaySet(rawValue: 1 << 1)
-    static let wednesday = WeekdaySet(rawValue: 1 << 2)
-    static let thursday = WeekdaySet(rawValue: 1 << 3)
-    static let friday = WeekdaySet(rawValue: 1 << 4)
-    static let saturday = WeekdaySet(rawValue: 1 << 5)
-    static let sunday = WeekdaySet(rawValue: 1 << 6)
+    nonisolated static let monday = WeekdaySet(rawValue: 1 << 0)
+    nonisolated static let tuesday = WeekdaySet(rawValue: 1 << 1)
+    nonisolated static let wednesday = WeekdaySet(rawValue: 1 << 2)
+    nonisolated static let thursday = WeekdaySet(rawValue: 1 << 3)
+    nonisolated static let friday = WeekdaySet(rawValue: 1 << 4)
+    nonisolated static let saturday = WeekdaySet(rawValue: 1 << 5)
+    nonisolated static let sunday = WeekdaySet(rawValue: 1 << 6)
 
-    static let weekdays: WeekdaySet = [.monday, .tuesday, .wednesday, .thursday, .friday]
-    static let weekends: WeekdaySet = [.saturday, .sunday]
-    static let daily: WeekdaySet = [.weekdays, .weekends]
+    nonisolated static let weekdays: WeekdaySet = [.monday, .tuesday, .wednesday, .thursday, .friday]
+    nonisolated static let weekends: WeekdaySet = [.saturday, .sunday]
+    nonisolated static let daily: WeekdaySet = [.weekdays, .weekends]
 
-    static let orderedDays: [(String, WeekdaySet)] = [
+    nonisolated static let orderedDays: [(String, WeekdaySet)] = [
         ("Mon", .monday),
         ("Tue", .tuesday),
         ("Wed", .wednesday),
@@ -96,8 +111,10 @@ struct WeekdaySet: OptionSet, Codable, Hashable {
         case .weekends:
             return "Weekends"
         default:
-            let labels = Self.orderedDays.compactMap { contains($0.1) ? $0.0 : nil }
-            return labels.joined(separator: ", ")
+            if let singleDayLabel {
+                return "Weekly on \(singleDayLabel)"
+            }
+            return selectedDayLabels.joined(separator: ", ")
         }
     }
 
@@ -110,7 +127,10 @@ struct WeekdaySet: OptionSet, Codable, Hashable {
         case .weekends:
             return "Weekends"
         default:
-            return "Custom"
+            if let singleDayLabel {
+                return "Weekly on \(singleDayLabel)"
+            }
+            return selectedDayLabels.joined(separator: ", ")
         }
     }
 
@@ -121,54 +141,14 @@ struct WeekdaySet: OptionSet, Codable, Hashable {
     var compactSummaryOrPlaceholder: String {
         rawValue == 0 ? "Select days" : compactSummary
     }
-}
 
-enum ScheduleIntervalPreset: String, Codable, CaseIterable, Hashable {
-    case daily
-    case weekdays
-    case weekends
-    case weekly
-    case biweekly
-
-    var title: String {
-        switch self {
-        case .daily:
-            return "Daily"
-        case .weekdays:
-            return "Weekdays"
-        case .weekends:
-            return "Weekends"
-        case .weekly:
-            return "Weekly"
-        case .biweekly:
-            return "Biweekly"
-        }
+    private var singleDayLabel: String? {
+        guard rawValue.nonzeroBitCount == 1 else { return nil }
+        return selectedDayLabels.first
     }
 
-    var storageWeekdayMask: Int {
-        switch self {
-        case .daily:
-            return WeekdaySet.daily.rawValue
-        case .weekdays:
-            return WeekdaySet.weekdays.rawValue
-        case .weekends:
-            return WeekdaySet.weekends.rawValue
-        case .weekly, .biweekly:
-            return 0
-        }
-    }
-
-    var storageIntervalDays: Int {
-        switch self {
-        case .daily:
-            return 1
-        case .weekly:
-            return 7
-        case .biweekly:
-            return 14
-        case .weekdays, .weekends:
-            return ScheduleRule.defaultIntervalDays
-        }
+    private var selectedDayLabels: [String] {
+        Self.orderedDays.compactMap { contains($0.1) ? $0.0 : nil }
     }
 }
 
@@ -178,38 +158,26 @@ enum ScheduleRule: Equatable, Hashable {
         case daily
         case weekdays
         case weekends
-        case weeklyInterval
-        case biweekly
         case intervalDays
+        case oneTime
     }
 
     nonisolated static let defaultIntervalDays = 2
-    nonisolated static let intervalDaysRange = 2 ... 20
+    nonisolated static let intervalDaysRange = 2 ... 5
     nonisolated private static let validWeekdayMask = WeekdaySet.daily.rawValue
 
     case weekly(WeekdaySet)
-    case intervalPreset(ScheduleIntervalPreset)
     case intervalDays(Int)
+    case oneTime
 
     var kind: Kind {
         switch self {
         case .weekly:
             return .weekly
-        case let .intervalPreset(preset):
-            switch preset {
-            case .daily:
-                return .daily
-            case .weekdays:
-                return .weekdays
-            case .weekends:
-                return .weekends
-            case .weekly:
-                return .weeklyInterval
-            case .biweekly:
-                return .biweekly
-            }
         case .intervalDays:
             return .intervalDays
+        case .oneTime:
+            return .oneTime
         }
     }
 
@@ -217,28 +185,16 @@ enum ScheduleRule: Equatable, Hashable {
         switch self {
         case let .weekly(days):
             return days
-        case .intervalPreset(.daily):
-            return .daily
-        case .intervalPreset(.weekdays):
-            return .weekdays
-        case .intervalPreset(.weekends):
-            return .weekends
-        case .intervalPreset(.weekly), .intervalPreset(.biweekly), .intervalDays:
+        case .intervalDays, .oneTime:
             return nil
         }
     }
 
     var intervalDays: Int? {
         switch self {
-        case .intervalPreset(.daily):
-            return 1
-        case .intervalPreset(.weekly):
-            return 7
-        case .intervalPreset(.biweekly):
-            return 14
         case let .intervalDays(days):
             return days
-        case .weekly, .intervalPreset(.weekdays), .intervalPreset(.weekends):
+        case .weekly, .oneTime:
             return nil
         }
     }
@@ -252,19 +208,15 @@ enum ScheduleRule: Equatable, Hashable {
         switch self {
         case let .weekly(days):
             return days.rawValue
-        case let .intervalPreset(preset):
-            return preset.storageWeekdayMask
-        case .intervalDays:
+        case .intervalDays, .oneTime:
             return 0
         }
     }
 
     var storageIntervalDays: Int {
         switch self {
-        case .weekly:
+        case .weekly, .oneTime:
             return Self.defaultIntervalDays
-        case let .intervalPreset(preset):
-            return preset.storageIntervalDays
         case let .intervalDays(days):
             return days
         }
@@ -274,21 +226,28 @@ enum ScheduleRule: Equatable, Hashable {
         switch self {
         case let .weekly(days):
             return days.rawValue != 0
-        case .intervalPreset:
-            return true
         case let .intervalDays(days):
             return Self.intervalDaysRange.contains(days)
+        case .oneTime:
+            return true
         }
+    }
+
+    var isOneTime: Bool {
+        if case .oneTime = self {
+            return true
+        }
+        return false
     }
 
     var summary: String {
         switch self {
         case let .weekly(days):
             return days.summaryOrPlaceholder
-        case let .intervalPreset(preset):
-            return preset.title
         case let .intervalDays(days):
             return intervalSummary(for: days)
+        case .oneTime:
+            return "Never repeat"
         }
     }
 
@@ -296,10 +255,10 @@ enum ScheduleRule: Equatable, Hashable {
         switch self {
         case let .weekly(days):
             return days.compactSummaryOrPlaceholder
-        case let .intervalPreset(preset):
-            return preset.title
         case let .intervalDays(days):
             return intervalSummary(for: days)
+        case .oneTime:
+            return "Never"
         }
     }
 
@@ -311,47 +270,69 @@ enum ScheduleRule: Equatable, Hashable {
         switch self {
         case let .weekly(days):
             return days.contains(calendar.weekdaySet(for: normalizedDay))
-        case let .intervalPreset(preset):
-            switch preset {
-            case .daily:
-                return true
-            case .weekdays:
-                return WeekdaySet.weekdays.contains(calendar.weekdaySet(for: normalizedDay))
-            case .weekends:
-                return WeekdaySet.weekends.contains(calendar.weekdaySet(for: normalizedDay))
-            case .weekly:
-                return isIntervalScheduled(days: 7, from: normalizedAnchor, to: normalizedDay, calendar: calendar)
-            case .biweekly:
-                return isIntervalScheduled(days: 14, from: normalizedAnchor, to: normalizedDay, calendar: calendar)
-            }
         case let .intervalDays(days):
             guard Self.intervalDaysRange.contains(days) else { return false }
             return isIntervalScheduled(days: days, from: normalizedAnchor, to: normalizedDay, calendar: calendar)
+        case .oneTime:
+            return normalizedDay == normalizedAnchor
         }
     }
 
     nonisolated static func make(kindRaw: String?, weekdayMask: Int, intervalDays: Int) -> ScheduleRule? {
-        let kind = kindRaw.flatMap(Kind.init(rawValue:)) ?? .weekly
+        let kind: Kind
+        if let kindRaw {
+            guard let parsedKind = Kind(rawValue: kindRaw) else { return nil }
+            kind = parsedKind
+        } else {
+            kind = .weekly
+        }
+
         switch kind {
         case .weekly:
             guard isValidWeekdayMask(weekdayMask) else { return nil }
             return .weekly(WeekdaySet(rawValue: weekdayMask))
         case .daily:
-            return .intervalPreset(.daily)
+            return .weekly(.daily)
         case .weekdays:
-            return .intervalPreset(.weekdays)
+            return .weekly(.weekdays)
         case .weekends:
-            return .intervalPreset(.weekends)
-        case .weeklyInterval:
-            return .intervalPreset(.weekly)
-        case .biweekly:
-            return .intervalPreset(.biweekly)
+            return .weekly(.weekends)
         case .intervalDays:
             if intervalDays == 1 {
-                return .intervalPreset(.daily)
+                return .weekly(.daily)
             }
             guard intervalDaysRange.contains(intervalDays) else { return nil }
             return .intervalDays(intervalDays)
+        case .oneTime:
+            return .oneTime
+        }
+    }
+
+    nonisolated static func make(
+        kindRaw: String?,
+        weekdayMask: Int,
+        intervalDays: Int,
+        effectiveFrom: Date?,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> ScheduleRule? {
+        if let currentRule = make(kindRaw: kindRaw, weekdayMask: weekdayMask, intervalDays: intervalDays) {
+            return currentRule
+        }
+
+        guard let kindRaw else { return nil }
+        switch kindRaw {
+        case "weeklyInterval":
+            if intervalDays == 1 {
+                return .weekly(.daily)
+            }
+            guard intervalDays == 7, let effectiveFrom else {
+                return nil
+            }
+            return .weekly(calendar.weekdaySet(for: effectiveFrom))
+        case "biweekly":
+            return nil
+        default:
+            return nil
         }
     }
 
@@ -360,9 +341,6 @@ enum ScheduleRule: Equatable, Hashable {
     }
 
     private func intervalSummary(for days: Int) -> String {
-        if days == ScheduleIntervalPreset.biweekly.storageIntervalDays {
-            return ScheduleIntervalPreset.biweekly.title
-        }
         return "Every \(days) days"
     }
 
@@ -378,6 +356,7 @@ struct Habit: Identifiable, Equatable {
     let name: String
     let sortOrder: Int
     let startDate: Date
+    let endDate: Date?
     let historyMode: HabitHistoryMode
     let reminderEnabled: Bool
     let reminderTime: ReminderTime?
@@ -455,11 +434,14 @@ struct HabitCardProjection: Identifiable, Equatable, Hashable {
     let isSkippedToday: Bool
     var needsHistoryReview = false
     var activeOverdueDay: Date?
+    var startsInFuture = false
+    var futureStartDate: Date? = nil
+    var isArchived = false
     let sortOrder: Int
 }
 
 struct HabitSectionProjection: Identifiable, Equatable {
-    let id: HabitType
+    let id: HabitSectionID
     let title: String
     let habits: [HabitCardProjection]
 }
@@ -474,6 +456,7 @@ struct CreateHabitDraft: Equatable {
     var type: HabitType = .build
     var name = ""
     var startDate: Date = Calendar.autoupdatingCurrent.startOfDay(for: Date())
+    var endDate: Date?
     var scheduleRule: ScheduleRule = .weekly(.daily)
     var useScheduleForHistory = true
     var reminderEnabled = false
@@ -493,17 +476,20 @@ struct EditHabitDraft: Equatable {
     let id: UUID
     let type: HabitType
     let startDate: Date
+    var endDate: Date?
     var name: String
     var scheduleRule: ScheduleRule
     var reminderEnabled: Bool
     var reminderTime: ReminderTime
     var completedDays: Set<Date>
     var skippedDays: Set<Date>
+    var scheduleEffectiveFrom: Date?
 
     init(
         id: UUID,
         type: HabitType,
         startDate: Date,
+        endDate: Date? = nil,
         name: String,
         scheduleDays: WeekdaySet,
         reminderEnabled: Bool,
@@ -514,18 +500,21 @@ struct EditHabitDraft: Equatable {
         self.id = id
         self.type = type
         self.startDate = startDate
+        self.endDate = endDate
         self.name = name
         self.scheduleRule = .weekly(scheduleDays)
         self.reminderEnabled = reminderEnabled
         self.reminderTime = reminderTime
         self.completedDays = completedDays
         self.skippedDays = skippedDays
+        scheduleEffectiveFrom = nil
     }
 
     init(
         id: UUID,
         type: HabitType,
         startDate: Date,
+        endDate: Date? = nil,
         name: String,
         scheduleRule: ScheduleRule,
         reminderEnabled: Bool,
@@ -536,12 +525,14 @@ struct EditHabitDraft: Equatable {
         self.id = id
         self.type = type
         self.startDate = startDate
+        self.endDate = endDate
         self.name = name
         self.scheduleRule = scheduleRule
         self.reminderEnabled = reminderEnabled
         self.reminderTime = reminderTime
         self.completedDays = completedDays
         self.skippedDays = skippedDays
+        scheduleEffectiveFrom = nil
     }
 
     var scheduleDays: WeekdaySet {
@@ -559,6 +550,7 @@ struct HabitDetailsProjection: Equatable {
     let type: HabitType
     let name: String
     let startDate: Date
+    let endDate: Date?
     let historyMode: HabitHistoryMode
     let scheduleSummary: String
     let scheduleDays: WeekdaySet
@@ -570,10 +562,12 @@ struct HabitDetailsProjection: Equatable {
     let totalCompletedDays: Int
     let completedDays: Set<Date>
     let skippedDays: Set<Date>
+    let scheduleHistory: [HabitScheduleVersion]
     let scheduledDates: Set<Date>
     var needsHistoryReview = false
     var requiredPastScheduledDays: Set<Date> = []
     var activeOverdueDay: Date?
+    var isArchived = false
 
     var heatmapDays: [Date] {
         completedDays.sorted()
