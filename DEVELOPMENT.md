@@ -54,6 +54,8 @@ This rule is mandatory for local test runs and documentation examples.
 - Do not change backup schema casually without updating restore handling, validation, and tests.
 - Backup payloads include app appearance settings; preserve legacy decode behavior for backups without those settings.
 - Keep shared schedule UI in `AppDesign.swift`; Create/Edit should use the shared pushed Repeat editor, and Details should use the shared read-only Repeat presentation rather than drifting into separate schedule layouts.
+- Keep Schedule picker/popover protection shared through `AppSchedulePresentationGuard` and `appExclusiveTouchScope()`. Create/Edit must not grow separate picker-blocking state, and native compact `DatePicker` controls should stay native unless the product explicitly chooses a different visual pattern.
+- Do not attach the Time-row touch-down guard to Start Date. Start Date relies on the exclusive-touch scope only; an extra gesture can prevent the native compact date picker from opening.
 - App tint should be added through shared helpers (`appAccentTint`, `appAccentForeground`, `AppTint`) so fixed system colors remain intentional.
 - Keep notification payload contracts stable when changing action behavior.
 - The main app target uses an Xcode run script to increment `CURRENT_PROJECT_VERSION` by 1 for normal builds. Xcode previews skip the increment, and the About screen formats the build as a short six-digit value.

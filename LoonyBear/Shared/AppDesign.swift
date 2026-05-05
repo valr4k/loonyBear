@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import UIKit
 
@@ -336,6 +337,29 @@ extension View {
             self
         }
     }
+
+    func appTouchDownAction(_ action: @escaping () -> Void) -> some View {
+        modifier(AppTouchDownActionModifier(action: action))
+    }
+}
+
+private struct AppTouchDownActionModifier: ViewModifier {
+    let action: () -> Void
+    @State private var isTouchActive = false
+
+    func body(content: Content) -> some View {
+        content.simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    guard !isTouchActive else { return }
+                    isTouchActive = true
+                    action()
+                }
+                .onEnded { _ in
+                    isTouchActive = false
+                }
+        )
+    }
 }
 
 struct AppSection<Content: View>: View {
@@ -358,6 +382,103 @@ struct AppCard<Content: View>: View {
             RoundedRectangle(cornerRadius: AppLayout.cardCornerRadius, style: .continuous)
                 .fill(Color(.secondarySystemGroupedBackground))
         )
+    }
+}
+
+private extension View {
+    func appExclusiveTouchScope() -> some View {
+        background(AppExclusiveTouchScopeConfigurator().allowsHitTesting(false))
+    }
+}
+
+private struct AppExclusiveTouchScopeConfigurator: UIViewRepresentable {
+    func makeUIView(context: Context) -> MarkerView {
+        MarkerView()
+    }
+
+    func updateUIView(_ uiView: MarkerView, context: Context) {
+        uiView.scheduleConfiguration()
+    }
+
+    final class MarkerView: UIView {
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            backgroundColor = .clear
+            isUserInteractionEnabled = false
+            isMultipleTouchEnabled = false
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            nil
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            scheduleConfiguration()
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            scheduleConfiguration()
+        }
+
+        func scheduleConfiguration() {
+            guard window != nil else { return }
+            DispatchQueue.main.async { [weak self] in
+                self?.configureScope()
+            }
+        }
+
+        private func configureScope() {
+            guard let scopeRoot = Self.scopeRoot(from: self) else { return }
+            Self.applyExclusiveTouch(in: scopeRoot)
+        }
+
+        private static func scopeRoot(from marker: UIView) -> UIView? {
+            let markerSize = marker.bounds.size
+            var candidate = marker.superview
+            var firstControlAncestor: UIView?
+
+            while let view = candidate, view !== marker.window {
+                if containsControl(in: view, excluding: marker) {
+                    if firstControlAncestor == nil {
+                        firstControlAncestor = view
+                    }
+
+                    if size(view.bounds.size, roughlyMatches: markerSize) {
+                        return view
+                    }
+                }
+
+                candidate = view.superview
+            }
+
+            return firstControlAncestor
+        }
+
+        private static func size(_ lhs: CGSize, roughlyMatches rhs: CGSize) -> Bool {
+            guard rhs.width > 0, rhs.height > 0 else { return false }
+            return abs(lhs.width - rhs.width) < 24 && abs(lhs.height - rhs.height) < 24
+        }
+
+        private static func containsControl(in view: UIView, excluding marker: UIView) -> Bool {
+            for subview in view.subviews where subview !== marker {
+                if subview is UIControl || containsControl(in: subview, excluding: marker) {
+                    return true
+                }
+            }
+            return false
+        }
+
+        private static func applyExclusiveTouch(in view: UIView) {
+            view.isMultipleTouchEnabled = false
+            view.isExclusiveTouch = view.isUserInteractionEnabled
+
+            for subview in view.subviews {
+                applyExclusiveTouch(in: subview)
+            }
+        }
     }
 }
 
@@ -542,17 +663,20 @@ struct AppReminderTimeRows: View {
     @Binding var isEnabled: Bool
     @Binding var reminderDate: Date
     let onTimeTap: (() -> Void)?
+    let onPickerTouchDown: (() -> Void)?
     let isPickerPresentationBlocked: Bool
 
     init(
         isEnabled: Binding<Bool>,
         reminderDate: Binding<Date>,
         onTimeTap: (() -> Void)? = nil,
+        onPickerTouchDown: (() -> Void)? = nil,
         isPickerPresentationBlocked: Bool = false
     ) {
         _isEnabled = isEnabled
         _reminderDate = reminderDate
         self.onTimeTap = onTimeTap
+        self.onPickerTouchDown = onPickerTouchDown
         self.isPickerPresentationBlocked = isPickerPresentationBlocked
     }
 
@@ -598,6 +722,9 @@ struct AppReminderTimeRows: View {
         .padding(.horizontal, AppLayout.rowHorizontalPadding)
         .padding(.vertical, AppLayout.rowVerticalPadding)
         .contentShape(Rectangle())
+        .appTouchDownAction {
+            onPickerTouchDown?()
+        }
         .simultaneousGesture(TapGesture().onEnded {
             dismissKeyboardForNonTextControl()
         })
@@ -685,6 +812,7 @@ struct AppOptionalEndDatePickerRow: View {
     let isEnabled: Bool
     let onTap: (() -> Void)?
     let onOptionsPresentationChange: (Bool) -> Void
+    let isOptionsPresentationBlocked: Bool
     let isPickerPresentationBlocked: Bool
     @State private var isShowingEndDateOptions = false
 
@@ -697,6 +825,7 @@ struct AppOptionalEndDatePickerRow: View {
         isEnabled: Bool = true,
         onTap: (() -> Void)? = nil,
         onOptionsPresentationChange: @escaping (Bool) -> Void = { _ in },
+        isOptionsPresentationBlocked: Bool = false,
         isPickerPresentationBlocked: Bool = false
     ) {
         self.title = title
@@ -707,6 +836,7 @@ struct AppOptionalEndDatePickerRow: View {
         self.isEnabled = isEnabled
         self.onTap = onTap
         self.onOptionsPresentationChange = onOptionsPresentationChange
+        self.isOptionsPresentationBlocked = isOptionsPresentationBlocked
         self.isPickerPresentationBlocked = isPickerPresentationBlocked
     }
 
@@ -719,7 +849,7 @@ struct AppOptionalEndDatePickerRow: View {
                 Spacer()
 
                 Button {
-                    guard isEnabled else { return }
+                    guard isEnabled, !isOptionsPresentationBlocked else { return }
                     AppDescriptionFieldSupport.dismissKeyboard()
                     onTap?()
                     setEndDateOptionsPresented(true)
@@ -860,6 +990,40 @@ struct AppOptionalEndDatePickerRow: View {
     }
 }
 
+@MainActor
+private final class AppSchedulePresentationGuard: ObservableObject {
+    @Published private(set) var isPickerPresentationBlocked = false
+    @Published private(set) var isEndDateOptionsPresentationBlocked = false
+
+    private static let pickerTouchBlockDurationNanoseconds: UInt64 = 450_000_000
+    private var pickerTouchReleaseTask: Task<Void, Never>?
+
+    deinit {
+        pickerTouchReleaseTask?.cancel()
+    }
+
+    func setEndDateOptionsPresented(_ isPresented: Bool) {
+        isPickerPresentationBlocked = isPresented
+    }
+
+    func blockEndDateOptionsForPickerTouch() {
+        pickerTouchReleaseTask?.cancel()
+        isEndDateOptionsPresentationBlocked = true
+        pickerTouchReleaseTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: Self.pickerTouchBlockDurationNanoseconds)
+            guard !Task.isCancelled else { return }
+            isEndDateOptionsPresentationBlocked = false
+        }
+    }
+
+    func reset() {
+        pickerTouchReleaseTask?.cancel()
+        pickerTouchReleaseTask = nil
+        isPickerPresentationBlocked = false
+        isEndDateOptionsPresentationBlocked = false
+    }
+}
+
 struct AppCreateScheduleSection<RepeatDestination: View>: View {
     @Binding var startDate: Date
     let startDateRange: ClosedRange<Date>?
@@ -876,8 +1040,7 @@ struct AppCreateScheduleSection<RepeatDestination: View>: View {
     let repeatTap: (() -> Void)?
     let endDateTap: (() -> Void)?
     @ViewBuilder let repeatDestination: RepeatDestination
-    @State private var isEndDateOptionsTransitionBlockingPickers = false
-    @State private var endDateOptionsTransitionReleaseTask: Task<Void, Never>?
+    @StateObject private var presentationGuard = AppSchedulePresentationGuard()
 
     init(
         startDate: Binding<Date>,
@@ -923,7 +1086,7 @@ struct AppCreateScheduleSection<RepeatDestination: View>: View {
                         date: $startDate,
                         range: startDateRange,
                         onTap: startDateTap,
-                        isPickerPresentationBlocked: isEndDateOptionsTransitionBlockingPickers
+                        isPickerPresentationBlocked: presentationGuard.isPickerPresentationBlocked
                     )
 
                     AppSectionDivider()
@@ -932,7 +1095,8 @@ struct AppCreateScheduleSection<RepeatDestination: View>: View {
                         isEnabled: $reminderEnabled,
                         reminderDate: $reminderDate,
                         onTimeTap: reminderTimeTap,
-                        isPickerPresentationBlocked: isEndDateOptionsTransitionBlockingPickers
+                        onPickerTouchDown: presentationGuard.blockEndDateOptionsForPickerTouch,
+                        isPickerPresentationBlocked: presentationGuard.isPickerPresentationBlocked
                     )
 
                     AppSectionDivider()
@@ -954,29 +1118,16 @@ struct AppCreateScheduleSection<RepeatDestination: View>: View {
                         fallbackDate: startDate,
                         isEnabled: isEndDateEnabled,
                         onTap: endDateTap,
-                        onOptionsPresentationChange: setEndDateOptionsPresentationActive,
-                        isPickerPresentationBlocked: isEndDateOptionsTransitionBlockingPickers
+                        onOptionsPresentationChange: presentationGuard.setEndDateOptionsPresented,
+                        isOptionsPresentationBlocked: presentationGuard.isEndDateOptionsPresentationBlocked,
+                        isPickerPresentationBlocked: presentationGuard.isPickerPresentationBlocked
                     )
                 }
             }
+            .appExclusiveTouchScope()
         }
         .onDisappear {
-            endDateOptionsTransitionReleaseTask?.cancel()
-            isEndDateOptionsTransitionBlockingPickers = false
-        }
-    }
-
-    private func setEndDateOptionsPresentationActive(_ isActive: Bool) {
-        endDateOptionsTransitionReleaseTask?.cancel()
-
-        if isActive {
-            isEndDateOptionsTransitionBlockingPickers = true
-        } else {
-            endDateOptionsTransitionReleaseTask = Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 300_000_000)
-                guard !Task.isCancelled else { return }
-                isEndDateOptionsTransitionBlockingPickers = false
-            }
+            presentationGuard.reset()
         }
     }
 }
@@ -995,8 +1146,7 @@ struct AppEditScheduleSection<RepeatDestination: View>: View {
     let repeatTap: (() -> Void)?
     let endDateTap: (() -> Void)?
     @ViewBuilder let repeatDestination: RepeatDestination
-    @State private var isEndDateOptionsTransitionBlockingPickers = false
-    @State private var endDateOptionsTransitionReleaseTask: Task<Void, Never>?
+    @StateObject private var presentationGuard = AppSchedulePresentationGuard()
 
     init(
         reminderEnabled: Binding<Bool>,
@@ -1038,7 +1188,8 @@ struct AppEditScheduleSection<RepeatDestination: View>: View {
                         isEnabled: $reminderEnabled,
                         reminderDate: $reminderDate,
                         onTimeTap: reminderTimeTap,
-                        isPickerPresentationBlocked: isEndDateOptionsTransitionBlockingPickers
+                        onPickerTouchDown: presentationGuard.blockEndDateOptionsForPickerTouch,
+                        isPickerPresentationBlocked: presentationGuard.isPickerPresentationBlocked
                     )
 
                     AppSectionDivider()
@@ -1060,29 +1211,16 @@ struct AppEditScheduleSection<RepeatDestination: View>: View {
                         fallbackDate: endDateFallback,
                         isEnabled: isEndDateEnabled,
                         onTap: endDateTap,
-                        onOptionsPresentationChange: setEndDateOptionsPresentationActive,
-                        isPickerPresentationBlocked: isEndDateOptionsTransitionBlockingPickers
+                        onOptionsPresentationChange: presentationGuard.setEndDateOptionsPresented,
+                        isOptionsPresentationBlocked: presentationGuard.isEndDateOptionsPresentationBlocked,
+                        isPickerPresentationBlocked: presentationGuard.isPickerPresentationBlocked
                     )
                 }
             }
+            .appExclusiveTouchScope()
         }
         .onDisappear {
-            endDateOptionsTransitionReleaseTask?.cancel()
-            isEndDateOptionsTransitionBlockingPickers = false
-        }
-    }
-
-    private func setEndDateOptionsPresentationActive(_ isActive: Bool) {
-        endDateOptionsTransitionReleaseTask?.cancel()
-
-        if isActive {
-            isEndDateOptionsTransitionBlockingPickers = true
-        } else {
-            endDateOptionsTransitionReleaseTask = Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 300_000_000)
-                guard !Task.isCancelled else { return }
-                isEndDateOptionsTransitionBlockingPickers = false
-            }
+            presentationGuard.reset()
         }
     }
 }

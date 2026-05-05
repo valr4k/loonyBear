@@ -132,6 +132,8 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
 - Habit and Pill Details/Edit calendars show a small tertiary system-gray dot under days that match the active schedule history.
 - Missing past-day review warnings use a dismissible floating red material banner on Edit and Details screens; they do not list dates and do not take space inside the calendar layout.
 - Create/Edit Repeat selection opens as a pushed screen inside the sheet. Details shows Repeat as read-only text and does not open a schedule picker.
+- Create/Edit Schedule blocks keep the native compact Start Date, Time, and End Date pickers. A shared presentation guard prevents simultaneous picker/popover presentation races without changing the visible UI.
+- End Repeat uses the native options popover. While it is open, neighboring compact pickers do not accept hit-testing; a Time-row touch-down briefly blocks End Repeat presentation to protect the native time picker from same-frame taps.
 - Edit Habit and Edit Pill delete confirmations use system alerts with `Cancel` and destructive `Delete` actions.
 - Backup actions are full-width capsule buttons; `Last backup` follows the cloud status icon color and uses `03 May at 22:35` style dates; backup action confirmations use system alerts with short action labels.
 - Backup action notices are floating banners derived from folder contents and remembered backup fingerprints, so already created/restored backups do not show restore-needed notices after reopening the screen. Backup success feedback uses green floating banners.

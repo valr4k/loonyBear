@@ -841,6 +841,9 @@ Create/Edit schedule behavior:
 - Days shows full weekday names with checkmarks and prevents leaving the schedule empty
 - Interval supports `Every N days [Stepper]` with a native Stepper for 2 to 5 days, and for Pills only also includes `Never`
 - `Use schedule for history?` is not exposed in the UI; new items use schedule-based history generation
+- the schedule card applies `appExclusiveTouchScope()` so UIKit controls inside the same Schedule block do not accept true simultaneous multi-touch presentations
+- system date/time presentation remains owned by native compact `DatePicker` controls; the app gates touch delivery, but it does not replace those controls with custom popovers or inline pickers
+- Create/Edit share `AppSchedulePresentationGuard` as a `@StateObject`; do not reintroduce separate per-screen state for picker/popover blocking
 
 Details schedule behavior:
 - Details screens show a read-only Schedule section
@@ -860,7 +863,10 @@ Behavior:
 - Create/Edit reminder time rows render the selected time with a native compact `DatePicker`
 - the system compact control opens its own time picker
 - tapping the row also dismisses keyboard focus before the control interaction
-- End Repeat option popover transitions briefly block neighboring compact pickers to avoid overlapping UIKit presentations
+- the Time row uses `appTouchDownAction` to call `AppSchedulePresentationGuard.blockEndDateOptionsForPickerTouch()`
+- that touch-down guard blocks opening the End Repeat options popover for 450 ms, protecting the UIKit time picker from a same-frame Time + End Repeat tap
+- the 450 ms guard affects only End Repeat option presentation; it does not disable the Time picker itself
+- Start Date intentionally does not use this touch-down guard because applying a gesture to the Start Date compact date picker can prevent the native date picker from opening
 
 ### 13.6 Editable Start Date UI
 Defined in `LoonyBear/Shared/AppDesign.swift`.
@@ -871,18 +877,72 @@ Behavior:
 - tapping the row also dismisses keyboard focus before the control interaction
 - Habit and Pill Create use the same selectable range: last 5 years through the end of the second next calendar month
 - Edit screens do not expose Start Date
+- Start Date participates in the schedule card exclusive-touch scope, but it does not install an additional touch-down gesture
 
 ### 13.7 End Date UI
 Defined in `LoonyBear/Shared/AppDesign.swift`.
 
 Behavior:
-- Pills and Habits label the optional final date as `End Date`
+- Pills and Habits label the options row as `End Repeat`
+- when `On Date` is selected, the date picker row below it is labelled `End Date`
 - empty values display `Never`
 - the options popover contains `Never` and `On Date`
 - when `On Date` is selected, a date row appears below the options row with the same compact capsule display
 - the date row uses the native compact system date picker
-- the options popover transition briefly blocks neighboring compact pickers to avoid overlapping UIKit presentations
+- while the End Repeat options popover is visible, neighboring compact date/time pickers receive `allowsHitTesting(false)` through `AppSchedulePresentationGuard.isPickerPresentationBlocked`
+- when the End Repeat options popover closes, picker hit-testing is restored immediately; there is no post-close delay
+- the End Repeat options button checks `AppSchedulePresentationGuard.isEndDateOptionsPresentationBlocked` before presenting, so a Time-row touch-down can win and prevent the popover from racing the time picker
 - if Pill Repeat is `Never`, End Date is disabled and cleared
+
+### 13.8 Schedule System Presentation Guard
+Defined in `LoonyBear/Shared/AppDesign.swift`.
+
+Purpose:
+- prevent UIKit presentation races between native compact date/time pickers and the End Repeat options popover
+- preserve the current native Apple-style UI; this guard must not introduce custom DatePicker or TimePicker visuals
+- keep Create and Edit behavior identical for Pills and Habits
+
+Implementation:
+- `AppSchedulePresentationGuard` is a `@MainActor ObservableObject`
+- `AppCreateScheduleSection` and `AppEditScheduleSection` each own one guard through `@StateObject`
+- both sections pass the guard state into shared row components instead of duplicating local blocking state
+- `reset()` cancels pending guard tasks and clears presentation-blocking flags when the Schedule section disappears
+
+Guard state:
+- `isPickerPresentationBlocked`
+  - set to `true` only while the End Repeat options popover is visible
+  - passed to Start Date, Time, and End Date compact picker rows as `allowsHitTesting(!isPickerPresentationBlocked)`
+  - set back to `false` immediately when the End Repeat popover closes
+- `isEndDateOptionsPresentationBlocked`
+  - set to `true` when the Time row receives touch-down
+  - automatically returns to `false` after 450 ms unless cancelled/reset
+  - checked by the End Repeat options button before calling `setEndDateOptionsPresented(true)`
+
+Exclusive touch scope:
+- `appExclusiveTouchScope()` is attached to the Schedule card in both Create and Edit
+- the helper inserts a UIKit marker view and configures the surrounding Schedule card subtree
+- controls inside that subtree are forced to `isMultipleTouchEnabled = false`
+- interactive views in that subtree are configured with `isExclusiveTouch = true`
+- this specifically protects real-device two-finger simultaneous taps, where two controls can otherwise receive touch-down in the same frame before SwiftUI state has time to update
+
+Time picker race protection:
+- the Time row is the only picker row with `appTouchDownAction`
+- touch-down starts the 450 ms End Repeat presentation block before the compact time picker asks UIKit to present
+- this protects the known vulnerable pair: Time picker + End Repeat popover
+- Date picker + End Repeat is primarily protected by the exclusive touch scope and the popover-visible hit-testing block
+
+Important invariants:
+- do not replace native compact `DatePicker` rows with custom popover content unless a new product decision explicitly accepts the visual and performance tradeoff
+- do not add `appTouchDownAction` to Start Date; that previously prevented the native Start Date picker from opening reliably
+- do not add a post-close delay after End Repeat popover dismissal unless a reproducible regression requires it
+- do not split the guard back into separate Create/Edit state variables
+- do not allow End Repeat option presentation while `isEndDateOptionsPresentationBlocked` is true
+- do not allow compact Date/Time picker hit-testing while End Repeat options are currently presented
+- keep `Use schedule for history?` out of UI; it remains internally always enabled for new items
+
+Known tradeoff:
+- touching the Time row can block End Repeat for up to 450 ms even if the user does not ultimately open the time picker
+- this is intentional because it prevents the observed real-device same-frame Time + End Repeat presentation race while keeping native controls and current UI unchanged
 
 ## 14. Startup Health Check
 

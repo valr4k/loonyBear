@@ -372,7 +372,7 @@
         },
         {
           "title": "Reminder time rules",
-          "body": "ReminderTime stores hour and minute as integers. ReminderTime.default rounds the current time up to a 5-minute boundary. If rounding reaches 60 minutes, the hour is incremented and minute becomes 0. Create/Edit reminder time rows use the native compact system time picker. Create Start Date rows use the native compact system date picker. End Repeat option popover transitions briefly block neighboring compact pickers to avoid overlapping UIKit presentations. Edit screens do not expose Start Date."
+          "body": "ReminderTime stores hour and minute as integers. ReminderTime.default rounds the current time up to a 5-minute boundary. If rounding reaches 60 minutes, the hour is incremented and minute becomes 0. Create/Edit reminder time rows use the native compact system time picker. Create Start Date rows use the native compact system date picker. Schedule blocks keep native system pickers and protect them with a shared presentation guard: while the End Repeat options popover is open, neighboring compact pickers ignore hit-testing, and Time-row touch-down briefly blocks End Repeat presentation to avoid same-frame UIKit presentation races. Edit screens do not expose Start Date."
         },
         {
           "title": "Schedule model",

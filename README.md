@@ -41,6 +41,7 @@ The current app supports:
 - pushed Repeat editor with Days and Interval selection
 - End Date and separate Archive pages for completed or manually archived items
 - scheduled-day dots in Habit and Pill history calendars
+- native compact date/time pickers with shared Schedule presentation safety for simultaneous picker/popover taps
 - portrait-only orientation on iPhone
 - Rules & Logic in-app reference content
 - widget snapshot generation for Habit dashboard data

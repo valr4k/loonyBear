@@ -193,7 +193,10 @@ This file describes the behavioral rules that are currently implemented in code.
 - iOS only shows the system notification permission prompt once. After the user chooses `Don’t Allow`, the app can only route the user to Settings.
 - Reminder time rows use the native compact system time picker when reminders are enabled.
 - Editable Start Date rows use the native compact system date picker on Create screens.
-- End Repeat option popover transitions briefly block neighboring compact pickers to avoid overlapping UIKit presentations.
+- Schedule blocks keep native compact date/time pickers and the native End Repeat options popover, but protect them from simultaneous UIKit presentations.
+- While the End Repeat options popover is open, neighboring compact date/time picker rows ignore picker hit-testing.
+- A Time-row touch-down briefly blocks End Repeat option presentation so a same-frame Time picker + End Repeat tap cannot present two UIKit controllers at once.
+- The Start Date picker participates in the Schedule block exclusive-touch scope but does not install an extra touch-down gesture.
 - Reminders are generated only for the next 2 days.
 - A reminder is not created for a day that is already completed or taken.
 - A reminder is not created for a day that is already skipped.
