@@ -812,6 +812,7 @@ struct AppOptionalEndDatePickerRow: View {
     let isEnabled: Bool
     let onTap: (() -> Void)?
     let onOptionsPresentationChange: (Bool) -> Void
+    let onOptionsTouchDown: (() -> Void)?
     let isOptionsPresentationBlocked: Bool
     let isPickerPresentationBlocked: Bool
     @State private var isShowingEndDateOptions = false
@@ -825,6 +826,7 @@ struct AppOptionalEndDatePickerRow: View {
         isEnabled: Bool = true,
         onTap: (() -> Void)? = nil,
         onOptionsPresentationChange: @escaping (Bool) -> Void = { _ in },
+        onOptionsTouchDown: (() -> Void)? = nil,
         isOptionsPresentationBlocked: Bool = false,
         isPickerPresentationBlocked: Bool = false
     ) {
@@ -836,6 +838,7 @@ struct AppOptionalEndDatePickerRow: View {
         self.isEnabled = isEnabled
         self.onTap = onTap
         self.onOptionsPresentationChange = onOptionsPresentationChange
+        self.onOptionsTouchDown = onOptionsTouchDown
         self.isOptionsPresentationBlocked = isOptionsPresentationBlocked
         self.isPickerPresentationBlocked = isPickerPresentationBlocked
     }
@@ -867,6 +870,10 @@ struct AppOptionalEndDatePickerRow: View {
                 .frame(minWidth: 128, minHeight: 44, alignment: .trailing)
                 .contentShape(Rectangle())
                 .allowsHitTesting(isEnabled)
+                .appTouchDownAction {
+                    guard isEnabled, !isOptionsPresentationBlocked, !isShowingEndDateOptions else { return }
+                    onOptionsTouchDown?()
+                }
             }
             .padding(.horizontal, AppLayout.rowHorizontalPadding)
             .padding(.vertical, AppLayout.rowVerticalPadding)
@@ -995,14 +1002,19 @@ private final class AppSchedulePresentationGuard: ObservableObject {
     @Published private(set) var isPickerPresentationBlocked = false
     @Published private(set) var isEndDateOptionsPresentationBlocked = false
 
-    private static let pickerTouchBlockDurationNanoseconds: UInt64 = 450_000_000
+    private static let pickerTouchBlockDurationNanoseconds: UInt64 = 200_000_000
+    private static let endDateOptionsTouchBlockDurationNanoseconds: UInt64 = 200_000_000
     private var pickerTouchReleaseTask: Task<Void, Never>?
+    private var endDateOptionsTouchReleaseTask: Task<Void, Never>?
 
     deinit {
         pickerTouchReleaseTask?.cancel()
+        endDateOptionsTouchReleaseTask?.cancel()
     }
 
     func setEndDateOptionsPresented(_ isPresented: Bool) {
+        endDateOptionsTouchReleaseTask?.cancel()
+        endDateOptionsTouchReleaseTask = nil
         isPickerPresentationBlocked = isPresented
     }
 
@@ -1016,9 +1028,21 @@ private final class AppSchedulePresentationGuard: ObservableObject {
         }
     }
 
+    func blockPickersForEndDateOptionsTouch() {
+        endDateOptionsTouchReleaseTask?.cancel()
+        isPickerPresentationBlocked = true
+        endDateOptionsTouchReleaseTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: Self.endDateOptionsTouchBlockDurationNanoseconds)
+            guard !Task.isCancelled else { return }
+            isPickerPresentationBlocked = false
+        }
+    }
+
     func reset() {
         pickerTouchReleaseTask?.cancel()
+        endDateOptionsTouchReleaseTask?.cancel()
         pickerTouchReleaseTask = nil
+        endDateOptionsTouchReleaseTask = nil
         isPickerPresentationBlocked = false
         isEndDateOptionsPresentationBlocked = false
     }
@@ -1119,6 +1143,7 @@ struct AppCreateScheduleSection<RepeatDestination: View>: View {
                         isEnabled: isEndDateEnabled,
                         onTap: endDateTap,
                         onOptionsPresentationChange: presentationGuard.setEndDateOptionsPresented,
+                        onOptionsTouchDown: presentationGuard.blockPickersForEndDateOptionsTouch,
                         isOptionsPresentationBlocked: presentationGuard.isEndDateOptionsPresentationBlocked,
                         isPickerPresentationBlocked: presentationGuard.isPickerPresentationBlocked
                     )
@@ -1212,6 +1237,7 @@ struct AppEditScheduleSection<RepeatDestination: View>: View {
                         isEnabled: isEndDateEnabled,
                         onTap: endDateTap,
                         onOptionsPresentationChange: presentationGuard.setEndDateOptionsPresented,
+                        onOptionsTouchDown: presentationGuard.blockPickersForEndDateOptionsTouch,
                         isOptionsPresentationBlocked: presentationGuard.isEndDateOptionsPresentationBlocked,
                         isPickerPresentationBlocked: presentationGuard.isPickerPresentationBlocked
                     )

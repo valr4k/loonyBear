@@ -864,8 +864,8 @@ Behavior:
 - the system compact control opens its own time picker
 - tapping the row also dismisses keyboard focus before the control interaction
 - the Time row uses `appTouchDownAction` to call `AppSchedulePresentationGuard.blockEndDateOptionsForPickerTouch()`
-- that touch-down guard blocks opening the End Repeat options popover for 450 ms, protecting the UIKit time picker from a same-frame Time + End Repeat tap
-- the 450 ms guard affects only End Repeat option presentation; it does not disable the Time picker itself
+- that touch-down guard blocks opening the End Repeat options popover for 200 ms, protecting the UIKit time picker from a same-frame Time + End Repeat tap
+- the 200 ms guard affects only End Repeat option presentation; it does not disable the Time picker itself
 - Start Date intentionally does not use this touch-down guard because applying a gesture to the Start Date compact date picker can prevent the native date picker from opening
 
 ### 13.6 Editable Start Date UI
@@ -889,6 +889,9 @@ Behavior:
 - the options popover contains `Never` and `On Date`
 - when `On Date` is selected, a date row appears below the options row with the same compact capsule display
 - the date row uses the native compact system date picker
+- the End Repeat trigger uses `appTouchDownAction` to block neighboring compact picker hit-testing for 200 ms before the popover is presented
+- if the popover opens, normal popover-visible blocking keeps picker hit-testing disabled until dismissal
+- if the popover does not open, the 200 ms pre-block expires automatically
 - while the End Repeat options popover is visible, neighboring compact date/time pickers receive `allowsHitTesting(false)` through `AppSchedulePresentationGuard.isPickerPresentationBlocked`
 - when the End Repeat options popover closes, picker hit-testing is restored immediately; there is no post-close delay
 - the End Repeat options button checks `AppSchedulePresentationGuard.isEndDateOptionsPresentationBlocked` before presenting, so a Time-row touch-down can win and prevent the popover from racing the time picker
@@ -910,12 +913,13 @@ Implementation:
 
 Guard state:
 - `isPickerPresentationBlocked`
-  - set to `true` only while the End Repeat options popover is visible
+  - set to `true` for 200 ms when End Repeat receives touch-down
+  - also set to `true` while the End Repeat options popover is visible
   - passed to Start Date, Time, and End Date compact picker rows as `allowsHitTesting(!isPickerPresentationBlocked)`
   - set back to `false` immediately when the End Repeat popover closes
 - `isEndDateOptionsPresentationBlocked`
   - set to `true` when the Time row receives touch-down
-  - automatically returns to `false` after 450 ms unless cancelled/reset
+  - automatically returns to `false` after 200 ms unless cancelled/reset
   - checked by the End Repeat options button before calling `setEndDateOptionsPresented(true)`
 
 Exclusive touch scope:
@@ -927,21 +931,30 @@ Exclusive touch scope:
 
 Time picker race protection:
 - the Time row is the only picker row with `appTouchDownAction`
-- touch-down starts the 450 ms End Repeat presentation block before the compact time picker asks UIKit to present
+- touch-down starts the 200 ms End Repeat presentation block before the compact time picker asks UIKit to present
 - this protects the known vulnerable pair: Time picker + End Repeat popover
 - Date picker + End Repeat is primarily protected by the exclusive touch scope and the popover-visible hit-testing block
+
+End Repeat race protection:
+- End Repeat is the only popover row with `appTouchDownAction`
+- touch-down starts a 200 ms compact picker hit-testing block before the popover asks UIKit to present
+- the 200 ms pre-block is skipped when End Repeat presentation is already blocked by a picker touch-down
+- the 200 ms pre-block is also skipped when the End Repeat popover is already visible
+- this protects the reverse rapid sequence: End Repeat touch-down followed immediately by Start Date, Time, or End Date picker touch
+- if the popover successfully opens, `setEndDateOptionsPresented(true)` cancels the 200 ms pre-block task and continues the picker block for the full popover-visible duration
 
 Important invariants:
 - do not replace native compact `DatePicker` rows with custom popover content unless a new product decision explicitly accepts the visual and performance tradeoff
 - do not add `appTouchDownAction` to Start Date; that previously prevented the native Start Date picker from opening reliably
 - do not add a post-close delay after End Repeat popover dismissal unless a reproducible regression requires it
 - do not split the guard back into separate Create/Edit state variables
+- keep the End Repeat touch-down pre-block short; it is currently 200 ms and exists only to cover the same-frame / very-fast reverse presentation race
 - do not allow End Repeat option presentation while `isEndDateOptionsPresentationBlocked` is true
 - do not allow compact Date/Time picker hit-testing while End Repeat options are currently presented
 - keep `Use schedule for history?` out of UI; it remains internally always enabled for new items
 
 Known tradeoff:
-- touching the Time row can block End Repeat for up to 450 ms even if the user does not ultimately open the time picker
+- touching the Time row can block End Repeat for up to 200 ms even if the user does not ultimately open the time picker
 - this is intentional because it prevents the observed real-device same-frame Time + End Repeat presentation race while keeping native controls and current UI unchanged
 
 ## 14. Startup Health Check
