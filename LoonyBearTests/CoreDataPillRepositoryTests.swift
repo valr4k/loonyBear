@@ -32,7 +32,7 @@ struct CoreDataPillRepositoryTests {
     }
 
     @Test
-    func archiveAndRestorePillDisablesDashboardActivity() throws {
+    func archivePillDisablesDashboardActivityAndPreservesScheduleData() throws {
         let calendar = Calendar(identifier: .gregorian)
         let now = calendar.date(from: DateComponents(year: 2026, month: 5, day: 4, hour: 10, minute: 0))!
         let persistence = PersistenceController(inMemory: true)
@@ -47,6 +47,7 @@ struct CoreDataPillRepositoryTests {
         draft.name = "Archive pill"
         draft.dosage = "1 tablet"
         draft.startDate = TestSupport.makeDate(2026, 5, 4, calendar: calendar)
+        draft.endDate = TestSupport.makeDate(2026, 5, 20, calendar: calendar)
         draft.scheduleRule = .weekly(.daily)
         draft.reminderEnabled = true
         draft.reminderTime = ReminderTime(hour: 9, minute: 0)
@@ -55,17 +56,17 @@ struct CoreDataPillRepositoryTests {
         try repository.setPillArchived(id: pillID, isArchived: true)
 
         let archivedPill = try #require(try repository.fetchDashboardPills().first { $0.id == pillID })
+        let archivedDetails = try #require(try repository.fetchPillDetails(id: pillID))
 
         #expect(archivedPill.isArchived)
         #expect(!archivedPill.isReminderScheduledToday)
         #expect(!archivedPill.isScheduledToday)
         #expect(archivedPill.activeOverdueDay == nil)
         #expect(!archivedPill.needsHistoryReview)
-
-        try repository.setPillArchived(id: pillID, isArchived: false)
-
-        let restoredPill = try #require(try repository.fetchDashboardPills().first { $0.id == pillID })
-        #expect(!restoredPill.isArchived)
+        #expect(archivedDetails.reminderEnabled)
+        #expect(archivedDetails.reminderTime == ReminderTime(hour: 9, minute: 0))
+        #expect(archivedDetails.endDate == TestSupport.makeDate(2026, 5, 20, calendar: calendar))
+        #expect(archivedDetails.scheduleRule == .weekly(.daily))
     }
 
     @Test
@@ -119,6 +120,8 @@ struct CoreDataPillRepositoryTests {
         draft.startDate = TestSupport.makeDate(2026, 5, 1, calendar: calendar)
         draft.endDate = TestSupport.makeDate(2026, 5, 20, calendar: calendar)
         draft.scheduleRule = .weekly(.monday)
+        draft.reminderEnabled = true
+        draft.reminderTime = ReminderTime(hour: 9, minute: 0)
 
         let pillID = try repository.createPill(from: draft)
         let activePill = try #require(try repository.fetchDashboardPills().first { $0.id == pillID })
@@ -128,8 +131,13 @@ struct CoreDataPillRepositoryTests {
         try repository.markPillTaken(id: pillID, on: finalScheduledDay)
 
         let archivedPill = try #require(try repository.fetchDashboardPills().first { $0.id == pillID })
+        let archivedDetails = try #require(try repository.fetchPillDetails(id: pillID))
         #expect(archivedPill.isArchived)
         #expect(archivedPill.activeOverdueDay == nil)
+        #expect(archivedDetails.reminderEnabled)
+        #expect(archivedDetails.reminderTime == ReminderTime(hour: 9, minute: 0))
+        #expect(archivedDetails.endDate == TestSupport.makeDate(2026, 5, 20, calendar: calendar))
+        #expect(archivedDetails.scheduleRule == .weekly(.monday))
     }
 
     @Test

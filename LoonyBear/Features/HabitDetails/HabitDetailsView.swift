@@ -10,6 +10,8 @@ struct HabitDetailsView: View {
     @State private var isLoadingDetails = true
     @State private var needsReloadOnAppear = false
     @State private var isShowingEdit = false
+    @State private var isShowingDeleteConfirmation = false
+    @State private var deleteErrorMessage: String?
     @State private var isCalendarWarningDismissed = false
     @State private var displayedMonth: Date = {
         var calendar = Calendar.autoupdatingCurrent
@@ -96,6 +98,14 @@ struct HabitDetailsView: View {
                         .padding(.vertical, 18)
                     }
                 }
+
+                if details.isArchived {
+                    deleteButton
+                }
+
+                if let deleteErrorMessage {
+                    AppValidationBanner(message: deleteErrorMessage)
+                }
             } else if isLoadingDetails {
                 DetailsCard {
                     HStack {
@@ -124,6 +134,15 @@ struct HabitDetailsView: View {
         }
         .navigationTitle(details?.type.sectionTitle ?? "Habit")
         .navigationBarTitleDisplayMode(.inline)
+        .alert("Delete Habit?", isPresented: $isShowingDeleteConfirmation) {
+            Button("Delete", role: .destructive) {
+                deleteHabit()
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This habit will be permanently deleted.")
+        }
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button {
@@ -134,7 +153,7 @@ struct HabitDetailsView: View {
                 .appAccentTint()
             }
 
-            if details != nil {
+            if details?.isArchived == false {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Edit") {
                         isShowingEdit = true
@@ -165,6 +184,20 @@ struct HabitDetailsView: View {
         }
         .animation(.easeInOut(duration: 0.18), value: floatingCalendarWarningMessage)
         .animation(.easeInOut(duration: 0.18), value: isCalendarWarningDismissed)
+        .animation(.easeInOut(duration: 0.18), value: deleteErrorMessage)
+    }
+
+    private var deleteButton: some View {
+        Button(role: .destructive) {
+            isShowingDeleteConfirmation = true
+        } label: {
+            Label("Delete", systemImage: "trash")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .controlSize(.large)
+        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder
@@ -247,6 +280,7 @@ struct HabitDetailsView: View {
     }
 
     private func calendarReviewMessage(for details: HabitDetailsProjection) -> String? {
+        guard !details.isArchived else { return nil }
         let missingPastDays = EditableHistoryValidation.missingPastDays(
             editableDays: details.requiredPastScheduledDays,
             positiveDays: details.completedDays,
@@ -268,6 +302,21 @@ struct HabitDetailsView: View {
             return false
         }
         return Calendar.current.isDate(missingPastDays[0], inSameDayAs: activeOverdueDay)
+    }
+
+    private func deleteHabit() {
+        guard let details else { return }
+        deleteErrorMessage = nil
+
+        Task {
+            await appState.deleteHabit(id: details.id)
+            if let errorMessage = appState.actionErrorMessage {
+                deleteErrorMessage = errorMessage
+                return
+            }
+
+            dismiss()
+        }
     }
 }
 

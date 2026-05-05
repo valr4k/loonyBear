@@ -29,6 +29,7 @@ struct EditPillView: View {
     @State private var isShowingNotificationSettingsAlert = false
     @State private var isHistoryWarningDismissed = false
     @State private var isScheduleWarningDismissed = false
+    @State private var isEndDateWarningDismissed = false
     @State private var isArchived: Bool
 
     private enum Field: Hashable {
@@ -103,10 +104,6 @@ struct EditPillView: View {
                 if let validationMessage {
                     AppValidationBanner(message: validationMessage)
                 }
-
-                if let endDateValidationMessage {
-                    AppValidationBanner(message: endDateValidationMessage)
-                }
             }
             .overlay(alignment: .bottom) {
                 floatingBottomBanners
@@ -129,8 +126,8 @@ struct EditPillView: View {
                 Text("This pill will be permanently deleted.")
             }
             .alert(archiveConfirmationTitle, isPresented: $isShowingArchiveConfirmation) {
-                Button(archiveActionTitle) {
-                    setPillArchived(!isArchived)
+                Button("Archive") {
+                    setPillArchived()
                 }
 
                 Button("Cancel", role: .cancel) {}
@@ -187,6 +184,7 @@ struct EditPillView: View {
             }
             .onChange(of: draft.scheduleRule) { _, _ in
                 handleScheduleRuleChange()
+                handleEndDateValidationInputsChanged()
                 resolveEffectiveFromSelection(showAdjustmentBanner: false)
                 clearEndDateForNeverRepeat(showInfo: true)
             }
@@ -198,11 +196,16 @@ struct EditPillView: View {
             .appNotificationSettingsAlert(isPresented: $isShowingNotificationSettingsAlert)
             .onChange(of: draft.takenDays) { _, _ in
                 historyValidationMessage = nil
+                handleEndDateValidationInputsChanged()
                 resolveEffectiveFromSelection(showAdjustmentBanner: false)
             }
             .onChange(of: draft.skippedDays) { _, _ in
                 historyValidationMessage = nil
+                handleEndDateValidationInputsChanged()
                 resolveEffectiveFromSelection(showAdjustmentBanner: false)
+            }
+            .onChange(of: draft.endDate) { _, _ in
+                handleEndDateValidationInputsChanged()
             }
             .onChange(of: hasMissingPastDays) { _, hasMissingPastDays in
                 if !hasMissingPastDays {
@@ -226,6 +229,7 @@ struct EditPillView: View {
             .animation(.easeInOut(duration: 0.18), value: scheduleInfoMessage)
             .animation(.easeInOut(duration: 0.18), value: isHistoryWarningDismissed)
             .animation(.easeInOut(duration: 0.18), value: isScheduleWarningDismissed)
+            .animation(.easeInOut(duration: 0.18), value: isEndDateWarningDismissed)
             .onDisappear {
                 scheduleInfoDismissTask?.cancel()
             }
@@ -275,7 +279,9 @@ struct EditPillView: View {
 
     private var actionButtons: some View {
         VStack(spacing: 10) {
-            archiveRestoreButton
+            if !isArchived {
+                archiveButton
+            }
             deleteButton
         }
     }
@@ -294,27 +300,23 @@ struct EditPillView: View {
         .disabled(isSaving)
     }
 
-    private var archiveRestoreButton: some View {
+    private var archiveButton: some View {
         Button {
             isShowingArchiveConfirmation = true
         } label: {
             HStack(spacing: 10) {
-                Image(systemName: archiveActionSystemImage)
+                Image(systemName: "archivebox")
                     .imageScale(.medium)
-                    .foregroundStyle(isArchiveRestoreButtonEnabled ? .primary : .secondary)
+                    .foregroundStyle(isSaving ? .secondary : .primary)
 
-                Text(archiveActionTitle)
-                    .foregroundStyle(isArchiveRestoreButtonEnabled ? .primary : .secondary)
+                Text("Archive")
+                    .foregroundStyle(isSaving ? .secondary : .primary)
             }
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(AppNeutralCapsuleActionButtonStyle())
         .frame(maxWidth: .infinity)
-        .disabled(!isArchiveRestoreButtonEnabled)
-    }
-
-    private var isArchiveRestoreButtonEnabled: Bool {
-        !isSaving && (!isArchived || isFormValid)
+        .disabled(isSaving)
     }
 
     private var editableHistoryDays: Set<Date> {
@@ -342,7 +344,7 @@ struct EditPillView: View {
     }
 
     private var shouldUseScheduleEffectiveFrom: Bool {
-        hasScheduleChanged || isArchived
+        hasScheduleChanged
     }
 
     private var isScheduleEffectiveFromValid: Bool {
@@ -494,6 +496,12 @@ struct EditPillView: View {
                 }
             }
 
+            if let message = endDateFloatingWarningMessage {
+                AppFloatingWarningBanner(message: message) {
+                    isEndDateWarningDismissed = true
+                }
+            }
+
             if let message = scheduleInfoMessage {
                 AppFloatingInfoBanner(message: message) {
                     dismissScheduleInfo()
@@ -509,6 +517,11 @@ struct EditPillView: View {
         draft.scheduleRule.isValidSelection ? nil : AppCopy.chooseAtLeastOneDay
     }
 
+    private var endDateFloatingWarningMessage: String? {
+        guard !isEndDateWarningDismissed else { return nil }
+        return endDateValidationMessage
+    }
+
     private var shouldShowDescriptionInset: Bool {
         AppDescriptionFieldSupport.shouldShowInset(
             focusedField: focusedField,
@@ -517,22 +530,12 @@ struct EditPillView: View {
         )
     }
 
-    private var archiveActionTitle: String {
-        isArchived ? "Restore" : "Archive"
-    }
-
-    private var archiveActionSystemImage: String {
-        isArchived ? "arrow.uturn.backward" : "archivebox"
-    }
-
     private var archiveConfirmationTitle: String {
-        isArchived ? "Restore Pill?" : "Archive Pill?"
+        "Archive Pill?"
     }
 
     private var archiveConfirmationMessage: String {
-        isArchived
-            ? "Save changes and move this pill back to its active section."
-            : "This pill will move to Archived."
+        "This pill will move to Archived."
     }
 
     private func save() {
@@ -541,6 +544,9 @@ struct EditPillView: View {
         guard isFormValid else {
             if !draft.scheduleRule.isValidSelection {
                 isScheduleWarningDismissed = false
+            }
+            if !isEndDateValid {
+                isEndDateWarningDismissed = false
             }
             validationMessage = nonScheduleInvalidMessage
             return
@@ -589,6 +595,10 @@ struct EditPillView: View {
         }
     }
 
+    private func handleEndDateValidationInputsChanged() {
+        isEndDateWarningDismissed = false
+    }
+
     private func stageScheduleRule(_ scheduleRule: ScheduleRule) {
         pendingScheduleRule = scheduleRule
     }
@@ -628,72 +638,23 @@ struct EditPillView: View {
         }
     }
 
-    private func setPillArchived(_ archived: Bool) {
-        if !archived, isArchived {
-            restorePill()
-            return
-        }
-
+    private func setPillArchived() {
         isSaving = true
         validationMessage = nil
         historyValidationMessage = nil
 
         Task {
-            await pillAppState.setPillArchived(id: draft.id, isArchived: archived)
+            await pillAppState.setPillArchived(id: draft.id, isArchived: true)
             if let errorMessage = pillAppState.actionErrorMessage {
                 validationMessage = errorMessage
                 isSaving = false
                 return
             }
 
-            isArchived = archived
+            isArchived = true
             isSaving = false
             onArchiveSuccess()
             dismiss()
-        }
-    }
-
-    private func restorePill() {
-        applyPendingScheduleRuleIfNeeded()
-
-        guard isFormValid else {
-            if !draft.scheduleRule.isValidSelection {
-                isScheduleWarningDismissed = false
-            }
-            validationMessage = nonScheduleInvalidMessage
-            return
-        }
-
-        isSaving = true
-        validationMessage = nil
-        historyValidationMessage = nil
-        let restoredDraft = normalizedDraft()
-
-        Task {
-            do {
-                try await pillAppState.updatePill(from: restoredDraft)
-                await pillAppState.setPillArchived(id: draft.id, isArchived: false)
-                if let errorMessage = pillAppState.actionErrorMessage {
-                    validationMessage = errorMessage
-                    isSaving = false
-                    return
-                }
-
-                isArchived = false
-                isSaving = false
-                onArchiveSuccess()
-                dismiss()
-            } catch {
-                if let error = error as? EditableHistoryValidationError {
-                    historyValidationMessage = error.localizedDescription
-                    if case .missingPillPastDays(let days) = error, let firstDay = days.first {
-                        displayedMonth = month(containing: firstDay)
-                    }
-                } else {
-                    validationMessage = pillAppState.actionErrorMessage ?? UserFacingErrorMessage.text(for: error)
-                }
-                isSaving = false
-            }
         }
     }
 
@@ -798,9 +759,6 @@ struct EditPillView: View {
         }
         if draft.trimmedDosage.isEmpty {
             return "Enter a dosage."
-        }
-        if let endDateValidationMessage {
-            return endDateValidationMessage
         }
         return nil
     }

@@ -133,8 +133,7 @@ struct MyPillsView: View {
         .navigationDestination(isPresented: $isShowingArchive) {
             ArchivedPillsView(
                 currentTime: currentTime,
-                onShowPillInfo: onShowPillInfo,
-                onEditPill: onEditPill
+                onShowPillInfo: onShowPillInfo
             )
             .environmentObject(pillAppState)
         }
@@ -230,7 +229,6 @@ private struct ArchivedPillsView: View {
     @EnvironmentObject private var pillAppState: PillAppState
     let currentTime: Date
     let onShowPillInfo: (PillCardProjection) -> Void
-    let onEditPill: (PillCardProjection) -> Void
 
     var body: some View {
         Group {
@@ -259,13 +257,6 @@ private struct ArchivedPillsView: View {
                                 Image(systemName: "info")
                             }
                             .tint(.indigo)
-
-                            Button {
-                                onEditPill(pill)
-                            } label: {
-                                Image(systemName: "pencil")
-                            }
-                            .tint(.blue)
                         }
                     }
                 }

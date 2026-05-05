@@ -55,7 +55,7 @@
         },
         {
           "title": "Habit Archive page",
-          "body": "My Habits has an Archive toolbar button. The Habit Archive page shows archived Habits without Build or Quit sections. Archived Habit cards do not expose day-state leading swipe actions, and Restore is handled from Edit."
+          "body": "My Habits has an Archive toolbar button. The Habit Archive page shows archived Habits without Build or Quit sections. Archived Habit cards do not expose day-state leading swipe actions. Archived Habits open read-only Details, do not expose Edit or Restore, and can be deleted from Details."
         },
         {
           "title": "Creating a Habit",
@@ -71,11 +71,11 @@
         },
         {
           "title": "Habit details screen",
-          "body": "Habit Details shows name, a Streaks block with current streak, best streak, and completed for, a read-only Schedule block with Reminder and Repeat, a History block with Start Date and End Date, and a read-only calendar. Repeat uses the same display style as dashboard cards and does not open a popover. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. If any past scheduled day needs review, a dismissible floating warning banner appears. If the only missing day is the active overdue day, the banner says Finish updating overdue days. Otherwise it says Finish updating past days. The toolbar has Close on the left and Edit on the right. Edit is shown only when details load successfully."
+          "body": "Habit Details shows name, a Streaks block with current streak, best streak, and completed for, a read-only Schedule block with Reminder and Repeat, a History block with Start Date and End Date, and a read-only calendar. Repeat uses the same display style as dashboard cards and does not open a popover. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Active Habit Details shows a dismissible floating warning banner when any past scheduled day needs review. If the only missing day is the active overdue day, the banner says Finish updating overdue days. Otherwise it says Finish updating past days. Archived Habit Details is read-only, hides Edit, suppresses missing-history review, and shows Delete at the bottom."
         },
         {
           "title": "Editing a Habit",
-          "body": "Edit Habit shows name, a Schedule block with Reminder, Time, Repeat, End Repeat, and End Date, an editable calendar, and Delete plus Archive or Restore actions at the bottom. Start Date is not editable from Edit. Repeat opens the pushed Repeat editor. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Missing past-day review is shown as a dismissible floating warning banner that does not take space inside the calendar layout, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a system alert with Cancel and Delete actions. Archive and Restore use system confirmation alerts."
+          "body": "Edit Habit shows name, a Schedule block with Reminder, Time, Repeat, End Repeat, and End Date, an editable calendar, and Delete plus Archive at the bottom. Start Date is not editable from Edit. Repeat opens the pushed Repeat editor. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Missing past-day review is shown as a dismissible floating warning banner that does not take space inside the calendar layout, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a system alert with Cancel and Delete actions. Archive uses a system confirmation alert and is available only for active Habits."
         }
       ]
     },
@@ -137,7 +137,7 @@
         },
         {
           "title": "Pill Archive page",
-          "body": "My Pills has an Archive toolbar button. The Pill Archive page shows archived Pills without Today or Pending sections. Archived Pill cards do not expose day-state leading swipe actions, and Restore is handled from Edit."
+          "body": "My Pills has an Archive toolbar button. The Pill Archive page shows archived Pills without Today or Pending sections. Archived Pill cards do not expose day-state leading swipe actions. Archived Pills open read-only Details, do not expose Edit or Restore, and can be deleted from Details."
         },
         {
           "title": "Creating a Pill",
@@ -149,11 +149,11 @@
         },
         {
           "title": "Pill details screen",
-          "body": "Pill Details shows name, dosage, a Streak block with Taken for, a read-only Schedule block with Reminder and Repeat, a History block with Start Date and End Date, a read-only calendar, and description if one exists. Repeat uses the same display style as dashboard cards and does not open a popover. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. If any past scheduled day needs review, a dismissible floating warning banner appears. If the only missing day is the active overdue day, the banner says Finish updating overdue days. Otherwise it says Finish updating past days. The toolbar has Close on the left and Edit on the right. Edit is shown only when details load successfully."
+          "body": "Pill Details shows name, dosage, a Streak block with Taken for, a read-only Schedule block with Reminder and Repeat, a History block with Start Date and End Date, a read-only calendar, and description if one exists. Repeat uses the same display style as dashboard cards and does not open a popover. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Active Pill Details shows a dismissible floating warning banner when any past scheduled day needs review. If the only missing day is the active overdue day, the banner says Finish updating overdue days. Otherwise it says Finish updating past days. Archived Pill Details is read-only, hides Edit, suppresses missing-history review, and shows Delete at the bottom."
         },
         {
           "title": "Editing a Pill",
-          "body": "Edit Pill shows name, dosage, a Schedule block with Reminder, Time, Repeat, and End Date, an editable calendar, description, and Delete plus Archive or Restore actions at the bottom. Start Date is not editable from Edit. Repeat opens the pushed Repeat editor. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Missing past-day review is shown as a dismissible floating warning banner that does not take space inside the calendar layout, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a system alert with Cancel and Delete actions. Archive and Restore use system confirmation alerts."
+          "body": "Edit Pill shows name, dosage, a Schedule block with Reminder, Time, Repeat, and End Date, an editable calendar, description, and Delete plus Archive at the bottom. Start Date is not editable from Edit. Repeat opens the pushed Repeat editor. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Missing past-day review is shown as a dismissible floating warning banner that does not take space inside the calendar layout, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a system alert with Cancel and Delete actions. Archive uses a system confirmation alert and is available only for active Pills."
         }
       ]
     },
@@ -372,7 +372,7 @@
         },
         {
           "title": "Reminder time rules",
-          "body": "ReminderTime stores hour and minute as integers. ReminderTime.default rounds the current time up to a 5-minute boundary. If rounding reaches 60 minutes, the hour is incremented and minute becomes 0. Create/Edit reminder time rows use the native compact system time picker. Create Start Date rows use the native compact system date picker. Schedule blocks keep native system pickers and protect them with a shared presentation guard: while the End Repeat options popover is open, neighboring compact pickers ignore hit-testing, and Time-row touch-down briefly blocks End Repeat presentation to avoid same-frame UIKit presentation races. Edit screens do not expose Start Date."
+          "body": "ReminderTime stores hour and minute as integers. ReminderTime.default rounds the current time up to a 5-minute boundary. If rounding reaches 60 minutes, the hour is incremented and minute becomes 0. Create/Edit reminder time rows use the native compact system time picker. Create Start Date rows use the native compact system date picker. Schedule blocks keep native system pickers and protect them with a shared presentation guard: while the End Repeat options popover is open, neighboring compact pickers ignore hit-testing; Time and End Repeat touch-downs briefly block the opposite presentation path through a non-cancelling window-level observer; and Repeat navigation dismisses and briefly blocks End Repeat so the popover cannot survive over the pushed Repeat screen. Edit screens do not expose Start Date."
         },
         {
           "title": "Schedule model",
@@ -422,7 +422,7 @@
         },
         {
           "title": "Habit update behavior",
-          "body": "Habit update changes name, reminder fields, optional End Date, and optionally inserts a new HabitScheduleVersion if the schedule rule changed. The new schedule version starts from today for active items, or from Start Date for future items. Editable history is normalized and written back day by day using manual edit or skipped sources. Update validation requires every past editable scheduled day to be Completed or Skipped; missing scheduled past states block save instead of being auto-filled. Manual Restore saves the current edit form before moving the Habit back to its active section."
+          "body": "Habit update changes name, reminder fields, optional End Date, and optionally inserts a new HabitScheduleVersion if the schedule rule changed. The new schedule version starts from today for active items, or from Start Date for future items. Editable history is normalized and written back day by day using manual edit or skipped sources. Update validation requires every past editable scheduled day to be Completed or Skipped; missing scheduled past states block save instead of being auto-filled. Archived Habits are final inactive storage and are not restored."
         },
         {
           "title": "Habit today actions",
@@ -451,7 +451,7 @@
         },
         {
           "title": "Pill update behavior",
-          "body": "Pill update changes name, dosage, details, reminder fields, optional End Date, and optionally inserts a new PillScheduleVersion if the schedule rule changed. The new schedule version starts from today for active items, or from Start Date for future items. Editable history is normalized and written back day by day using manual edit or skipped sources. Update validation requires every past editable scheduled day to be Taken or Skipped; missing scheduled past states block save instead of being auto-filled. Manual Restore saves the current edit form before moving the Pill back to its active section."
+          "body": "Pill update changes name, dosage, details, reminder fields, optional End Date, and optionally inserts a new PillScheduleVersion if the schedule rule changed. The new schedule version starts from today for active items, or from Start Date for future items. Editable history is normalized and written back day by day using manual edit or skipped sources. Update validation requires every past editable scheduled day to be Taken or Skipped; missing scheduled past states block save instead of being auto-filled. Archived Pills are final inactive storage and are not restored."
         },
         {
           "title": "Pill today actions",

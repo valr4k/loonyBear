@@ -132,8 +132,7 @@ struct MyHabitsView: View {
         .navigationDestination(isPresented: $isShowingArchive) {
             ArchivedHabitsView(
                 currentTime: currentTime,
-                onShowHabitInfo: onShowHabitInfo,
-                onEditHabit: onEditHabit
+                onShowHabitInfo: onShowHabitInfo
             )
             .environmentObject(appState)
         }
@@ -220,7 +219,6 @@ private struct ArchivedHabitsView: View {
     @EnvironmentObject private var appState: HabitAppState
     let currentTime: Date
     let onShowHabitInfo: (HabitCardProjection) -> Void
-    let onEditHabit: (HabitCardProjection) -> Void
 
     var body: some View {
         Group {
@@ -249,13 +247,6 @@ private struct ArchivedHabitsView: View {
                                 Image(systemName: "info")
                             }
                             .tint(.indigo)
-
-                            Button {
-                                onEditHabit(habit)
-                            } label: {
-                                Image(systemName: "pencil")
-                            }
-                            .tint(.blue)
                         }
                     }
                 }

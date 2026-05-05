@@ -279,7 +279,7 @@ Delete is not available from card swipe actions.
 - inserts a new `HabitScheduleVersion` if the schedule rule changed
 - active items resolve the new schedule version `effectiveFrom` from today when the schedule rule changed: today is used only if it matches the new Repeat and has no explicit state; otherwise the first scheduled day after today is used
 - future items resolve the new schedule version `effectiveFrom` from `startDate` when the schedule rule changed
-- archived items being restored save the current edit form and use the same internal `effectiveFrom` path before unarchiving
+- archived items are final inactive storage and are not restored
 - preserves the persisted `historyModeRaw` already stored on the Habit
 - builds editable day set from `EditableHistoryWindow.dates(startDate:)`
 - normalizes selected days with `EditableHistoryContract.normalizedSelection(...)`
@@ -290,7 +290,8 @@ Delete is not available from card swipe actions.
 - Edit Habit surfaces missing past-day review through the dismissible `AppFloatingWarningBanner`; if only the active overdue day is missing, the banner uses overdue-specific copy
 - Habit Details computes missing past days from `requiredPastScheduledDays`; it shows `Finish updating overdue days.` when the only missing day is the active overdue day, otherwise it shows `Finish updating past days.`
 - Edit Habit delete confirmation uses a system alert with `Cancel` and destructive `Delete` actions
-- Edit Habit exposes Archive or Restore below Delete; Archive confirmation is `Archive Habit?` / `This habit will move to Archived.`, and Restore confirmation is `Restore Habit?` / `Save changes and move this habit back to its active section.`
+- Edit Habit exposes Archive below Delete only for active Habits; Archive confirmation is `Archive Habit?` / `This habit will move to Archived.`
+- archived Habit Details is read-only, hides Edit, suppresses missing-history review, and exposes Delete at the bottom with confirmation
 - missing past-day warning copy intentionally omits the date list; the validation error still carries the missing dates for logic/tests
 - rewrites rows day by day using `manual edit` or `skipped`
 - removes duplicate history rows for the same day except the primary latest row
@@ -317,7 +318,7 @@ Projection fields include:
 - `isArchived`
 - sort order
 
-If `activeOverdueDay` is set, Habit cards show a red `Today`, `Yesterday`, or `03 May 2026` style date label. Future cards show `Starts 03 May 2026` style dates. Archived cards live on the separate Habit Archive page and do not show active day actions, overdue, reminders, or history-review state. `activeOverdueDay` is derived from the latest due scheduled day: if that latest due day is empty, it is active overdue; if it already has completed/skipped state, there is no active overdue even if older due days are empty. `needsHistoryReview` excludes the active overdue day, so Habit cards show the amber history warning icon alongside overdue only when another required past scheduled day is empty. `HabitDetailsProjection.requiredPastScheduledDays` still includes the active overdue day for Details and Edit validation. If neither applies, the card shows today's completed/skipped status.
+If `activeOverdueDay` is set, Habit cards show a red `Today`, `Yesterday`, or `03 May 2026` style date label. Future cards show `Starts 03 May 2026` style dates. Archived cards live on the separate Habit Archive page and do not show active day actions, overdue state, scheduled reminder state, or history-review state. `activeOverdueDay` is derived from the latest due scheduled day: if that latest due day is empty, it is active overdue; if it already has completed/skipped state, there is no active overdue even if older due days are empty. `needsHistoryReview` excludes the active overdue day, so Habit cards show the amber history warning icon alongside overdue only when another required past scheduled day is empty. `HabitDetailsProjection.requiredPastScheduledDays` still includes the active overdue day for Details and Edit validation. If neither applies, the card shows today's completed/skipped status.
 
 ## 6. Pill Pipeline
 
@@ -394,7 +395,7 @@ Delete is not available from card swipe actions.
 - inserts a new `PillScheduleVersion` if the schedule rule changed
 - active items resolve the new schedule version `effectiveFrom` from today when the schedule rule changed: today is used only if it matches the new Repeat and has no explicit state; otherwise the first scheduled day after today is used
 - future items resolve the new schedule version `effectiveFrom` from `startDate` when the schedule rule changed
-- archived items being restored save the current edit form and use the same internal `effectiveFrom` path before unarchiving
+- archived Pills are not edited or restored from the Archive page; their stored schedule fields are kept as historical data
 - preserves the persisted `historyModeRaw` already stored on the Pill
 - builds editable day set from `EditableHistoryWindow.dates(startDate:)`
 - normalizes selected days with `EditableHistoryContract.normalizedSelection(...)`
@@ -405,7 +406,8 @@ Delete is not available from card swipe actions.
 - Edit Pill surfaces missing past-day review through the dismissible `AppFloatingWarningBanner`; if only the active overdue day is missing, the banner uses overdue-specific copy
 - Pill Details computes missing past days from `requiredPastScheduledDays`; it shows `Finish updating overdue days.` when the only missing day is the active overdue day, otherwise it shows `Finish updating past days.`
 - Edit Pill delete confirmation uses a system alert with `Cancel` and destructive `Delete` actions
-- Edit Pill exposes Archive or Restore below Delete; Archive confirmation is `Archive Pill?` / `This pill will move to Archived.`, and Restore confirmation is `Restore Pill?` / `Save changes and move this pill back to its active section.`
+- Edit Pill exposes Archive below Delete only for active Pills; Archive confirmation is `Archive Pill?` / `This pill will move to Archived.`
+- archived Pill Details is read-only, hides Edit, suppresses missing-history review, and exposes Delete at the bottom with confirmation
 - missing past-day warning copy intentionally omits the date list; the validation error still carries the missing dates for logic/tests
 - rewrites rows day by day using `manual edit` or `skipped`
 - removes duplicate history rows for the same day except the primary latest row
@@ -433,7 +435,7 @@ Projection fields include:
 - `isArchived`
 - sort order
 
-If `activeOverdueDay` is set, Pill cards show a red `Today`, `Yesterday`, or `03 May 2026` style date label. Future cards show `Starts 03 May 2026` style dates and remain in Pending. Archived cards live on the separate Pill Archive page and do not show active day actions, overdue, reminders, or history-review state. `activeOverdueDay` is derived from the latest due scheduled day: if that latest due day is empty, it is active overdue; if it already has taken/skipped state, there is no active overdue even if older due days are empty. `needsHistoryReview` excludes the active overdue day, so Pill cards show the amber history warning icon alongside overdue only when another required past scheduled day is empty. `PillDetailsProjection.requiredPastScheduledDays` still includes the active overdue day for Details and Edit validation. If neither applies, the card shows today's taken/skipped status.
+If `activeOverdueDay` is set, Pill cards show a red `Today`, `Yesterday`, or `03 May 2026` style date label. Future cards show `Starts 03 May 2026` style dates and remain in Pending. Archived cards live on the separate Pill Archive page and do not show active day actions, overdue state, scheduled reminder state, or history-review state. `activeOverdueDay` is derived from the latest due scheduled day: if that latest due day is empty, it is active overdue; if it already has taken/skipped state, there is no active overdue even if older due days are empty. `needsHistoryReview` excludes the active overdue day, so Pill cards show the amber history warning icon alongside overdue only when another required past scheduled day is empty. `PillDetailsProjection.requiredPastScheduledDays` still includes the active overdue day for Details and Edit validation. If neither applies, the card shows today's taken/skipped status.
 
 ## 7. Streak Engine
 
@@ -457,7 +459,7 @@ For streak, overdue, notification, history-review, and calendar indicator calcul
 
 Weekly schedules use the stored weekday mask. `Every N days` schedules use the active schedule version `effectiveFrom` as the interval anchor. `Never repeat` is stored as a one-time schedule and is available only for Pills. Legacy `daily`, `weekdays`, and `weekends` schedule kind values are read as weekly masks; new writes store those choices as `weekly`.
 
-When Edit saves a changed Repeat, `effectiveFrom` is computed rather than edited in the UI. Active items use today if today is valid under the new Repeat and has no explicit completed/taken/skipped state; otherwise they use the first scheduled day after today. Future items resolve from `startDate`. Archived items being restored save the current Edit form and use the same internal resolution path before unarchiving.
+When Edit saves a changed Repeat, `effectiveFrom` is computed rather than edited in the UI. Active items use today if today is valid under the new Repeat and has no explicit completed/taken/skipped state; otherwise they use the first scheduled day after today. Future items resolve from `startDate`. Archived items are not edited or restored, so this resolution path only applies before an item is archived.
 
 ### 7.4 End Date and Automatic Archive
 Habit and Pill root rows can store an optional `endDate`.
@@ -468,8 +470,9 @@ Rules:
 - after the final active scheduled day is completed/taken or skipped, the item is archived automatically without confirmation
 - if the final active scheduled day remains empty, the item remains active and can become overdue
 - archived items are excluded from notification scheduling, overdue/badge count, today actions, and missing-history review
-- manual Archive and Restore are available from Edit with system confirmation alerts
-- manual Restore saves the current Edit form before moving the item back to the active section
+- manual Archive is available from Edit for active items with a system confirmation alert
+- Archive preserves the stored reminder, repeat, end date, and history rows as historical data
+- Restore is not available for archived items; a new cycle is created as a new item
 - archived items are shown from separate Archive pages opened by the dashboard Archive toolbar button; Archive pages list cards without dashboard grouping sections
 
 ## 8. Notifications
@@ -844,6 +847,8 @@ Create/Edit schedule behavior:
 - the schedule card applies `appExclusiveTouchScope()` so UIKit controls inside the same Schedule block do not accept true simultaneous multi-touch presentations
 - system date/time presentation remains owned by native compact `DatePicker` controls; the app gates touch delivery, but it does not replace those controls with custom popovers or inline pickers
 - Create/Edit share `AppSchedulePresentationGuard` as a `@StateObject`; do not reintroduce separate per-screen state for picker/popover blocking
+- `appTouchDownAction` is implemented as a UIKit window-level touch observer that checks whether the touch falls inside the marked control. It does not cancel touches, delay touches, or attach a SwiftUI drag/tap gesture to the visible picker capsule.
+- Repeat navigation stays a native `NavigationLink`; before the push starts, the Schedule section dismisses any open End Repeat popover and briefly blocks End Repeat presentation
 
 Details schedule behavior:
 - Details screens show a read-only Schedule section
@@ -854,7 +859,8 @@ Archive page behavior:
 - My Pills and My Habits expose an Archive toolbar button beside Add
 - Archive pages show archived cards without Today/Pending or Build/Quit sections
 - archived cards do not expose day-state leading swipe actions
-- archived cards can open Edit/Info, and Restore is performed from Edit
+- archived cards open Info/Details only
+- archived Details is read-only, hides Edit, suppresses missing-history review, and exposes Delete at the bottom
 
 ### 13.5 Reminder Time UI
 Defined in `LoonyBear/Shared/AppDesign.swift`.
@@ -863,9 +869,10 @@ Behavior:
 - Create/Edit reminder time rows render the selected time with a native compact `DatePicker`
 - the system compact control opens its own time picker
 - tapping the row also dismisses keyboard focus before the control interaction
-- the Time row uses `appTouchDownAction` to call `AppSchedulePresentationGuard.blockEndDateOptionsForPickerTouch()`
+- the compact Time `DatePicker` uses `appTouchDownAction` to call `AppSchedulePresentationGuard.blockEndDateOptionsForPickerTouch()`
 - that touch-down guard blocks opening the End Repeat options popover for 200 ms, protecting the UIKit time picker from a same-frame Time + End Repeat tap
 - the 200 ms guard affects only End Repeat option presentation; it does not disable the Time picker itself
+- the touch-down helper is a window-level observer rather than a SwiftUI gesture on the capsule, so vertical scrolling that starts on the Time capsule must continue to work
 - Start Date intentionally does not use this touch-down guard because applying a gesture to the Start Date compact date picker can prevent the native date picker from opening
 
 ### 13.6 Editable Start Date UI
@@ -889,19 +896,21 @@ Behavior:
 - the options popover contains `Never` and `On Date`
 - when `On Date` is selected, a date row appears below the options row with the same compact capsule display
 - the date row uses the native compact system date picker
-- the End Repeat trigger uses `appTouchDownAction` to block neighboring compact picker hit-testing for 200 ms before the popover is presented
-- if the popover opens, normal popover-visible blocking keeps picker hit-testing disabled until dismissal
-- if the popover does not open, the 200 ms pre-block expires automatically
+- the End Repeat trigger uses `appTouchDownAction` to call `AppSchedulePresentationGuard.blockPickersForEndDateOptionsTouch()` as soon as the user touches the options value
+- the End Repeat button action also calls `blockPickersForEndDateOptionsTouch()` immediately before presenting the popover, so the protection still runs if the touch-down observer is missed
+- the touch-down helper is window-level and non-cancelling, so it must not steal vertical scroll gestures near the End Repeat value
+- if the popover opens, popover-visible blocking keeps picker hit-testing disabled until dismissal
+- if presentation is blocked by a picker/Repeat navigation guard, the End Repeat button returns without opening the popover
 - while the End Repeat options popover is visible, neighboring compact date/time pickers receive `allowsHitTesting(false)` through `AppSchedulePresentationGuard.isPickerPresentationBlocked`
 - when the End Repeat options popover closes, picker hit-testing is restored immediately; there is no post-close delay
-- the End Repeat options button checks `AppSchedulePresentationGuard.isEndDateOptionsPresentationBlocked` before presenting, so a Time-row touch-down can win and prevent the popover from racing the time picker
+- the End Repeat options button checks `AppSchedulePresentationGuard.isEndDateOptionsPresentationBlocked` before presenting, so a Time picker touch-down or Repeat navigation tap can win and prevent the popover from racing another presentation
 - if Pill Repeat is `Never`, End Date is disabled and cleared
 
 ### 13.8 Schedule System Presentation Guard
 Defined in `LoonyBear/Shared/AppDesign.swift`.
 
 Purpose:
-- prevent UIKit presentation races between native compact date/time pickers and the End Repeat options popover
+- prevent UIKit presentation races between native compact date/time pickers, the pushed Repeat screen, and the End Repeat options popover
 - preserve the current native Apple-style UI; this guard must not introduce custom DatePicker or TimePicker visuals
 - keep Create and Edit behavior identical for Pills and Habits
 
@@ -909,16 +918,20 @@ Implementation:
 - `AppSchedulePresentationGuard` is a `@MainActor ObservableObject`
 - `AppCreateScheduleSection` and `AppEditScheduleSection` each own one guard through `@StateObject`
 - both sections pass the guard state into shared row components instead of duplicating local blocking state
+- both sections keep an `endDateOptionsDismissSignal` that tells `AppOptionalEndDatePickerRow` to close its popover before Repeat navigation pushes the Repeat editor
+- `AppOptionalEndDatePickerRow` also closes its options popover on `onDisappear`, so a popover cannot survive after the Schedule row leaves the visible hierarchy
 - `reset()` cancels pending guard tasks and clears presentation-blocking flags when the Schedule section disappears
 
 Guard state:
 - `isPickerPresentationBlocked`
-  - set to `true` for 200 ms when End Repeat receives touch-down
+  - set to `true` immediately before End Repeat presents its options popover
+  - set to `true` when the End Repeat options value receives touch-down
   - also set to `true` while the End Repeat options popover is visible
   - passed to Start Date, Time, and End Date compact picker rows as `allowsHitTesting(!isPickerPresentationBlocked)`
   - set back to `false` immediately when the End Repeat popover closes
 - `isEndDateOptionsPresentationBlocked`
-  - set to `true` when the Time row receives touch-down
+  - set to `true` when the compact Time picker receives touch-down
+  - set to `true` when Repeat navigation starts
   - automatically returns to `false` after 200 ms unless cancelled/reset
   - checked by the End Repeat options button before calling `setEndDateOptionsPresented(true)`
 
@@ -930,32 +943,43 @@ Exclusive touch scope:
 - this specifically protects real-device two-finger simultaneous taps, where two controls can otherwise receive touch-down in the same frame before SwiftUI state has time to update
 
 Time picker race protection:
-- the Time row is the only picker row with `appTouchDownAction`
+- the compact Time `DatePicker` is the only picker control with `appTouchDownAction`
 - touch-down starts the 200 ms End Repeat presentation block before the compact time picker asks UIKit to present
 - this protects the known vulnerable pair: Time picker + End Repeat popover
 - Date picker + End Repeat is primarily protected by the exclusive touch scope and the popover-visible hit-testing block
 
 End Repeat race protection:
-- End Repeat is the only popover row with `appTouchDownAction`
-- touch-down starts a 200 ms compact picker hit-testing block before the popover asks UIKit to present
-- the 200 ms pre-block is skipped when End Repeat presentation is already blocked by a picker touch-down
-- the 200 ms pre-block is also skipped when the End Repeat popover is already visible
-- this protects the reverse rapid sequence: End Repeat touch-down followed immediately by Start Date, Time, or End Date picker touch
-- if the popover successfully opens, `setEndDateOptionsPresented(true)` cancels the 200 ms pre-block task and continues the picker block for the full popover-visible duration
+- End Repeat installs `appTouchDownAction`, but this helper is not a SwiftUI gesture on the visible row. It is a UIKit window-level observer that only checks the marked control bounds, allows simultaneous recognition, and immediately fails after firing.
+- the observer has `cancelsTouchesInView = false`, `delaysTouchesBegan = false`, and `delaysTouchesEnded = false`, so it must not consume the real button tap or the Schedule card scroll gesture
+- touching End Repeat starts the 200 ms picker presentation block before the popover asks UIKit to present
+- the End Repeat button action checks `isEndDateOptionsPresentationBlocked` before presenting
+- when allowed to present, the button calls `blockPickersForEndDateOptionsTouch()` again immediately before setting the popover binding to true
+- this gives compact picker rows a short hit-testing block during the same frame in which the popover presentation starts
+- if the popover successfully opens, `setEndDateOptionsPresented(true)` keeps picker hit-testing blocked for the full popover-visible duration
+
+Repeat navigation race protection:
+- Repeat stays a plain native `NavigationLink`; do not add `appTouchDownAction` or a custom button wrapper to it
+- Repeat uses its existing tap callback only to dismiss keyboard focus, dismiss any visible End Repeat popover, and call `blockEndDateOptionsForPickerTouch()`
+- `AppOptionalEndDatePickerRow` listens to `dismissOptionsSignal` and closes its popover when Repeat navigation starts
+- this protects the real-device two-finger case where Repeat pushes while End Repeat also receives a tap, preventing the End Repeat popover from appearing over the pushed Repeat screen
 
 Important invariants:
 - do not replace native compact `DatePicker` rows with custom popover content unless a new product decision explicitly accepts the visual and performance tradeoff
 - do not add `appTouchDownAction` to Start Date; that previously prevented the native Start Date picker from opening reliably
+- do not add `appTouchDownAction` to Repeat; that previously interfered with native `NavigationLink` navigation and scroll behavior
+- do not replace the window-level `appTouchDownAction` implementation with a SwiftUI `DragGesture`, `LongPressGesture`, or `TapGesture`; those variants can steal vertical scrolling from compact picker capsules and End Repeat
+- keep `appTouchDownAction` limited to the compact Time picker and the End Repeat options value unless a real-device reproduction proves another control needs it
 - do not add a post-close delay after End Repeat popover dismissal unless a reproducible regression requires it
 - do not split the guard back into separate Create/Edit state variables
-- keep the End Repeat touch-down pre-block short; it is currently 200 ms and exists only to cover the same-frame / very-fast reverse presentation race
+- keep the transient presentation blocks short; they are currently 200 ms and exist only to cover same-frame / very-fast presentation races
 - do not allow End Repeat option presentation while `isEndDateOptionsPresentationBlocked` is true
 - do not allow compact Date/Time picker hit-testing while End Repeat options are currently presented
 - keep `Use schedule for history?` out of UI; it remains internally always enabled for new items
 
 Known tradeoff:
-- touching the Time row can block End Repeat for up to 200 ms even if the user does not ultimately open the time picker
-- this is intentional because it prevents the observed real-device same-frame Time + End Repeat presentation race while keeping native controls and current UI unchanged
+- touching the compact Time picker or Repeat row can block End Repeat for up to 200 ms
+- touching End Repeat can block compact picker hit-testing for up to 200 ms before the popover-visible state takes over
+- this is intentional because it prevents observed real-device same-frame presentation races while keeping native controls and current UI unchanged
 
 ## 14. Startup Health Check
 

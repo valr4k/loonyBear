@@ -24,6 +24,7 @@ struct EditHabitView: View {
     @State private var isShowingNotificationSettingsAlert = false
     @State private var isHistoryWarningDismissed = false
     @State private var isScheduleWarningDismissed = false
+    @State private var isEndDateWarningDismissed = false
     @State private var isArchived: Bool
 
     init(
@@ -90,10 +91,6 @@ struct EditHabitView: View {
             if let validationMessage {
                 AppValidationBanner(message: validationMessage)
             }
-
-            if let endDateValidationMessage {
-                AppValidationBanner(message: endDateValidationMessage)
-            }
         }
         .overlay(alignment: .bottom) {
             floatingBottomBanners
@@ -115,8 +112,8 @@ struct EditHabitView: View {
             Text("This habit will be permanently deleted.")
         }
         .alert(archiveConfirmationTitle, isPresented: $isShowingArchiveConfirmation) {
-            Button(archiveActionTitle) {
-                setHabitArchived(!isArchived)
+            Button("Archive") {
+                setHabitArchived()
             }
 
             Button("Cancel", role: .cancel) {}
@@ -160,6 +157,7 @@ struct EditHabitView: View {
         }
         .onChange(of: draft.scheduleRule) { _, _ in
             handleScheduleRuleChange()
+            handleEndDateValidationInputsChanged()
             resolveEffectiveFromSelection(showAdjustmentBanner: false)
         }
         .onAppear {
@@ -169,11 +167,16 @@ struct EditHabitView: View {
         .appNotificationSettingsAlert(isPresented: $isShowingNotificationSettingsAlert)
         .onChange(of: draft.completedDays) { _, _ in
             historyValidationMessage = nil
+            handleEndDateValidationInputsChanged()
             resolveEffectiveFromSelection(showAdjustmentBanner: false)
         }
         .onChange(of: draft.skippedDays) { _, _ in
             historyValidationMessage = nil
+            handleEndDateValidationInputsChanged()
             resolveEffectiveFromSelection(showAdjustmentBanner: false)
+        }
+        .onChange(of: draft.endDate) { _, _ in
+            handleEndDateValidationInputsChanged()
         }
         .onChange(of: hasMissingPastDays) { _, hasMissingPastDays in
             if !hasMissingPastDays {
@@ -185,6 +188,7 @@ struct EditHabitView: View {
         .animation(.easeInOut(duration: 0.18), value: floatingHistoryWarningMessage)
         .animation(.easeInOut(duration: 0.18), value: isHistoryWarningDismissed)
         .animation(.easeInOut(duration: 0.18), value: isScheduleWarningDismissed)
+        .animation(.easeInOut(duration: 0.18), value: isEndDateWarningDismissed)
     }
 
     private var nameSection: some View {
@@ -218,7 +222,9 @@ struct EditHabitView: View {
 
     private var actionButtons: some View {
         VStack(spacing: 10) {
-            archiveRestoreButton
+            if !isArchived {
+                archiveButton
+            }
             deleteButton
         }
     }
@@ -237,27 +243,23 @@ struct EditHabitView: View {
         .disabled(isSaving)
     }
 
-    private var archiveRestoreButton: some View {
+    private var archiveButton: some View {
         Button {
             isShowingArchiveConfirmation = true
         } label: {
             HStack(spacing: 10) {
-                Image(systemName: archiveActionSystemImage)
+                Image(systemName: "archivebox")
                     .imageScale(.medium)
-                    .foregroundStyle(isArchiveRestoreButtonEnabled ? .primary : .secondary)
+                    .foregroundStyle(isSaving ? .secondary : .primary)
 
-                Text(archiveActionTitle)
-                    .foregroundStyle(isArchiveRestoreButtonEnabled ? .primary : .secondary)
+                Text("Archive")
+                    .foregroundStyle(isSaving ? .secondary : .primary)
             }
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(AppNeutralCapsuleActionButtonStyle())
         .frame(maxWidth: .infinity)
-        .disabled(!isArchiveRestoreButtonEnabled)
-    }
-
-    private var isArchiveRestoreButtonEnabled: Bool {
-        !isSaving && (!isArchived || isFormValid)
+        .disabled(isSaving)
     }
 
     private var editableHistoryDays: Set<Date> {
@@ -284,7 +286,7 @@ struct EditHabitView: View {
     }
 
     private var shouldUseScheduleEffectiveFrom: Bool {
-        hasScheduleChanged || isArchived
+        hasScheduleChanged
     }
 
     private var isScheduleEffectiveFromValid: Bool {
@@ -436,6 +438,11 @@ struct EditHabitView: View {
                 }
             }
 
+            if let message = endDateFloatingWarningMessage {
+                AppFloatingWarningBanner(message: message) {
+                    isEndDateWarningDismissed = true
+                }
+            }
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 14)
@@ -446,26 +453,21 @@ struct EditHabitView: View {
         draft.scheduleRule.isValidSelection ? nil : AppCopy.chooseAtLeastOneDay
     }
 
+    private var endDateFloatingWarningMessage: String? {
+        guard !isEndDateWarningDismissed else { return nil }
+        return endDateValidationMessage
+    }
+
     private var shouldShowNameValidation: Bool {
         draft.name.isEmpty == false && draft.trimmedName.isEmpty
     }
 
-    private var archiveActionTitle: String {
-        isArchived ? "Restore" : "Archive"
-    }
-
-    private var archiveActionSystemImage: String {
-        isArchived ? "arrow.uturn.backward" : "archivebox"
-    }
-
     private var archiveConfirmationTitle: String {
-        isArchived ? "Restore Habit?" : "Archive Habit?"
+        "Archive Habit?"
     }
 
     private var archiveConfirmationMessage: String {
-        isArchived
-            ? "Save changes and move this habit back to its active section."
-            : "This habit will move to Archived."
+        "This habit will move to Archived."
     }
 
     private func save() {
@@ -475,7 +477,10 @@ struct EditHabitView: View {
             if !draft.scheduleRule.isValidSelection {
                 isScheduleWarningDismissed = false
             }
-            validationMessage = draft.trimmedName.isEmpty ? "Enter a habit name." : endDateValidationMessage
+            if !isEndDateValid {
+                isEndDateWarningDismissed = false
+            }
+            validationMessage = draft.trimmedName.isEmpty ? "Enter a habit name." : nil
             return
         }
 
@@ -522,6 +527,10 @@ struct EditHabitView: View {
         }
     }
 
+    private func handleEndDateValidationInputsChanged() {
+        isEndDateWarningDismissed = false
+    }
+
     private func stageScheduleRule(_ scheduleRule: ScheduleRule) {
         pendingScheduleRule = scheduleRule
     }
@@ -552,72 +561,23 @@ struct EditHabitView: View {
         }
     }
 
-    private func setHabitArchived(_ archived: Bool) {
-        if !archived, isArchived {
-            restoreHabit()
-            return
-        }
-
+    private func setHabitArchived() {
         isSaving = true
         validationMessage = nil
         historyValidationMessage = nil
 
         Task {
-            await appState.setHabitArchived(id: draft.id, isArchived: archived)
+            await appState.setHabitArchived(id: draft.id, isArchived: true)
             if let errorMessage = appState.actionErrorMessage {
                 validationMessage = errorMessage
                 isSaving = false
                 return
             }
 
-            isArchived = archived
+            isArchived = true
             isSaving = false
             onArchiveSuccess()
             dismiss()
-        }
-    }
-
-    private func restoreHabit() {
-        applyPendingScheduleRuleIfNeeded()
-
-        guard isFormValid else {
-            if !draft.scheduleRule.isValidSelection {
-                isScheduleWarningDismissed = false
-            }
-            validationMessage = draft.trimmedName.isEmpty ? "Enter a habit name." : endDateValidationMessage
-            return
-        }
-
-        isSaving = true
-        validationMessage = nil
-        historyValidationMessage = nil
-        let restoredDraft = normalizedDraft()
-
-        Task {
-            do {
-                try await appState.updateHabit(from: restoredDraft)
-                await appState.setHabitArchived(id: draft.id, isArchived: false)
-                if let errorMessage = appState.actionErrorMessage {
-                    validationMessage = errorMessage
-                    isSaving = false
-                    return
-                }
-
-                isArchived = false
-                isSaving = false
-                onArchiveSuccess()
-                dismiss()
-            } catch {
-                if let error = error as? EditableHistoryValidationError {
-                    historyValidationMessage = error.localizedDescription
-                    if case .missingHabitPastDays(let days) = error, let firstDay = days.first {
-                        displayedMonth = month(containing: firstDay)
-                    }
-                } else {
-                    validationMessage = appState.actionErrorMessage ?? UserFacingErrorMessage.text(for: error)
-                }
-                isSaving = false
-            }
         }
     }
 

@@ -77,7 +77,7 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
   - Repeat through the pushed Repeat screen
   - End Date
   - recent editable history
-  - archive / restore
+  - archive
   - delete
 
 ## Pill Flow Summary
@@ -108,7 +108,7 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
   - Repeat through the pushed Repeat screen
   - End Date
   - recent editable history
-  - archive / restore
+  - archive
   - delete
 
 ## Important Current Rules
@@ -123,7 +123,7 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
 - Repeat uses a pushed editor with Days and Interval blocks. Days supports weekday combinations. Interval is `Every N days`, limited to 2 through 5 days, and for Pills only also includes `Never`. Weekday summaries are canonicalized as Daily, Weekdays, Weekends, `Weekly on Mon` for one selected weekday, or abbreviated day lists such as `Mon, Wed, Fri` for other combinations.
 - Pill Repeat can be `Never`; this means one scheduled day on Start Date. Habits do not expose `Never`.
 - Pills and Habits both use `End Date`. Empty end dates display `Never`.
-- Items can be manually archived from Edit and restored from Edit. Restore saves current edits and moves the item back to its active section. My Pills and My Habits open archived items from separate Archive pages instead of dashboard sections.
+- Items can be manually archived from Edit. Archived items are final inactive storage: they stay on separate Archive pages, preserve their historical data, do not restore, and open read-only Details with Delete available at the bottom.
 - Settings supports System/Light/Dark appearance and Blue/Indigo/Green/Amber app color selection; Blue is the default and first palette option.
 - App tint colors supported accent surfaces, while page backgrounds stay on the system grouped background.
 - Backup includes the selected appearance mode and app tint, while legacy backups without those settings keep the current appearance.
@@ -132,8 +132,8 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
 - Habit and Pill Details/Edit calendars show a small tertiary system-gray dot under days that match the active schedule history.
 - Missing past-day review warnings use a dismissible floating red material banner on Edit and Details screens; they do not list dates and do not take space inside the calendar layout.
 - Create/Edit Repeat selection opens as a pushed screen inside the sheet. Details shows Repeat as read-only text and does not open a schedule picker.
-- Create/Edit Schedule blocks keep the native compact Start Date, Time, and End Date pickers. A shared presentation guard prevents simultaneous picker/popover presentation races without changing the visible UI.
-- End Repeat uses the native options popover. While it is open, neighboring compact pickers do not accept hit-testing; a Time-row touch-down briefly blocks End Repeat presentation to protect the native time picker from same-frame taps.
+- Create/Edit Schedule blocks keep the native compact Start Date, Time, and End Date pickers. A shared presentation guard prevents simultaneous picker/popover/navigation presentation races without changing the visible UI.
+- End Repeat uses the native options popover. While it is open, neighboring compact pickers do not accept hit-testing; Time and End Repeat use a window-level touch-down observer to briefly block the opposite presentation path without stealing scroll gestures; Repeat navigation dismisses/briefly blocks End Repeat so the popover cannot remain over the pushed Repeat screen.
 - Edit Habit and Edit Pill delete confirmations use system alerts with `Cancel` and destructive `Delete` actions.
 - Backup actions are full-width capsule buttons; `Last backup` follows the cloud status icon color and uses `03 May at 22:35` style dates; backup action confirmations use system alerts with short action labels.
 - Backup action notices are floating banners derived from folder contents and remembered backup fingerprints, so already created/restored backups do not show restore-needed notices after reopening the screen. Backup success feedback uses green floating banners.

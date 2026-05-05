@@ -11,6 +11,7 @@ struct CreatePillView: View {
     @State private var createLimitWarningMessage: String?
     @State private var isCreateLimitWarningDismissed = false
     @State private var isScheduleWarningDismissed = false
+    @State private var isEndDateWarningDismissed = false
     @State private var scheduleInfoMessage: String?
     @State private var scheduleInfoDismissTask: Task<Void, Never>?
     @State private var pendingScheduleRule: ScheduleRule?
@@ -89,7 +90,14 @@ struct CreatePillView: View {
             }
             .onChange(of: draft.scheduleRule) { _, _ in
                 handleScheduleRuleChange()
+                handleEndDateValidationInputsChanged()
                 clearEndDateForNeverRepeat(showInfo: true)
+            }
+            .onChange(of: draft.startDate) { _, _ in
+                handleEndDateValidationInputsChanged()
+            }
+            .onChange(of: draft.endDate) { _, _ in
+                handleEndDateValidationInputsChanged()
             }
             .appNotificationSettingsAlert(isPresented: $isShowingNotificationSettingsAlert)
             .onChange(of: focusedField) { _, field in
@@ -117,6 +125,7 @@ struct CreatePillView: View {
             .animation(.easeInOut(duration: 0.18), value: scheduleInfoMessage)
             .animation(.easeInOut(duration: 0.18), value: isCreateLimitWarningDismissed)
             .animation(.easeInOut(duration: 0.18), value: isScheduleWarningDismissed)
+            .animation(.easeInOut(duration: 0.18), value: isEndDateWarningDismissed)
             .onDisappear {
                 scheduleInfoDismissTask?.cancel()
             }
@@ -176,7 +185,62 @@ struct CreatePillView: View {
     }
 
     private var isFormValid: Bool {
-        !draft.trimmedName.isEmpty && !draft.trimmedDosage.isEmpty && draft.scheduleRule.isValidSelection
+        !draft.trimmedName.isEmpty && !draft.trimmedDosage.isEmpty && draft.scheduleRule.isValidSelection && isEndDateValid
+    }
+
+    private var isEndDateValid: Bool {
+        guard !draft.scheduleRule.isOneTime, let endDate = draft.endDate else {
+            return true
+        }
+        let normalizedEndDate = Calendar.current.startOfDay(for: endDate)
+        guard normalizedEndDate >= selectableEndDateRange.lowerBound else {
+            return false
+        }
+        return hasScheduledDay(from: selectableEndDateRange.lowerBound, through: normalizedEndDate)
+    }
+
+    private var endDateValidationMessage: String? {
+        isEndDateValid ? nil : AppCopy.noScheduledDayBeforeEndDate
+    }
+
+    private var validationScheduleVersions: [SchedulePreviewVersion] {
+        [
+            SchedulePreviewVersion(
+                rule: draft.scheduleRule,
+                effectiveFrom: Calendar.current.startOfDay(for: draft.startDate),
+                createdAt: .distantPast,
+                version: 1
+            ),
+        ]
+    }
+
+    private func hasScheduledDay(from lowerBound: Date, through endDate: Date) -> Bool {
+        let calendar = Calendar.current
+        var cursor = calendar.startOfDay(for: lowerBound)
+        let normalizedEndDate = calendar.startOfDay(for: endDate)
+        let cappedEndDate = min(
+            normalizedEndDate,
+            calendar.date(byAdding: .day, value: 31, to: cursor).map { calendar.startOfDay(for: $0) } ?? normalizedEndDate
+        )
+
+        while cursor <= cappedEndDate {
+            if HistoryScheduleApplicability.isScheduled(
+                on: cursor,
+                startDate: draft.startDate,
+                endDate: normalizedEndDate,
+                from: validationScheduleVersions,
+                calendar: calendar
+            ) {
+                return true
+            }
+
+            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else {
+                break
+            }
+            cursor = calendar.startOfDay(for: next)
+        }
+
+        return false
     }
 
     private var startDateBinding: Binding<Date> {
@@ -206,6 +270,12 @@ struct CreatePillView: View {
                     }
                 }
 
+                if let message = endDateFloatingWarningMessage {
+                    AppFloatingWarningBanner(message: message) {
+                        isEndDateWarningDismissed = true
+                    }
+                }
+
                 if let message = createLimitWarningMessage, !isCreateLimitWarningDismissed {
                     AppFloatingWarningBanner(message: message) {
                         isCreateLimitWarningDismissed = true
@@ -226,12 +296,18 @@ struct CreatePillView: View {
 
     private var shouldShowFloatingBottomBanners: Bool {
         (scheduleWarningMessage != nil && !isScheduleWarningDismissed)
+            || endDateFloatingWarningMessage != nil
             || (createLimitWarningMessage != nil && !isCreateLimitWarningDismissed)
             || scheduleInfoMessage != nil
     }
 
     private var scheduleWarningMessage: String? {
         draft.scheduleRule.isValidSelection ? nil : AppCopy.chooseAtLeastOneDay
+    }
+
+    private var endDateFloatingWarningMessage: String? {
+        guard !isEndDateWarningDismissed else { return nil }
+        return endDateValidationMessage
     }
 
     private func savePill() {
@@ -274,6 +350,10 @@ struct CreatePillView: View {
         if draft.scheduleRule.isValidSelection, validationMessage == AppCopy.chooseAtLeastOneDay {
             validationMessage = nil
         }
+    }
+
+    private func handleEndDateValidationInputsChanged() {
+        isEndDateWarningDismissed = false
     }
 
     private func clearEndDateForNeverRepeat(showInfo: Bool) {

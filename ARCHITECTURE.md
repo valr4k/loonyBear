@@ -204,6 +204,6 @@ On every `.active` scene phase:
 - Habit and Pill dashboards expose separate Archive pages backed by stored `isArchived` facts.
 - Schedule editing is shared through a pushed Repeat editor with Days and Interval sections.
 - End Date and Pill one-time repeat rules are stored facts; active/archive state, overdue, reminders, and calendar dots are derived from those facts at read time.
-- Schedule Create/Edit picker safety is centralized in shared UI infrastructure: native compact `DatePicker` controls stay system-owned, while `AppSchedulePresentationGuard` and the Schedule card exclusive-touch scope prevent simultaneous picker/popover presentation races.
+- Schedule Create/Edit picker safety is centralized in shared UI infrastructure: native compact `DatePicker` controls and Repeat `NavigationLink` stay system-owned, while `AppSchedulePresentationGuard`, the Schedule card exclusive-touch scope, a window-level touch-down observer, and the End Repeat dismiss signal prevent simultaneous picker/popover/navigation presentation races without attaching scroll-stealing SwiftUI gestures to the picker capsules.
 - App tint updates are applied through SwiftUI tint helpers and visible UIKit tab/navigation bar updates.
 - Widget snapshot currently serializes Habit dashboard data only.

@@ -20,7 +20,7 @@ This file describes the behavioral rules that are currently implemented in code.
 - A future Habit remains in its normal Build or Quit dashboard section, but it has no today action/status, no overdue state, no notifications, and no history review before its start date.
 - Future Habit cards show `Starts 03 May 2026` style dates.
 - Habits use the same `End Repeat` and `End Date` labels as Pills. If no end date is selected, the UI displays `Never`.
-- Habits can be manually archived or restored from Edit. Archived Habits move to the separate Habit Archive page and do not produce today actions, overdue state, notifications, badge count, or history review.
+- Habits can be manually archived from Edit. Archived Habits move to the separate Habit Archive page and do not produce today actions, overdue state, notifications, badge count, or history review. Archived Habits preserve their stored reminder, repeat, end date, and history as historical data.
 - My Habits has an Archive toolbar button that opens archived Habits without Build/Quit sections.
 
 ## Habit History Modes
@@ -71,8 +71,8 @@ This file describes the behavioral rules that are currently implemented in code.
 - Edit Habit delete confirmation uses a system alert with `Cancel` and destructive `Delete` actions.
 - Edit Habit does not expose `Start Date`.
 - If the schedule is changed for an active Habit, the new schedule version resolves internally from today: today is used when it matches the new Repeat and has no explicit state; otherwise the first scheduled day after today is used. If the Habit has a future start date, resolution starts from `startDate`.
-- Edit Habit shows Archive or Restore below Delete. Archive uses the confirmation `Archive Habit?` / `This habit will move to Archived.` Restore uses `Restore Habit?` / `Save changes and move this habit back to its active section.`
-- Restoring an archived Habit saves the current Edit form and then moves the Habit back to its active section.
+- Edit Habit shows Archive below Delete only for active Habits. Archive uses the confirmation `Archive Habit?` / `This habit will move to Archived.`
+- Archived Habits do not expose Edit or Restore. They can be opened from the Habit Archive page into read-only Details, where Delete is available at the bottom with confirmation.
 
 ## Habit Streak Rules
 
@@ -101,7 +101,7 @@ This file describes the behavioral rules that are currently implemented in code.
 - Future Pill cards show `Starts 03 May 2026` style dates.
 - Pills use an `End Date` label for optional end dates. If no end date is selected, the UI displays `Never`.
 - Pills can use `Repeat = Never`, which means one scheduled day on the Pill start date. Habits do not expose this option.
-- Pills can be manually archived or restored from Edit. Archived Pills move to the separate Pill Archive page and do not produce today actions, overdue state, notifications, badge count, or history review.
+- Pills can be manually archived from Edit. Archived Pills move to the separate Pill Archive page and do not produce today actions, overdue state, notifications, badge count, or history review. Archived Pills preserve their stored reminder, repeat, end date, and history as historical data.
 - My Pills has an Archive toolbar button that opens archived Pills without Today/Pending sections.
 
 ## Pill History Modes
@@ -152,8 +152,8 @@ This file describes the behavioral rules that are currently implemented in code.
 - Edit Pill delete confirmation uses a system alert with `Cancel` and destructive `Delete` actions.
 - Edit Pill does not expose `Start Date`.
 - If the schedule is changed for an active Pill, the new schedule version resolves internally from today: today is used when it matches the new Repeat and has no explicit state; otherwise the first scheduled day after today is used. If the Pill has a future start date, resolution starts from `startDate`.
-- Edit Pill shows Archive or Restore below Delete. Archive uses the confirmation `Archive Pill?` / `This pill will move to Archived.` Restore uses `Restore Pill?` / `Save changes and move this pill back to its active section.`
-- Restoring an archived Pill saves the current Edit form and then moves the Pill back to its active section.
+- Edit Pill shows Archive below Delete only for active Pills. Archive uses the confirmation `Archive Pill?` / `This pill will move to Archived.`
+- Archived Pills do not expose Edit or Restore. They can be opened from the Pill Archive page into read-only Details, where Delete is available at the bottom with confirmation.
 
 ## Schedule Rules
 
@@ -179,9 +179,9 @@ This file describes the behavioral rules that are currently implemented in code.
 - If a date is selected, the final active scheduled day is the last scheduled day on or before that date.
 - Once the final scheduled day has a completed/taken or skipped state, the item is archived automatically without confirmation.
 - If the final scheduled day is still empty, the item remains active and can become overdue with the same `Today`, `Yesterday`, or date labels as other overdue items.
-- Manual Archive and Restore always ask for confirmation.
+- Manual Archive asks for confirmation.
 - Manual Archive does not require the current Edit form to be valid.
-- Manual Restore saves the current Edit form first and then unarchives the item.
+- Restore is not available for archived items. For a new cycle, the user creates a new item.
 - `Repeat = Never` for Pills behaves like a one-time schedule on the start date. After that day is taken or skipped, the Pill archives automatically. If it is not acted on, it stays active and can become overdue.
 
 ## Reminder Rules
@@ -193,9 +193,11 @@ This file describes the behavioral rules that are currently implemented in code.
 - iOS only shows the system notification permission prompt once. After the user chooses `Don’t Allow`, the app can only route the user to Settings.
 - Reminder time rows use the native compact system time picker when reminders are enabled.
 - Editable Start Date rows use the native compact system date picker on Create screens.
-- Schedule blocks keep native compact date/time pickers and the native End Repeat options popover, but protect them from simultaneous UIKit presentations.
+- Schedule blocks keep native compact date/time pickers, the native End Repeat options popover, and the pushed Repeat navigation, but protect them from simultaneous UIKit presentations.
 - While the End Repeat options popover is open, neighboring compact date/time picker rows ignore picker hit-testing.
-- A Time-row touch-down briefly blocks End Repeat option presentation so a same-frame Time picker + End Repeat tap cannot present two UIKit controllers at once.
+- Time and End Repeat touch-downs briefly block the opposite presentation path so same-frame Time picker + End Repeat taps cannot present two UIKit controllers at once.
+- This touch-down protection is implemented as a window-level observer that does not cancel touches or steal Schedule card scroll gestures.
+- Repeat navigation dismisses any open End Repeat popover and briefly blocks End Repeat option presentation so the popover cannot remain over the pushed Repeat screen.
 - The Start Date picker participates in the Schedule block exclusive-touch scope but does not install an extra touch-down gesture.
 - Reminders are generated only for the next 2 days.
 - A reminder is not created for a day that is already completed or taken.

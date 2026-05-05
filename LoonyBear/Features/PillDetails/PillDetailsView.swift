@@ -11,6 +11,8 @@ struct PillDetailsView: View {
     @State private var isLoadingDetails = true
     @State private var needsReloadOnAppear = false
     @State private var isShowingEdit = false
+    @State private var isShowingDeleteConfirmation = false
+    @State private var deleteErrorMessage: String?
     @State private var isCalendarWarningDismissed = false
     @State private var displayedMonth: Date = {
         var calendar = Calendar.autoupdatingCurrent
@@ -118,6 +120,14 @@ struct PillDetailsView: View {
                         }
                     }
                 }
+
+                if details.isArchived {
+                    deleteButton
+                }
+
+                if let deleteErrorMessage {
+                    AppValidationBanner(message: deleteErrorMessage)
+                }
             } else if isIntegrityError {
                 ContentUnavailableView(
                     "Pill data problem",
@@ -137,6 +147,15 @@ struct PillDetailsView: View {
         }
         .navigationTitle("Pill Details")
         .navigationBarTitleDisplayMode(.inline)
+        .alert("Delete Pill?", isPresented: $isShowingDeleteConfirmation) {
+            Button("Delete", role: .destructive) {
+                deletePill()
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This pill will be permanently deleted.")
+        }
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button {
@@ -147,7 +166,7 @@ struct PillDetailsView: View {
                 .appAccentTint()
             }
 
-            if details != nil {
+            if details?.isArchived == false {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Edit") {
                         isShowingEdit = true
@@ -178,6 +197,20 @@ struct PillDetailsView: View {
         }
         .animation(.easeInOut(duration: 0.18), value: floatingCalendarWarningMessage)
         .animation(.easeInOut(duration: 0.18), value: isCalendarWarningDismissed)
+        .animation(.easeInOut(duration: 0.18), value: deleteErrorMessage)
+    }
+
+    private var deleteButton: some View {
+        Button(role: .destructive) {
+            isShowingDeleteConfirmation = true
+        } label: {
+            Label("Delete", systemImage: "trash")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .controlSize(.large)
+        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder
@@ -268,6 +301,7 @@ struct PillDetailsView: View {
     }
 
     private func calendarReviewMessage(for details: PillDetailsProjection) -> String? {
+        guard !details.isArchived else { return nil }
         let missingPastDays = EditableHistoryValidation.missingPastDays(
             editableDays: details.requiredPastScheduledDays,
             positiveDays: details.takenDays,
@@ -289,5 +323,20 @@ struct PillDetailsView: View {
             return false
         }
         return Calendar.current.isDate(missingPastDays[0], inSameDayAs: activeOverdueDay)
+    }
+
+    private func deletePill() {
+        guard let details else { return }
+        deleteErrorMessage = nil
+
+        Task {
+            await pillAppState.deletePill(id: details.id)
+            if let errorMessage = pillAppState.actionErrorMessage {
+                deleteErrorMessage = errorMessage
+                return
+            }
+
+            dismiss()
+        }
     }
 }

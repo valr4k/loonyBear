@@ -248,7 +248,7 @@ enum AppCopy {
     static let chooseAtLeastOneDay = "Select at least one day."
     static let notificationsRequired = "Turn on notifications in Settings to use reminders."
     static let endDateRemovedForNeverRepeat = "End date removed. Repeat is set to Never."
-    static let noScheduledDayBeforeEndDate = "Repeat has no scheduled day before the selected date."
+    static let noScheduledDayBeforeEndDate = "End date must be on or after the first scheduled day."
     static let backupFolderHint = "Backups stay in the selected Files folder even if the app is deleted. After reinstalling, choose the same folder again before restoring."
     static let pillHistoryFollowsSchedule = "History follows schedule from start date."
     static let pillHistoryCountsEveryDay = "History counts every day from the start date."
@@ -345,20 +345,146 @@ extension View {
 
 private struct AppTouchDownActionModifier: ViewModifier {
     let action: () -> Void
-    @State private var isTouchActive = false
 
     func body(content: Content) -> some View {
-        content.simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    guard !isTouchActive else { return }
-                    isTouchActive = true
-                    action()
-                }
-                .onEnded { _ in
-                    isTouchActive = false
-                }
+        content.background(
+            AppTouchDownActionInstaller(action: action)
+                .allowsHitTesting(false)
         )
+    }
+}
+
+private struct AppTouchDownActionInstaller: UIViewRepresentable {
+    let action: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(action: action)
+    }
+
+    func makeUIView(context: Context) -> MarkerView {
+        let view = MarkerView()
+        view.coordinator = context.coordinator
+        return view
+    }
+
+    func updateUIView(_ uiView: MarkerView, context: Context) {
+        context.coordinator.action = action
+        uiView.coordinator = context.coordinator
+        uiView.scheduleInstallation()
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var action: () -> Void
+
+        init(action: @escaping () -> Void) {
+            self.action = action
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            true
+        }
+    }
+
+    final class MarkerView: UIView {
+        weak var coordinator: Coordinator?
+        private weak var installedWindow: UIWindow?
+        private var recognizer: TouchDownRecognizer?
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            backgroundColor = .clear
+            isUserInteractionEnabled = false
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            nil
+        }
+
+        deinit {
+            uninstallRecognizer()
+        }
+
+        override func didMoveToSuperview() {
+            super.didMoveToSuperview()
+            scheduleInstallation()
+        }
+
+        func scheduleInstallation() {
+            DispatchQueue.main.async { [weak self] in
+                self?.installRecognizerIfNeeded()
+            }
+        }
+
+        private func installRecognizerIfNeeded() {
+            guard let window else {
+                uninstallRecognizer()
+                return
+            }
+
+            if installedWindow === window {
+                return
+            }
+
+            uninstallRecognizer()
+
+            let recognizer = TouchDownRecognizer(markerView: self) { [weak self] in
+                self?.coordinator?.action()
+            }
+            recognizer.cancelsTouchesInView = false
+            recognizer.delaysTouchesBegan = false
+            recognizer.delaysTouchesEnded = false
+            recognizer.delegate = coordinator
+            window.addGestureRecognizer(recognizer)
+            self.recognizer = recognizer
+            installedWindow = window
+        }
+
+        private func uninstallRecognizer() {
+            if let recognizer, let installedWindow {
+                installedWindow.removeGestureRecognizer(recognizer)
+            }
+            recognizer = nil
+            installedWindow = nil
+        }
+    }
+
+    final class TouchDownRecognizer: UIGestureRecognizer {
+        private weak var markerView: MarkerView?
+        private let onTouchDown: () -> Void
+        private var didFire = false
+
+        init(markerView: MarkerView, onTouchDown: @escaping () -> Void) {
+            self.markerView = markerView
+            self.onTouchDown = onTouchDown
+            super.init(target: nil, action: nil)
+        }
+
+        override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+            guard !didFire else { return }
+            guard let markerView, let window = markerView.window else {
+                state = .failed
+                return
+            }
+            guard touches.contains(where: { touch in
+                let touchLocation = touch.location(in: window)
+                let markerFrame = markerView.convert(markerView.bounds, to: window)
+                return markerFrame.insetBy(dx: -8, dy: -8).contains(touchLocation)
+            }) else {
+                state = .failed
+                return
+            }
+            didFire = true
+            onTouchDown()
+            state = .failed
+        }
+
+        override func reset() {
+            didFire = false
+        }
     }
 }
 
@@ -718,13 +844,13 @@ struct AppReminderTimeRows: View {
                 .appAccentTint()
                 .fixedSize()
                 .allowsHitTesting(!isPickerPresentationBlocked)
+                .appTouchDownAction {
+                    onPickerTouchDown?()
+                }
         }
         .padding(.horizontal, AppLayout.rowHorizontalPadding)
         .padding(.vertical, AppLayout.rowVerticalPadding)
         .contentShape(Rectangle())
-        .appTouchDownAction {
-            onPickerTouchDown?()
-        }
         .simultaneousGesture(TapGesture().onEnded {
             dismissKeyboardForNonTextControl()
         })
@@ -811,6 +937,7 @@ struct AppOptionalEndDatePickerRow: View {
     let fallbackDate: Date
     let isEnabled: Bool
     let onTap: (() -> Void)?
+    let dismissOptionsSignal: Int
     let onOptionsPresentationChange: (Bool) -> Void
     let onOptionsTouchDown: (() -> Void)?
     let isOptionsPresentationBlocked: Bool
@@ -825,6 +952,7 @@ struct AppOptionalEndDatePickerRow: View {
         fallbackDate: Date,
         isEnabled: Bool = true,
         onTap: (() -> Void)? = nil,
+        dismissOptionsSignal: Int = 0,
         onOptionsPresentationChange: @escaping (Bool) -> Void = { _ in },
         onOptionsTouchDown: (() -> Void)? = nil,
         isOptionsPresentationBlocked: Bool = false,
@@ -837,6 +965,7 @@ struct AppOptionalEndDatePickerRow: View {
         self.fallbackDate = fallbackDate
         self.isEnabled = isEnabled
         self.onTap = onTap
+        self.dismissOptionsSignal = dismissOptionsSignal
         self.onOptionsPresentationChange = onOptionsPresentationChange
         self.onOptionsTouchDown = onOptionsTouchDown
         self.isOptionsPresentationBlocked = isOptionsPresentationBlocked
@@ -855,6 +984,11 @@ struct AppOptionalEndDatePickerRow: View {
                     guard isEnabled, !isOptionsPresentationBlocked else { return }
                     AppDescriptionFieldSupport.dismissKeyboard()
                     onTap?()
+                    guard !isShowingEndDateOptions else {
+                        setEndDateOptionsPresented(false)
+                        return
+                    }
+                    onOptionsTouchDown?()
                     setEndDateOptionsPresented(true)
                 } label: {
                     HStack(spacing: 6) {
@@ -917,6 +1051,12 @@ struct AppOptionalEndDatePickerRow: View {
         }
         .transaction { transaction in
             transaction.animation = nil
+        }
+        .onChange(of: dismissOptionsSignal) { _, _ in
+            setEndDateOptionsPresented(false)
+        }
+        .onDisappear {
+            setEndDateOptionsPresented(false)
         }
     }
 
@@ -1065,6 +1205,7 @@ struct AppCreateScheduleSection<RepeatDestination: View>: View {
     let endDateTap: (() -> Void)?
     @ViewBuilder let repeatDestination: RepeatDestination
     @StateObject private var presentationGuard = AppSchedulePresentationGuard()
+    @State private var endDateOptionsDismissSignal = 0
 
     init(
         startDate: Binding<Date>,
@@ -1127,7 +1268,10 @@ struct AppCreateScheduleSection<RepeatDestination: View>: View {
 
                     AppCreateRepeatPickerRow(
                         value: repeatSummary,
-                        onTap: repeatTap
+                        onTap: {
+                            dismissEndDateOptionsForRepeatNavigation()
+                            repeatTap?()
+                        }
                     ) {
                         repeatDestination
                     }
@@ -1142,6 +1286,7 @@ struct AppCreateScheduleSection<RepeatDestination: View>: View {
                         fallbackDate: startDate,
                         isEnabled: isEndDateEnabled,
                         onTap: endDateTap,
+                        dismissOptionsSignal: endDateOptionsDismissSignal,
                         onOptionsPresentationChange: presentationGuard.setEndDateOptionsPresented,
                         onOptionsTouchDown: presentationGuard.blockPickersForEndDateOptionsTouch,
                         isOptionsPresentationBlocked: presentationGuard.isEndDateOptionsPresentationBlocked,
@@ -1154,6 +1299,11 @@ struct AppCreateScheduleSection<RepeatDestination: View>: View {
         .onDisappear {
             presentationGuard.reset()
         }
+    }
+
+    private func dismissEndDateOptionsForRepeatNavigation() {
+        endDateOptionsDismissSignal += 1
+        presentationGuard.blockEndDateOptionsForPickerTouch()
     }
 }
 
@@ -1172,6 +1322,7 @@ struct AppEditScheduleSection<RepeatDestination: View>: View {
     let endDateTap: (() -> Void)?
     @ViewBuilder let repeatDestination: RepeatDestination
     @StateObject private var presentationGuard = AppSchedulePresentationGuard()
+    @State private var endDateOptionsDismissSignal = 0
 
     init(
         reminderEnabled: Binding<Bool>,
@@ -1221,7 +1372,10 @@ struct AppEditScheduleSection<RepeatDestination: View>: View {
 
                     AppCreateRepeatPickerRow(
                         value: repeatSummary,
-                        onTap: repeatTap
+                        onTap: {
+                            dismissEndDateOptionsForRepeatNavigation()
+                            repeatTap?()
+                        }
                     ) {
                         repeatDestination
                     }
@@ -1236,6 +1390,7 @@ struct AppEditScheduleSection<RepeatDestination: View>: View {
                         fallbackDate: endDateFallback,
                         isEnabled: isEndDateEnabled,
                         onTap: endDateTap,
+                        dismissOptionsSignal: endDateOptionsDismissSignal,
                         onOptionsPresentationChange: presentationGuard.setEndDateOptionsPresented,
                         onOptionsTouchDown: presentationGuard.blockPickersForEndDateOptionsTouch,
                         isOptionsPresentationBlocked: presentationGuard.isEndDateOptionsPresentationBlocked,
@@ -1248,6 +1403,11 @@ struct AppEditScheduleSection<RepeatDestination: View>: View {
         .onDisappear {
             presentationGuard.reset()
         }
+    }
+
+    private func dismissEndDateOptionsForRepeatNavigation() {
+        endDateOptionsDismissSignal += 1
+        presentationGuard.blockEndDateOptionsForPickerTouch()
     }
 }
 

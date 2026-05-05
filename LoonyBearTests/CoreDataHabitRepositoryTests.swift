@@ -31,7 +31,7 @@ struct CoreDataHabitRepositoryTests {
     }
 
     @Test
-    func archiveAndRestoreHabitMovesBetweenDashboardSections() throws {
+    func archiveHabitMovesToArchivedSectionAndPreservesScheduleData() throws {
         let calendar = Calendar(identifier: .gregorian)
         let now = calendar.date(from: DateComponents(year: 2026, month: 5, day: 4, hour: 10, minute: 0))!
         let persistence = PersistenceController(inMemory: true)
@@ -47,12 +47,14 @@ struct CoreDataHabitRepositoryTests {
         draft.type = .build
         draft.name = "Archive me"
         draft.startDate = TestSupport.makeDate(2026, 5, 4, calendar: calendar)
+        draft.endDate = TestSupport.makeDate(2026, 5, 20, calendar: calendar)
         draft.scheduleRule = .weekly(.daily)
         draft.reminderEnabled = true
         draft.reminderTime = ReminderTime(hour: 9, minute: 0)
 
         let habitID = try repository.createHabit(from: draft)
         try repository.setHabitArchived(id: habitID, isArchived: true)
+        let archivedDetails = try #require(try repository.fetchHabitDetails(id: habitID))
 
         let archivedDashboard = try loadDashboard.execute()
         let archivedSection = try #require(archivedDashboard.sections.first)
@@ -65,15 +67,10 @@ struct CoreDataHabitRepositoryTests {
         #expect(!archivedHabit.isReminderScheduledToday)
         #expect(archivedHabit.activeOverdueDay == nil)
         #expect(!archivedHabit.needsHistoryReview)
-
-        try repository.setHabitArchived(id: habitID, isArchived: false)
-
-        let restoredDashboard = try loadDashboard.execute()
-        let restoredSection = try #require(restoredDashboard.sections.first)
-        let restoredHabit = try #require(restoredSection.habits.first)
-
-        #expect(restoredDashboard.sections.map(\.id) == [.build])
-        #expect(!restoredHabit.isArchived)
+        #expect(archivedDetails.reminderEnabled)
+        #expect(archivedDetails.reminderTime == ReminderTime(hour: 9, minute: 0))
+        #expect(archivedDetails.endDate == TestSupport.makeDate(2026, 5, 20, calendar: calendar))
+        #expect(archivedDetails.scheduleRule == .weekly(.daily))
     }
 
     @Test
@@ -95,6 +92,8 @@ struct CoreDataHabitRepositoryTests {
         draft.startDate = TestSupport.makeDate(2026, 5, 1, calendar: calendar)
         draft.endDate = TestSupport.makeDate(2026, 5, 20, calendar: calendar)
         draft.scheduleRule = .weekly(.monday)
+        draft.reminderEnabled = true
+        draft.reminderTime = ReminderTime(hour: 9, minute: 0)
 
         let habitID = try repository.createHabit(from: draft)
         let activeHabit = try #require(try repository.fetchDashboardHabits().first { $0.id == habitID })
@@ -104,8 +103,13 @@ struct CoreDataHabitRepositoryTests {
         try repository.completeHabitDay(id: habitID, on: finalScheduledDay)
 
         let archivedHabit = try #require(try repository.fetchDashboardHabits().first { $0.id == habitID })
+        let archivedDetails = try #require(try repository.fetchHabitDetails(id: habitID))
         #expect(archivedHabit.isArchived)
         #expect(archivedHabit.activeOverdueDay == nil)
+        #expect(archivedDetails.reminderEnabled)
+        #expect(archivedDetails.reminderTime == ReminderTime(hour: 9, minute: 0))
+        #expect(archivedDetails.endDate == TestSupport.makeDate(2026, 5, 20, calendar: calendar))
+        #expect(archivedDetails.scheduleRule == .weekly(.monday))
     }
 
     @Test
