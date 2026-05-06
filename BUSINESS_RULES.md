@@ -16,10 +16,11 @@ This file describes the behavioral rules that are currently implemented in code.
 - Habit name must not be empty.
 - At least one schedule day must be selected.
 - The app allows at most 20 Habits.
+- Habit name, schedule, end-date, create-limit, and unexpected action errors are shown with dismissible floating warning banners instead of inline form banners.
 - Create Habit allows a start date from the last 5 years through the end of the second next calendar month.
 - A future Habit remains in its normal Build or Quit dashboard section, but it has no today action/status, no overdue state, no notifications, and no history review before its start date.
 - Future Habit cards show `Starts 03 May 2026` style dates.
-- Habits use the same `End Repeat` and `End Date` labels as Pills. If no end date is selected, the UI displays `Never`.
+- Habits use an `End Repeat` options row and, only when `On Date` is selected, an `End Date` date row. If no end date is selected, `End Repeat` displays `Never`.
 - Habits can be manually archived from Edit. Archived Habits move to the separate Habit Archive page and do not produce today actions, overdue state, notifications, badge count, or history review. Archived Habits preserve their stored reminder, repeat, end date, and history as historical data.
 - My Habits shows the Archive toolbar button only when at least one archived Habit exists. The button opens archived Habits without Build/Quit sections.
 
@@ -66,12 +67,12 @@ This file describes the behavioral rules that are currently implemented in code.
 - Habit card trailing swipe exposes Edit and Info. Edit uses system blue, Info uses system indigo, and Delete is not available from card swipe actions.
 - Habit card clear-state swipe uses the `arrow.uturn.backward` system symbol.
 - Future and archived Habit cards do not expose day-state leading swipe actions.
-- Habit Details shows the same dismissible floating warning banner while any past scheduled day is missing. If the only missing day is the active overdue day, the warning uses the short `Finish updating overdue days.` copy; otherwise it uses `Finish updating past days.`
+- Habit Details shows the same dismissible floating warning banner while any past scheduled day is missing. If the only missing day is the active overdue day, the warning uses the short `Finish updating overdue days on the Edit screen.` copy; otherwise it uses `Finish updating past days on the Edit screen.`
 - Saving Edit Habit does not auto-fill missing past days; the user must choose the state.
 - Edit Habit delete confirmation uses a system alert with `Cancel` and destructive `Delete` actions.
 - Edit Habit does not expose `Start Date`.
-- If the schedule is changed for an active Habit, the new schedule version resolves internally from today: today is used when it matches the new Repeat and has no explicit state; otherwise the first scheduled day after today is used. If the Habit has a future start date, resolution starts from `startDate`.
-- Edit Habit shows Archive below Delete only for active Habits. Archive uses the confirmation `Archive Habit?` / `This habit will move to Archived.`
+- If the Repeat rule is changed for an active Habit, the app does not show an Apply From field. The new schedule version receives a hidden `effectiveFrom` based on `max(today, startDate)`. The technical maximum is the end of the second next calendar month. The current UI selects the lower bound, so the normal saved value is `max(today, startDate)`. If an out-of-range internal draft value ever appears, the repository falls back to the lower bound. This hidden resolver does not check whether that date matches the new Repeat and does not inspect explicit completed/skipped states; actual scheduled days are derived later by normal schedule applicability.
+- Edit Habit shows Archive below Delete only for active Habits. Archive uses the confirmation `Archive Habit?` / `This habit will move to Archive.`
 - Archived Habits do not expose Edit or Restore. They can be opened from the Habit Archive page into read-only Details, where Delete is available at the bottom with confirmation.
 
 ## Habit Streak Rules
@@ -88,6 +89,7 @@ This file describes the behavioral rules that are currently implemented in code.
 - Pill name and dosage must not be empty.
 - A valid Repeat rule must be selected. `Repeat = Never` is valid for Pills.
 - The app allows at most 20 Pills.
+- Pill name, dosage, schedule, end-date, create-limit, and unexpected action errors are shown with dismissible floating warning banners instead of inline form banners.
 - Create Pill allows a start date from the last 5 years through the end of the second next calendar month.
 - A future Pill appears in Pending, but it has no today action/status, no overdue state, no notifications, and no history review before its start date.
 - A Pill day can be in one of 3 stored states:
@@ -99,7 +101,7 @@ This file describes the behavioral rules that are currently implemented in code.
 - Clearing today removes the stored row for today.
 - Pill order is persisted through `sortOrder`.
 - Future Pill cards show `Starts 03 May 2026` style dates.
-- Pills use an `End Date` label for optional end dates. If no end date is selected, the UI displays `Never`.
+- Pills use an `End Repeat` options row and, only when `On Date` is selected, an `End Date` date row. If no end date is selected, `End Repeat` displays `Never`.
 - Pills can use `Repeat = Never`, which means one scheduled day on the Pill start date. Habits do not expose this option.
 - Pills can be manually archived from Edit. Archived Pills move to the separate Pill Archive page and do not produce today actions, overdue state, notifications, badge count, or history review. Archived Pills preserve their stored reminder, repeat, end date, and history as historical data.
 - My Pills shows the Archive toolbar button only when at least one archived Pill exists. The button opens archived Pills without Today/Pending sections.
@@ -147,12 +149,12 @@ This file describes the behavioral rules that are currently implemented in code.
 - Pill card trailing swipe exposes Edit and Info. Edit uses system blue, Info uses system indigo, and Delete is not available from card swipe actions.
 - Pill card clear-state swipe uses the `arrow.uturn.backward` system symbol.
 - Future and archived Pill cards do not expose day-state leading swipe actions.
-- Pill Details shows the same dismissible floating warning banner while any past scheduled day is missing. If the only missing day is the active overdue day, the warning uses the short `Finish updating overdue days.` copy; otherwise it uses `Finish updating past days.`
+- Pill Details shows the same dismissible floating warning banner while any past scheduled day is missing. If the only missing day is the active overdue day, the warning uses the short `Finish updating overdue days on the Edit screen.` copy; otherwise it uses `Finish updating past days on the Edit screen.`
 - Saving Edit Pill does not auto-fill missing past days; the user must choose the state.
 - Edit Pill delete confirmation uses a system alert with `Cancel` and destructive `Delete` actions.
 - Edit Pill does not expose `Start Date`.
-- If the schedule is changed for an active Pill, the new schedule version resolves internally from today: today is used when it matches the new Repeat and has no explicit state; otherwise the first scheduled day after today is used. If the Pill has a future start date, resolution starts from `startDate`.
-- Edit Pill shows Archive below Delete only for active Pills. Archive uses the confirmation `Archive Pill?` / `This pill will move to Archived.`
+- If the Repeat rule is changed for an active Pill, the app does not show an Apply From field. The new schedule version receives a hidden `effectiveFrom` based on `max(today, startDate)`. The technical maximum is the end of the second next calendar month. The current UI selects the lower bound, so the normal saved value is `max(today, startDate)`. If an out-of-range internal draft value ever appears, the repository falls back to the lower bound. This hidden resolver does not check whether that date matches the new Repeat and does not inspect explicit taken/skipped states; actual scheduled days are derived later by normal schedule applicability.
+- Edit Pill shows Archive below Delete only for active Pills. Archive uses the confirmation `Archive Pill?` / `This pill will move to Archive.`
 - Archived Pills do not expose Edit or Restore. They can be opened from the Pill Archive page into read-only Details, where Delete is available at the bottom with confirmation.
 
 ## Schedule Rules
@@ -160,7 +162,7 @@ This file describes the behavioral rules that are currently implemented in code.
 - Schedules are represented by `ScheduleRule`: weekday rules, `Every N days` interval rules, or `Never repeat` for Pills.
 - Editing schedule days appends a new schedule version row instead of rewriting older versions.
 - The current schedule is the latest schedule version whose `effectiveFrom` is not later than the relevant day.
-- If a schedule change is saved from Edit, `effectiveFrom` is resolved internally. Active items start from today when today matches the new Repeat and has no explicit state; otherwise they use the first scheduled day after today. Future items resolve from `startDate`. `Every N days` schedules use the resolved `effectiveFrom` as the interval anchor.
+- If a Repeat change is saved from Edit, `effectiveFrom` is resolved internally and is not editable in the UI. The base date is `max(today, startDate)`. The technical maximum is the end of the second next calendar month. The resolver normalizes the selected/base date, raises values earlier than the minimum to the minimum, and rejects values later than the maximum; repository update falls back to the minimum if resolution fails. The resolver is intentionally schedule-agnostic: it does not move to the next matching weekday and does not skip days that already have explicit history state. `Every N days` schedules use this hidden `effectiveFrom` as the interval anchor.
 - Calendar preview drops replaced future schedule versions so visible dots match the post-save schedule.
 - Schedule rules are selected from the pushed Repeat screen using `Days` and `Interval` sections. `Days` supports weekday combinations, while `Interval` supports `Every N days`, limited to 2 through 5 days, and `Never` for Pills only.
 - Weekday summaries are canonicalized as Daily for Monday through Sunday, Weekdays for Monday through Friday, Weekends for Saturday and Sunday, `Weekly on Mon` style labels for one selected weekday, and abbreviated day lists such as `Mon, Wed, Fri` for other weekday combinations.
@@ -173,15 +175,19 @@ This file describes the behavioral rules that are currently implemented in code.
   - then `version`
   - then `createdAt`
 
-## End Date and Archive Rules
+## End Repeat, End Date, and Archive Rules
 
 - End Date is optional for both Pills and Habits.
+- The visible Schedule UI splits the concept into two rows: `End Repeat` chooses `Never` or `On Date`; the `End Date` picker row appears only when `On Date` is selected.
 - If a date is selected, the final active scheduled day is the last scheduled day on or before that date.
-- The End Date picker lower bound is `max(today, startDate)`. If Start Date changes and the selected End Date falls before the new lower bound, the selected End Date is immediately moved to the new lower bound so the displayed picker value and validation state match.
+- The End Date picker lower bound is `max(today, startDate)`. The native picker binding keeps visible picker values inside that range while editing, but Save does not silently raise End Date during `normalizedDraft()`.
+- A selected End Date is valid only when at least one scheduled day exists between the active lower bound and the selected date. If no scheduled day exists in that range, Save stays disabled and a dismissible floating warning says `End date must be on or after the first scheduled day.`
+- End Date validation is run on Create and Edit for both domains. Pill `Repeat = Never` ignores End Date validation because the End Date is cleared and disabled for one-time Pills.
 - Once the final scheduled day has a completed/taken or skipped state, the item is archived automatically without confirmation.
 - If the final scheduled day is still empty, the item remains active and can become overdue with the same `Today`, `Yesterday`, or date labels as other overdue items.
 - Manual Archive asks for confirmation.
 - Manual Archive does not require the current Edit form to be valid.
+- Manual and automatic archive only toggle `isArchived`, update `updatedAt`, and clear stale overdue anchors. They preserve reminder settings, Repeat, End Repeat/End Date, and history rows as historical data.
 - Restore is not available for archived items. For a new cycle, the user creates a new item.
 - `Repeat = Never` for Pills behaves like a one-time schedule on the start date. After that day is taken or skipped, the Pill archives automatically. If it is not acted on, it stays active and can become overdue.
 
@@ -196,7 +202,7 @@ This file describes the behavioral rules that are currently implemented in code.
 - Editable Start Date rows use the native compact system date picker on Create screens.
 - Schedule blocks keep native compact date/time pickers, the native End Repeat options popover, and the pushed Repeat navigation, but protect them from simultaneous UIKit presentations.
 - While the End Repeat options popover is open, neighboring compact date/time picker rows ignore picker hit-testing.
-- Time and End Repeat touch-downs briefly block the opposite presentation path so same-frame Time picker + End Repeat taps cannot present two UIKit controllers at once.
+- Time and End Repeat touch-downs briefly block the opposite presentation path for 200 ms so same-frame Time picker + End Repeat taps cannot present two UIKit controllers at once.
 - This touch-down protection is implemented as a window-level observer that does not cancel touches or steal Schedule card scroll gestures.
 - Repeat navigation dismisses any open End Repeat popover and briefly blocks End Repeat option presentation so the popover cannot remain over the pushed Repeat screen.
 - The Start Date picker participates in the Schedule block exclusive-touch scope but does not install an extra touch-down gesture.

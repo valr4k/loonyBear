@@ -114,6 +114,153 @@ struct LoonyBearTests {
     }
 
     @Test
+    func endDateValidationAllowsEmptyEndDate() {
+        let calendar = Calendar(identifier: .gregorian)
+        let startDate = TestSupport.makeDate(2026, 5, 4, calendar: calendar)
+        let schedules = [
+            SchedulePreviewVersion(
+                rule: .weekly(.wednesday),
+                effectiveFrom: startDate,
+                createdAt: startDate,
+                version: 1
+            ),
+        ]
+
+        #expect(EndDateValidationSupport.isValid(
+            endDate: nil,
+            startDate: startDate,
+            lowerBound: startDate,
+            schedules: schedules,
+            calendar: calendar
+        ))
+    }
+
+    @Test
+    func endDateValidationRequiresFirstScheduledDayInRange() {
+        let calendar = Calendar(identifier: .gregorian)
+        let startDate = TestSupport.makeDate(2026, 5, 4, calendar: calendar)
+        let tuesdayBeforeFirstScheduledDay = TestSupport.makeDate(2026, 5, 5, calendar: calendar)
+        let firstScheduledDay = TestSupport.makeDate(2026, 5, 6, calendar: calendar)
+        let schedules = [
+            SchedulePreviewVersion(
+                rule: .weekly(.wednesday),
+                effectiveFrom: startDate,
+                createdAt: startDate,
+                version: 1
+            ),
+        ]
+
+        #expect(!EndDateValidationSupport.isValid(
+            endDate: tuesdayBeforeFirstScheduledDay,
+            startDate: startDate,
+            lowerBound: startDate,
+            schedules: schedules,
+            calendar: calendar
+        ))
+        #expect(EndDateValidationSupport.isValid(
+            endDate: firstScheduledDay,
+            startDate: startDate,
+            lowerBound: startDate,
+            schedules: schedules,
+            calendar: calendar
+        ))
+        #expect(EndDateValidationSupport.isValid(
+            endDate: TestSupport.makeDate(2026, 6, 5, calendar: calendar),
+            startDate: startDate,
+            lowerBound: startDate,
+            schedules: schedules,
+            calendar: calendar
+        ))
+    }
+
+    @Test
+    func endDateValidationRejectsDatesBeforeLowerBound() {
+        let calendar = Calendar(identifier: .gregorian)
+        let startDate = TestSupport.makeDate(2026, 5, 1, calendar: calendar)
+        let lowerBound = TestSupport.makeDate(2026, 5, 5, calendar: calendar)
+        let schedules = [
+            SchedulePreviewVersion(
+                rule: .weekly(.daily),
+                effectiveFrom: startDate,
+                createdAt: startDate,
+                version: 1
+            ),
+        ]
+
+        #expect(!EndDateValidationSupport.isValid(
+            endDate: TestSupport.makeDate(2026, 5, 4, calendar: calendar),
+            startDate: startDate,
+            lowerBound: lowerBound,
+            schedules: schedules,
+            calendar: calendar
+        ))
+        #expect(EndDateValidationSupport.isValid(
+            endDate: lowerBound,
+            startDate: startDate,
+            lowerBound: lowerBound,
+            schedules: schedules,
+            calendar: calendar
+        ))
+    }
+
+    @Test
+    func endDateValidationUsesEditedSchedulePreview() {
+        let calendar = Calendar(identifier: .gregorian)
+        let startDate = TestSupport.makeDate(2026, 5, 1, calendar: calendar)
+        let effectiveFrom = TestSupport.makeDate(2026, 5, 11, calendar: calendar)
+        let oldSchedule = SchedulePreviewVersion(
+            rule: .weekly(.daily),
+            effectiveFrom: startDate,
+            createdAt: startDate,
+            version: 1
+        )
+        let schedules = SchedulePreviewSupport.previewSchedules(
+            from: [oldSchedule],
+            replacementRule: .weekly(.monday),
+            effectiveFrom: effectiveFrom,
+            calendar: calendar
+        )
+
+        #expect(!EndDateValidationSupport.isValid(
+            endDate: TestSupport.makeDate(2026, 5, 10, calendar: calendar),
+            startDate: startDate,
+            lowerBound: effectiveFrom,
+            schedules: schedules,
+            calendar: calendar
+        ))
+        #expect(EndDateValidationSupport.isValid(
+            endDate: effectiveFrom,
+            startDate: startDate,
+            lowerBound: effectiveFrom,
+            schedules: schedules,
+            calendar: calendar
+        ))
+    }
+
+    @Test
+    func endDateValidationCanIgnoreOneTimePillEndDate() {
+        let calendar = Calendar(identifier: .gregorian)
+        let startDate = TestSupport.makeDate(2026, 5, 6, calendar: calendar)
+        let schedules = [
+            SchedulePreviewVersion(
+                rule: .oneTime,
+                effectiveFrom: startDate,
+                createdAt: startDate,
+                version: 1
+            ),
+        ]
+
+        #expect(EndDateValidationSupport.isValid(
+            endDate: TestSupport.makeDate(2026, 5, 1, calendar: calendar),
+            startDate: startDate,
+            lowerBound: startDate,
+            schedules: schedules,
+            ignoresEndDate: true,
+            calendar: calendar
+        ))
+    }
+
+    @Test
     func effectiveFromResolverUsesSelectedDateAsActivationDate() throws {
         let calendar = Calendar(identifier: .gregorian)
         let selectedTuesday = TestSupport.makeDate(2026, 5, 5, calendar: calendar)

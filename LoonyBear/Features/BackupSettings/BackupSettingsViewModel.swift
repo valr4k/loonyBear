@@ -44,7 +44,7 @@ final class BackupSettingsViewModel: ObservableObject {
             if status.requiresFolderReselection {
                 showBanner(
                     title: "Backup Folder Unavailable",
-                    message: "The selected folder is no longer available. Choose it again to continue using backups.",
+                    message: "The previously selected folder is no longer accessible. Select a new backup location.",
                     style: .failure
                 )
             }
@@ -164,7 +164,7 @@ final class BackupSettingsViewModel: ObservableObject {
     private func promptFolderReselection() {
         showBanner(
             title: "Backup Folder Unavailable",
-            message: "The selected folder is no longer available. Choose it again to continue using backups.",
+            message: "The previously selected folder is no longer accessible. Select a new backup location.",
             style: .failure
         )
         isShowingFolderPicker = true

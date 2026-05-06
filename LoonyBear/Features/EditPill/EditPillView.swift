@@ -19,9 +19,10 @@ struct EditPillView: View {
     @State private var pendingScheduleRule: ScheduleRule?
     @State private var displayedMonth: Date
     @State private var validationMessage: String?
+    @State private var isValidationWarningDismissed = false
     @State private var historyValidationMessage: String?
-    @State private var scheduleInfoMessage: String?
-    @State private var scheduleInfoDismissTask: Task<Void, Never>?
+    @State private var scheduleNoticeMessage: String?
+    @State private var scheduleNoticeDismissTask: Task<Void, Never>?
     @State private var isSaving = false
     @State private var isDismissingKeyboardForNonTextControl = false
     @State private var isShowingDeleteConfirmation = false
@@ -100,10 +101,6 @@ struct EditPillView: View {
                 descriptionSection
 
                 actionButtons
-
-                if let validationMessage {
-                    AppValidationBanner(message: validationMessage)
-                }
             }
             .overlay(alignment: .bottom) {
                 floatingBottomBanners
@@ -207,6 +204,12 @@ struct EditPillView: View {
             .onChange(of: draft.endDate) { _, _ in
                 handleEndDateValidationInputsChanged()
             }
+            .onChange(of: draft.name) { _, _ in
+                handleNonScheduleValidationInputChanged()
+            }
+            .onChange(of: draft.dosage) { _, _ in
+                handleNonScheduleValidationInputChanged()
+            }
             .onChange(of: hasMissingPastDays) { _, hasMissingPastDays in
                 if !hasMissingPastDays {
                     isHistoryWarningDismissed = false
@@ -226,12 +229,12 @@ struct EditPillView: View {
             .animation(.easeInOut(duration: 0.18), value: validationMessage)
             .animation(.easeInOut(duration: 0.18), value: historyValidationMessage)
             .animation(.easeInOut(duration: 0.18), value: floatingHistoryWarningMessage)
-            .animation(.easeInOut(duration: 0.18), value: scheduleInfoMessage)
+            .animation(.easeInOut(duration: 0.18), value: scheduleNoticeMessage)
             .animation(.easeInOut(duration: 0.18), value: isHistoryWarningDismissed)
             .animation(.easeInOut(duration: 0.18), value: isScheduleWarningDismissed)
             .animation(.easeInOut(duration: 0.18), value: isEndDateWarningDismissed)
             .onDisappear {
-                scheduleInfoDismissTask?.cancel()
+                scheduleNoticeDismissTask?.cancel()
             }
         }
     }
@@ -394,14 +397,14 @@ struct EditPillView: View {
     }
 
     private var isEndDateValid: Bool {
-        guard !draft.scheduleRule.isOneTime, let endDate = draft.endDate else {
-            return true
-        }
-        let normalizedEndDate = Calendar.current.startOfDay(for: endDate)
-        guard normalizedEndDate >= selectableEndDateRange.lowerBound else {
-            return false
-        }
-        return hasScheduledDay(from: selectableEndDateRange.lowerBound, through: normalizedEndDate)
+        EndDateValidationSupport.isValid(
+            endDate: draft.endDate,
+            startDate: draft.startDate,
+            lowerBound: selectableEndDateRange.lowerBound,
+            schedules: validationScheduleVersions,
+            ignoresEndDate: draft.scheduleRule.isOneTime,
+            calendar: Calendar.current
+        )
     }
 
     private var endDateValidationMessage: String? {
@@ -426,35 +429,6 @@ struct EditPillView: View {
                 version: $0.version
             )
         }
-    }
-
-    private func hasScheduledDay(from lowerBound: Date, through endDate: Date) -> Bool {
-        let calendar = Calendar.current
-        var cursor = calendar.startOfDay(for: lowerBound)
-        let normalizedEndDate = calendar.startOfDay(for: endDate)
-        let cappedEndDate = min(
-            normalizedEndDate,
-            calendar.date(byAdding: .day, value: 31, to: cursor).map { calendar.startOfDay(for: $0) } ?? normalizedEndDate
-        )
-
-        while cursor <= cappedEndDate {
-            if HistoryScheduleApplicability.isScheduled(
-                on: cursor,
-                startDate: draft.startDate,
-                endDate: normalizedEndDate,
-                from: validationScheduleVersions,
-                calendar: calendar
-            ) {
-                return true
-            }
-
-            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else {
-                break
-            }
-            cursor = calendar.startOfDay(for: next)
-        }
-
-        return false
     }
 
     private var currentMissingPastDays: [Date] {
@@ -502,9 +476,15 @@ struct EditPillView: View {
                 }
             }
 
-            if let message = scheduleInfoMessage {
+            if let message = validationFloatingWarningMessage {
+                AppFloatingWarningBanner(message: message) {
+                    isValidationWarningDismissed = true
+                }
+            }
+
+            if let message = scheduleNoticeMessage {
                 AppFloatingInfoBanner(message: message) {
-                    dismissScheduleInfo()
+                    dismissScheduleNotice()
                 }
             }
         }
@@ -522,6 +502,24 @@ struct EditPillView: View {
         return endDateValidationMessage
     }
 
+    private var validationFloatingWarningMessage: String? {
+        guard !isValidationWarningDismissed else { return nil }
+        if let validationMessage {
+            return validationMessage
+        }
+        return visibleNonScheduleInvalidMessage
+    }
+
+    private var visibleNonScheduleInvalidMessage: String? {
+        if draft.name.isEmpty == false, draft.trimmedName.isEmpty {
+            return "Enter a pill name."
+        }
+        if draft.dosage.isEmpty == false, draft.trimmedDosage.isEmpty {
+            return "Enter a dosage."
+        }
+        return nil
+    }
+
     private var shouldShowDescriptionInset: Bool {
         AppDescriptionFieldSupport.shouldShowInset(
             focusedField: focusedField,
@@ -535,7 +533,7 @@ struct EditPillView: View {
     }
 
     private var archiveConfirmationMessage: String {
-        "This pill will move to Archived."
+        "This pill will move to Archive."
     }
 
     private func save() {
@@ -548,6 +546,7 @@ struct EditPillView: View {
             if !isEndDateValid {
                 isEndDateWarningDismissed = false
             }
+            isValidationWarningDismissed = false
             validationMessage = nonScheduleInvalidMessage
             return
         }
@@ -581,6 +580,7 @@ struct EditPillView: View {
                         displayedMonth = month(containing: firstDay)
                     }
                 } else {
+                    isValidationWarningDismissed = false
                     validationMessage = pillAppState.actionErrorMessage ?? UserFacingErrorMessage.text(for: error)
                 }
                 isSaving = false
@@ -615,13 +615,14 @@ struct EditPillView: View {
         draft.endDate = nil
 
         if showInfo {
-            presentScheduleInfo(AppCopy.endDateRemovedForNeverRepeat)
+            presentScheduleNotice(AppCopy.endDateRemovedForNeverRepeat)
         }
     }
 
     private func deletePill() {
         isSaving = true
         validationMessage = nil
+        isValidationWarningDismissed = false
         historyValidationMessage = nil
 
         Task {
@@ -641,6 +642,7 @@ struct EditPillView: View {
     private func setPillArchived() {
         isSaving = true
         validationMessage = nil
+        isValidationWarningDismissed = false
         historyValidationMessage = nil
 
         Task {
@@ -666,7 +668,7 @@ struct EditPillView: View {
             normalized.endDate = nil
         }
         if let endDate = normalized.endDate {
-            normalized.endDate = max(Calendar.current.startOfDay(for: endDate), selectableEndDateRange.lowerBound)
+            normalized.endDate = Calendar.current.startOfDay(for: endDate)
         }
         return normalized
     }
@@ -702,29 +704,29 @@ struct EditPillView: View {
         draft.scheduleEffectiveFrom = resolution.resolvedDate
     }
 
-    private func presentScheduleInfo(_ message: String) {
-        scheduleInfoDismissTask?.cancel()
+    private func presentScheduleNotice(_ message: String) {
+        scheduleNoticeDismissTask?.cancel()
         withAnimation(.easeInOut(duration: 0.18)) {
-            scheduleInfoMessage = message
+            scheduleNoticeMessage = message
         }
 
-        scheduleInfoDismissTask = Task {
+        scheduleNoticeDismissTask = Task {
             try? await Task.sleep(for: .seconds(4))
             guard !Task.isCancelled else { return }
 
             await MainActor.run {
                 withAnimation(.easeInOut(duration: 0.18)) {
-                    scheduleInfoMessage = nil
+                    scheduleNoticeMessage = nil
                 }
             }
         }
     }
 
-    private func dismissScheduleInfo() {
-        scheduleInfoDismissTask?.cancel()
-        scheduleInfoDismissTask = nil
+    private func dismissScheduleNotice() {
+        scheduleNoticeDismissTask?.cancel()
+        scheduleNoticeDismissTask = nil
         withAnimation(.easeInOut(duration: 0.18)) {
-            scheduleInfoMessage = nil
+            scheduleNoticeMessage = nil
         }
     }
 
@@ -761,6 +763,14 @@ struct EditPillView: View {
             return "Enter a dosage."
         }
         return nil
+    }
+
+    private func handleNonScheduleValidationInputChanged() {
+        isValidationWarningDismissed = false
+        if nonScheduleInvalidMessage == nil,
+           validationMessage == "Enter a pill name." || validationMessage == "Enter a dosage." {
+            validationMessage = nil
+        }
     }
 
     private func dismissKeyboardForNonTextControl() {

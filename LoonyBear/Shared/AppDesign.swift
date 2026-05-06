@@ -247,7 +247,7 @@ private struct AppNotificationSettingsAlertModifier: ViewModifier {
 enum AppCopy {
     static let chooseAtLeastOneDay = "Select at least one day."
     static let notificationsRequired = "Turn on notifications in Settings to use reminders."
-    static let endDateRemovedForNeverRepeat = "End date removed. Repeat is set to Never."
+    static let endDateRemovedForNeverRepeat = "End date removed. Repeat is Never."
     static let noScheduledDayBeforeEndDate = "End date must be on or after the first scheduled day."
     static let backupFolderHint = "Backups stay in the selected Files folder even if the app is deleted. After reinstalling, choose the same folder again before restoring."
     static let pillHistoryFollowsSchedule = "History follows schedule from start date."
@@ -261,11 +261,11 @@ enum AppCopy {
     }
 
     static func overdueScheduledDayDetailsMessage(actionLabel _: String) -> String {
-        "Finish updating overdue days."
+        "Finish updating overdue days on the Edit screen."
     }
 
     static func missingScheduledDaysDetailsMessage(actionLabel _: String) -> String {
-        "Finish updating past days."
+        "Finish updating past days on the Edit screen."
     }
 }
 
@@ -1921,36 +1921,6 @@ private final class CenteredCaretTextField: UITextField {
     }
 }
 
-struct AppValidationBanner: View {
-    let message: String
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "exclamationmark.circle.fill")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.red)
-
-            Text(message)
-                .font(.footnote)
-                .foregroundStyle(.primary)
-                .lineSpacing(2)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.red.opacity(0.08))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.red.opacity(0.12), lineWidth: 1)
-        )
-        .transition(.move(edge: .top).combined(with: .opacity))
-    }
-}
-
 struct AppFloatingWarningBanner: View {
     let message: String
     let onDismiss: () -> Void
@@ -2162,17 +2132,6 @@ private enum WeekdayDisplay {
         ("Saturday", .saturday),
         ("Sunday", .sunday),
     ]
-}
-
-struct AppInlineErrorText: View {
-    let text: String
-
-    var body: some View {
-        Text(text)
-            .font(.footnote)
-            .foregroundStyle(.red)
-            .lineSpacing(1)
-    }
 }
 
 struct AppHelperText: View {

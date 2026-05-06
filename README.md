@@ -39,7 +39,7 @@ The current app supports:
 - appearance mode and adaptive app tint settings, included in new backups
 - Blue/Indigo/Green/Amber app color palette with Blue as the default
 - pushed Repeat editor with Days and Interval selection
-- End Date and separate Archive pages for completed or manually archived items
+- End Repeat / End Date and separate Archive pages for completed or manually archived items
 - scheduled-day dots in Habit and Pill history calendars
 - native compact date/time pickers with shared Schedule presentation safety for simultaneous picker/popover/navigation taps, including a window-level touch-down guard that avoids stealing scroll gestures
 - portrait-only orientation on iPhone

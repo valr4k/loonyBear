@@ -128,11 +128,14 @@ Important fields:
 ## Stored Model Rules
 
 - `startDate` is stored as a normalized start-of-day date.
-- `endDate` is optional and stored as a normalized start-of-day date when present.
-- `isArchived` marks items that have moved to the separate Archive pages and should not produce active today actions, overdue state, reminders, or history review.
+- `endDate` is optional and stored as a normalized start-of-day date when present. The UI labels the option row as `End Repeat`; the stored fact is still the optional `endDate`.
+- `isArchived` marks items that have moved to the separate Archive pages and should not produce active today actions, overdue state, reminders, badge count, or history review.
+- Archiving does not delete or rewrite reminder settings, repeat settings, end date, or history rows. Those stored values remain historical facts for archived Details and backups.
 - Reminder times are stored as hour and minute integer components.
 - Habit and Pill history mode are stored in `historyModeRaw`.
 - Schedule changes are append-only through new version rows.
+- Create inserts the initial schedule version with `effectiveFrom = startDate`.
+- Edit inserts a replacement schedule version only when Repeat changed. The hidden replacement `effectiveFrom` is based on `max(today, startDate)` and is bounded by the technical schedule-change window; current UI normally saves the lower bound, and out-of-range internal values fall back to the lower bound. It is not user-editable and is not moved to the next matching scheduled day.
 - Schedule versions store `scheduleKindRaw`, `weekdayMask`, and `intervalDays` so both weekday rules and `Every N days` interval rules can round-trip through persistence and backup.
 - Daily state is stored explicitly through completion / intake rows.
 - Skipped days are stored explicitly, not inferred.

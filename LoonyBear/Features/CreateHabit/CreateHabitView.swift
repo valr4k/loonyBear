@@ -6,6 +6,7 @@ struct CreateHabitView: View {
 
     @State private var draft = CreateHabitDraft()
     @State private var validationMessage: String?
+    @State private var isValidationWarningDismissed = false
     @State private var createLimitWarningMessage: String?
     @State private var isCreateLimitWarningDismissed = false
     @State private var isScheduleWarningDismissed = false
@@ -20,9 +21,6 @@ struct CreateHabitView: View {
             VStack(alignment: .leading, spacing: 20) {
                 headerSection
                 scheduleSection
-                if let validationMessage {
-                    AppValidationBanner(message: validationMessage)
-                }
             }
             .contentShape(Rectangle())
             .onTapGesture {
@@ -70,6 +68,12 @@ struct CreateHabitView: View {
         .onChange(of: draft.endDate) { _, _ in
             handleEndDateValidationInputsChanged()
         }
+        .onChange(of: draft.name) { _, _ in
+            isValidationWarningDismissed = false
+            if draft.trimmedName.isEmpty == false, validationMessage == "Enter a habit name." {
+                validationMessage = nil
+            }
+        }
         .onChange(of: draft.reminderEnabled) { _, isEnabled in
             guard isEnabled else { return }
 
@@ -111,8 +115,8 @@ struct CreateHabitView: View {
     }
 
     private var nameSection: some View {
-        AppHabitNameCard(text: $draft.name, showsValidation: shouldShowNameValidation) {
-            AppInlineErrorText(text: "Enter a habit name.")
+        AppHabitNameCard(text: $draft.name, showsValidation: false) {
+            EmptyView()
         }
     }
 
@@ -155,14 +159,13 @@ struct CreateHabitView: View {
     }
 
     private var isEndDateValid: Bool {
-        guard let endDate = draft.endDate else {
-            return true
-        }
-        let normalizedEndDate = Calendar.current.startOfDay(for: endDate)
-        guard normalizedEndDate >= selectableEndDateRange.lowerBound else {
-            return false
-        }
-        return hasScheduledDay(from: selectableEndDateRange.lowerBound, through: normalizedEndDate)
+        EndDateValidationSupport.isValid(
+            endDate: draft.endDate,
+            startDate: draft.startDate,
+            lowerBound: selectableEndDateRange.lowerBound,
+            schedules: validationScheduleVersions,
+            calendar: Calendar.current
+        )
     }
 
     private var endDateValidationMessage: String? {
@@ -178,35 +181,6 @@ struct CreateHabitView: View {
                 version: 1
             ),
         ]
-    }
-
-    private func hasScheduledDay(from lowerBound: Date, through endDate: Date) -> Bool {
-        let calendar = Calendar.current
-        var cursor = calendar.startOfDay(for: lowerBound)
-        let normalizedEndDate = calendar.startOfDay(for: endDate)
-        let cappedEndDate = min(
-            normalizedEndDate,
-            calendar.date(byAdding: .day, value: 31, to: cursor).map { calendar.startOfDay(for: $0) } ?? normalizedEndDate
-        )
-
-        while cursor <= cappedEndDate {
-            if HistoryScheduleApplicability.isScheduled(
-                on: cursor,
-                startDate: draft.startDate,
-                endDate: normalizedEndDate,
-                from: validationScheduleVersions,
-                calendar: calendar
-            ) {
-                return true
-            }
-
-            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else {
-                break
-            }
-            cursor = calendar.startOfDay(for: next)
-        }
-
-        return false
     }
 
     private var startDateBinding: Binding<Date> {
@@ -238,6 +212,12 @@ struct CreateHabitView: View {
                     }
                 }
 
+                if let message = validationFloatingWarningMessage {
+                    AppFloatingWarningBanner(message: message) {
+                        isValidationWarningDismissed = true
+                    }
+                }
+
                 if let message = createLimitWarningMessage, !isCreateLimitWarningDismissed {
                     AppFloatingWarningBanner(message: message) {
                         isCreateLimitWarningDismissed = true
@@ -253,6 +233,7 @@ struct CreateHabitView: View {
     private var shouldShowFloatingBottomBanners: Bool {
         (scheduleWarningMessage != nil && !isScheduleWarningDismissed)
             || endDateFloatingWarningMessage != nil
+            || validationFloatingWarningMessage != nil
             || (createLimitWarningMessage != nil && !isCreateLimitWarningDismissed)
     }
 
@@ -265,12 +246,24 @@ struct CreateHabitView: View {
         return endDateValidationMessage
     }
 
+    private var validationFloatingWarningMessage: String? {
+        guard !isValidationWarningDismissed else { return nil }
+        if let validationMessage {
+            return validationMessage
+        }
+        return shouldShowNameValidation ? "Enter a habit name." : nil
+    }
+
     private func saveHabit() {
         guard isFormValid else {
             createLimitWarningMessage = nil
             if !draft.scheduleRule.isValidSelection {
                 isScheduleWarningDismissed = false
             }
+            if !isEndDateValid {
+                isEndDateWarningDismissed = false
+            }
+            isValidationWarningDismissed = false
             validationMessage = draft.trimmedName.isEmpty ? "Enter a habit name." : nil
             return
         }
@@ -293,6 +286,7 @@ struct CreateHabitView: View {
                 if isCreateLimitError(error, message: message) {
                     showCreateLimitWarning(message)
                 } else {
+                    isValidationWarningDismissed = false
                     validationMessage = message
                 }
                 isSaving = false
@@ -328,9 +322,7 @@ struct CreateHabitView: View {
         var normalized = draft
         normalized.useScheduleForHistory = true
         if let endDate = normalized.endDate {
-            let today = Calendar.current.startOfDay(for: Date())
-            let lowerBound = max(today, Calendar.current.startOfDay(for: normalized.startDate))
-            normalized.endDate = max(Calendar.current.startOfDay(for: endDate), lowerBound)
+            normalized.endDate = Calendar.current.startOfDay(for: endDate)
         }
         return normalized
     }
@@ -339,6 +331,7 @@ struct CreateHabitView: View {
         guard !hasInitialized else { return }
         validationMessage = nil
         createLimitWarningMessage = nil
+        isValidationWarningDismissed = false
         isCreateLimitWarningDismissed = false
         isScheduleWarningDismissed = false
         appState.clearCreateHabitError()

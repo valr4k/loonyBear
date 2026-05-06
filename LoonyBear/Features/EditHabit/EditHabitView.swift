@@ -16,6 +16,7 @@ struct EditHabitView: View {
     @State private var draft: EditHabitDraft
     @State private var pendingScheduleRule: ScheduleRule?
     @State private var validationMessage: String?
+    @State private var isValidationWarningDismissed = false
     @State private var historyValidationMessage: String?
     @State private var displayedMonth: Date
     @State private var isSaving = false
@@ -87,10 +88,6 @@ struct EditHabitView: View {
             }
 
             actionButtons
-
-            if let validationMessage {
-                AppValidationBanner(message: validationMessage)
-            }
         }
         .overlay(alignment: .bottom) {
             floatingBottomBanners
@@ -178,6 +175,12 @@ struct EditHabitView: View {
         .onChange(of: draft.endDate) { _, _ in
             handleEndDateValidationInputsChanged()
         }
+        .onChange(of: draft.name) { _, _ in
+            isValidationWarningDismissed = false
+            if draft.trimmedName.isEmpty == false, validationMessage == "Enter a habit name." {
+                validationMessage = nil
+            }
+        }
         .onChange(of: hasMissingPastDays) { _, hasMissingPastDays in
             if !hasMissingPastDays {
                 isHistoryWarningDismissed = false
@@ -192,8 +195,8 @@ struct EditHabitView: View {
     }
 
     private var nameSection: some View {
-        AppHabitNameCard(text: $draft.name, showsValidation: shouldShowNameValidation) {
-            validationText("Enter a habit name.")
+        AppHabitNameCard(text: $draft.name, showsValidation: false) {
+            EmptyView()
         }
     }
 
@@ -336,14 +339,13 @@ struct EditHabitView: View {
     }
 
     private var isEndDateValid: Bool {
-        guard let endDate = draft.endDate else {
-            return true
-        }
-        let normalizedEndDate = Calendar.current.startOfDay(for: endDate)
-        guard normalizedEndDate >= selectableEndDateRange.lowerBound else {
-            return false
-        }
-        return hasScheduledDay(from: selectableEndDateRange.lowerBound, through: normalizedEndDate)
+        EndDateValidationSupport.isValid(
+            endDate: draft.endDate,
+            startDate: draft.startDate,
+            lowerBound: selectableEndDateRange.lowerBound,
+            schedules: validationScheduleVersions,
+            calendar: Calendar.current
+        )
     }
 
     private var endDateValidationMessage: String? {
@@ -368,35 +370,6 @@ struct EditHabitView: View {
                 version: $0.version
             )
         }
-    }
-
-    private func hasScheduledDay(from lowerBound: Date, through endDate: Date) -> Bool {
-        let calendar = Calendar.current
-        var cursor = calendar.startOfDay(for: lowerBound)
-        let normalizedEndDate = calendar.startOfDay(for: endDate)
-        let cappedEndDate = min(
-            normalizedEndDate,
-            calendar.date(byAdding: .day, value: 31, to: cursor).map { calendar.startOfDay(for: $0) } ?? normalizedEndDate
-        )
-
-        while cursor <= cappedEndDate {
-            if HistoryScheduleApplicability.isScheduled(
-                on: cursor,
-                startDate: draft.startDate,
-                endDate: normalizedEndDate,
-                from: validationScheduleVersions,
-                calendar: calendar
-            ) {
-                return true
-            }
-
-            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else {
-                break
-            }
-            cursor = calendar.startOfDay(for: next)
-        }
-
-        return false
     }
 
     private var currentMissingPastDays: [Date] {
@@ -443,6 +416,12 @@ struct EditHabitView: View {
                     isEndDateWarningDismissed = true
                 }
             }
+
+            if let message = validationFloatingWarningMessage {
+                AppFloatingWarningBanner(message: message) {
+                    isValidationWarningDismissed = true
+                }
+            }
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 14)
@@ -458,6 +437,14 @@ struct EditHabitView: View {
         return endDateValidationMessage
     }
 
+    private var validationFloatingWarningMessage: String? {
+        guard !isValidationWarningDismissed else { return nil }
+        if let validationMessage {
+            return validationMessage
+        }
+        return shouldShowNameValidation ? "Enter a habit name." : nil
+    }
+
     private var shouldShowNameValidation: Bool {
         draft.name.isEmpty == false && draft.trimmedName.isEmpty
     }
@@ -467,7 +454,7 @@ struct EditHabitView: View {
     }
 
     private var archiveConfirmationMessage: String {
-        "This habit will move to Archived."
+        "This habit will move to Archive."
     }
 
     private func save() {
@@ -480,6 +467,7 @@ struct EditHabitView: View {
             if !isEndDateValid {
                 isEndDateWarningDismissed = false
             }
+            isValidationWarningDismissed = false
             validationMessage = draft.trimmedName.isEmpty ? "Enter a habit name." : nil
             return
         }
@@ -513,6 +501,7 @@ struct EditHabitView: View {
                         displayedMonth = month(containing: firstDay)
                     }
                 } else {
+                    isValidationWarningDismissed = false
                     validationMessage = appState.actionErrorMessage ?? UserFacingErrorMessage.text(for: error)
                 }
                 isSaving = false
@@ -545,6 +534,7 @@ struct EditHabitView: View {
     private func deleteHabit() {
         isSaving = true
         validationMessage = nil
+        isValidationWarningDismissed = false
         historyValidationMessage = nil
 
         Task {
@@ -564,6 +554,7 @@ struct EditHabitView: View {
     private func setHabitArchived() {
         isSaving = true
         validationMessage = nil
+        isValidationWarningDismissed = false
         historyValidationMessage = nil
 
         Task {
@@ -586,7 +577,7 @@ struct EditHabitView: View {
         normalized.skippedDays.subtract(normalized.completedDays)
         normalized.scheduleEffectiveFrom = shouldUseScheduleEffectiveFrom ? currentEffectiveFromResolution?.resolvedDate : nil
         if let endDate = normalized.endDate {
-            normalized.endDate = max(Calendar.current.startOfDay(for: endDate), selectableEndDateRange.lowerBound)
+            normalized.endDate = Calendar.current.startOfDay(for: endDate)
         }
         return normalized
     }
@@ -651,10 +642,6 @@ struct EditHabitView: View {
         AppDescriptionFieldSupport.dismissKeyboard()
     }
 
-    @ViewBuilder
-    private func validationText(_ text: String) -> some View {
-        AppInlineErrorText(text: text)
-    }
 }
 
 private struct HabitHistoryCalendarView: View {

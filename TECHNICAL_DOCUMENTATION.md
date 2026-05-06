@@ -212,6 +212,8 @@ Validation rules:
 - name must not be empty after trimming
 - at least one schedule day must be selected
 - start date may be selected from the last 5 years through the end of the second next calendar month
+- optional End Date must pass `EndDateValidationSupport` against the initial schedule version whose `effectiveFrom` is the selected `startDate`
+- form validation and unexpected action failures are surfaced through the shared bottom floating warning banner; the old inline validation banner component is not used
 
 Repository-level create rule:
 - maximum number of habits is `20`
@@ -277,8 +279,12 @@ Delete is not available from card swipe actions.
 - updates reminder flags and time
 - updates optional End Date (`endDate`)
 - inserts a new `HabitScheduleVersion` if the schedule rule changed
-- active items resolve the new schedule version `effectiveFrom` from today when the schedule rule changed: today is used only if it matches the new Repeat and has no explicit state; otherwise the first scheduled day after today is used
-- future items resolve the new schedule version `effectiveFrom` from `startDate` when the schedule rule changed
+- changed Repeat uses a hidden schedule version `effectiveFrom`; Edit Habit does not show an Apply From field
+- hidden `effectiveFrom` uses `minimumDate = max(today, startDate)`
+- hidden `effectiveFrom` uses `maximumDate = max(minimumDate, endOfSecondNextMonth(today))`
+- the selected/base date is `draft.scheduleEffectiveFrom` when present, otherwise `minimumDate`; current UI does not expose a picker, so this is normally `minimumDate`
+- `ScheduleEffectiveFromResolver` currently normalizes the selected/base date, raises dates earlier than `minimumDate` to `minimumDate`, rejects dates later than `maximumDate`, and lets repository update fall back to `minimumDate` if resolution fails; it does not inspect the new Repeat rule, does not move to the next matching scheduled day, and does not inspect explicit completed/skipped states
+- repository update deletes schedule versions whose `effectiveFrom` is on or after the resolved hidden `effectiveFrom`, then inserts the new schedule version
 - archived items are final inactive storage and are not restored
 - preserves the persisted `historyModeRaw` already stored on the Habit
 - builds editable day set from `EditableHistoryWindow.dates(startDate:)`
@@ -288,9 +294,9 @@ Delete is not available from card swipe actions.
 - throws `EditableHistoryValidationError.missingHabitPastDays` if a past editable scheduled day is empty
 - Edit Habit includes a past active overdue day in save validation and disables Save until it is resolved
 - Edit Habit surfaces missing past-day review through the dismissible `AppFloatingWarningBanner`; if only the active overdue day is missing, the banner uses overdue-specific copy
-- Habit Details computes missing past days from `requiredPastScheduledDays`; it shows `Finish updating overdue days.` when the only missing day is the active overdue day, otherwise it shows `Finish updating past days.`
+- Habit Details computes missing past days from `requiredPastScheduledDays`; it shows `Finish updating overdue days on the Edit screen.` when the only missing day is the active overdue day, otherwise it shows `Finish updating past days on the Edit screen.`
 - Edit Habit delete confirmation uses a system alert with `Cancel` and destructive `Delete` actions
-- Edit Habit exposes Archive below Delete only for active Habits; Archive confirmation is `Archive Habit?` / `This habit will move to Archived.`
+- Edit Habit exposes Archive below Delete only for active Habits; Archive confirmation is `Archive Habit?` / `This habit will move to Archive.`
 - archived Habit Details is read-only, hides Edit, suppresses missing-history review, and exposes Delete at the bottom with confirmation
 - missing past-day warning copy intentionally omits the date list; the validation error still carries the missing dates for logic/tests
 - rewrites rows day by day using `manual edit` or `skipped`
@@ -337,6 +343,8 @@ Create form validation rules:
 - dosage must not be empty after trimming
 - a valid Repeat rule must be selected; `Never repeat` is valid for Pills
 - start date may be selected from the last 5 years through the end of the second next calendar month
+- optional End Date must pass `EndDateValidationSupport` against the initial schedule version whose `effectiveFrom` is the selected `startDate`; Pill `Repeat = Never` disables and clears End Date
+- form validation and unexpected action failures are surfaced through the shared bottom floating warning banner; the old inline validation banner component is not used
 
 Repository-level create rule:
 - maximum number of pills is `20`
@@ -393,8 +401,12 @@ Delete is not available from card swipe actions.
 - updates reminder flags and time
 - updates optional End Date
 - inserts a new `PillScheduleVersion` if the schedule rule changed
-- active items resolve the new schedule version `effectiveFrom` from today when the schedule rule changed: today is used only if it matches the new Repeat and has no explicit state; otherwise the first scheduled day after today is used
-- future items resolve the new schedule version `effectiveFrom` from `startDate` when the schedule rule changed
+- changed Repeat uses a hidden schedule version `effectiveFrom`; Edit Pill does not show an Apply From field
+- hidden `effectiveFrom` uses `minimumDate = max(today, startDate)`
+- hidden `effectiveFrom` uses `maximumDate = max(minimumDate, endOfSecondNextMonth(today))`
+- the selected/base date is `draft.scheduleEffectiveFrom` when present, otherwise `minimumDate`; current UI does not expose a picker, so this is normally `minimumDate`
+- `ScheduleEffectiveFromResolver` currently normalizes the selected/base date, raises dates earlier than `minimumDate` to `minimumDate`, rejects dates later than `maximumDate`, and lets repository update fall back to `minimumDate` if resolution fails; it does not inspect the new Repeat rule, does not move to the next matching scheduled day, and does not inspect explicit taken/skipped states
+- repository update deletes schedule versions whose `effectiveFrom` is on or after the resolved hidden `effectiveFrom`, then inserts the new schedule version
 - archived Pills are not edited or restored from the Archive page; their stored schedule fields are kept as historical data
 - preserves the persisted `historyModeRaw` already stored on the Pill
 - builds editable day set from `EditableHistoryWindow.dates(startDate:)`
@@ -404,9 +416,9 @@ Delete is not available from card swipe actions.
 - throws `EditableHistoryValidationError.missingPillPastDays` if a past editable scheduled day is empty
 - Edit Pill includes a past active overdue day in save validation and disables Save until it is resolved
 - Edit Pill surfaces missing past-day review through the dismissible `AppFloatingWarningBanner`; if only the active overdue day is missing, the banner uses overdue-specific copy
-- Pill Details computes missing past days from `requiredPastScheduledDays`; it shows `Finish updating overdue days.` when the only missing day is the active overdue day, otherwise it shows `Finish updating past days.`
+- Pill Details computes missing past days from `requiredPastScheduledDays`; it shows `Finish updating overdue days on the Edit screen.` when the only missing day is the active overdue day, otherwise it shows `Finish updating past days on the Edit screen.`
 - Edit Pill delete confirmation uses a system alert with `Cancel` and destructive `Delete` actions
-- Edit Pill exposes Archive below Delete only for active Pills; Archive confirmation is `Archive Pill?` / `This pill will move to Archived.`
+- Edit Pill exposes Archive below Delete only for active Pills; Archive confirmation is `Archive Pill?` / `This pill will move to Archive.`
 - archived Pill Details is read-only, hides Edit, suppresses missing-history review, and exposes Delete at the bottom with confirmation
 - missing past-day warning copy intentionally omits the date list; the validation error still carries the missing dates for logic/tests
 - rewrites rows day by day using `manual edit` or `skipped`
@@ -459,19 +471,40 @@ For streak, overdue, notification, history-review, and calendar indicator calcul
 
 Weekly schedules use the stored weekday mask. `Every N days` schedules use the active schedule version `effectiveFrom` as the interval anchor. `Never repeat` is stored as a one-time schedule and is available only for Pills. Legacy `daily`, `weekdays`, and `weekends` schedule kind values are read as weekly masks; new writes store those choices as `weekly`.
 
-When Edit saves a changed Repeat, `effectiveFrom` is computed rather than edited in the UI. Active items use today if today is valid under the new Repeat and has no explicit completed/taken/skipped state; otherwise they use the first scheduled day after today. Future items resolve from `startDate`. Archived items are not edited or restored, so this resolution path only applies before an item is archived.
+When Edit saves a changed Repeat, `effectiveFrom` is computed rather than edited in the UI. The implemented resolver is intentionally simple and schedule-agnostic:
+- `minimumDate = max(today, startDate)`
+- `maximumDate = max(minimumDate, endOfSecondNextMonth(today))`
+- selected/base date is `draft.scheduleEffectiveFrom ?? minimumDate`
+- selected/base date is normalized to start-of-day
+- resolved date is `max(selected/base date, minimumDate)` as long as it is not later than `maximumDate`
+- the resolver accepts `scheduleRule` and `explicitDays` parameters for call-site consistency, but the current implementation ignores them
+
+Important consequences:
+- the app does not move hidden `effectiveFrom` to the next matching weekday
+- the app does not move hidden `effectiveFrom` past a day that already has completed/taken/skipped state
+- `Every N days` uses the hidden schedule version `effectiveFrom` as its interval anchor
+- Create schedules use `startDate` as the initial schedule version `effectiveFrom`
+- Archived items are not edited or restored, so this resolution path only applies before an item is archived
 
 ### 7.4 End Date and Automatic Archive
 Habit and Pill root rows can store an optional `endDate`.
 
 Rules:
-- Habit and Pill UI label this field `End Date`; an empty value displays as `Never`
+- Habit and Pill UI split this field into an `End Repeat` options row and an `End Date` date row
+- `End Repeat` displays `Never` when `endDate == nil` and `On Date` when `endDate != nil`
+- the `End Date` date row is visible only when `On Date` is selected
 - if an end date exists, the final active scheduled day is the last scheduled day on or before that date
+- shared End Date validation runs on Create and Edit for both Habits and Pills
+- the End Date validation lower bound is `max(today, startDate)` on Create; Edit can further raise it to the hidden schedule-change `effectiveFrom` when Repeat changed
+- a selected End Date is valid only if at least one scheduled day exists from the active lower bound through the selected End Date
+- validation scans forward from the lower bound for up to `EndDateValidationSupport.searchWindowDays` (`31`) days or until the selected End Date, whichever comes first
+- invalid End Date disables Save and shows the floating warning `End date must be on or after the first scheduled day.`
+- `normalizedDraft()` must not silently raise End Date to the lower bound during Save; it only stores the selected date at start-of-day and clears End Date for one-time Pill repeat
 - after the final active scheduled day is completed/taken or skipped, the item is archived automatically without confirmation
 - if the final active scheduled day remains empty, the item remains active and can become overdue
 - archived items are excluded from notification scheduling, overdue/badge count, today actions, and missing-history review
 - manual Archive is available from Edit for active items with a system confirmation alert
-- Archive preserves the stored reminder, repeat, end date, and history rows as historical data
+- manual and automatic Archive preserve the stored reminder, repeat, end date, and history rows as historical data; they toggle `isArchived`, update `updatedAt`, and clear stale overdue anchors
 - Restore is not available for archived items; a new cycle is created as a new item
 - archived items are shown from separate Archive pages opened by the dashboard Archive toolbar button; the toolbar button is visible only when archived items exist for that dashboard, and Archive pages list cards without dashboard grouping sections
 
@@ -896,7 +929,10 @@ Behavior:
 - the options popover contains `Never` and `On Date`
 - when `On Date` is selected, a date row appears below the options row with the same compact capsule display
 - the date row uses the native compact system date picker
-- the date row range lower bound is `max(today, startDate)` on Create and the supplied edit lower bound on Edit; `AppOptionalEndDatePickerRow` normalizes that lower bound to start-of-day and clamps the bound `endDate` upward when the lower bound changes, so native picker display, validation banners, and Save enabled state never read different dates
+- the date row range lower bound is `max(today, startDate)` on Create and the supplied edit lower bound on Edit; `AppOptionalEndDatePickerRow` normalizes that lower bound to start-of-day and keeps visible picker values inside the native picker range while editing
+- End Date validity is centralized in `EndDateValidationSupport`: `nil` is valid, one-time Pill repeat can opt out of End Date validation, selected dates before the lower bound are invalid, and selected dates at or after the lower bound must contain at least one scheduled day in the active schedule preview window
+- invalid End Date state disables Save and shows the dismissible floating warning `End date must be on or after the first scheduled day.`; closing the warning does not make disabled Save re-show it, but changing form inputs that produce a new invalid state can show it again
+- `normalizedDraft()` only normalizes selected End Date to start-of-day and clears End Date for one-time Pill repeat; it must not silently raise End Date to the picker lower bound during Save
 - the End Repeat trigger uses `appTouchDownAction` to call `AppSchedulePresentationGuard.blockPickersForEndDateOptionsTouch()` as soon as the user touches the options value
 - the End Repeat button action also calls `blockPickersForEndDateOptionsTouch()` immediately before presenting the popover, so the protection still runs if the touch-down observer is missed
 - the touch-down helper is window-level and non-cancelling, so it must not steal vertical scroll gestures near the End Repeat value
@@ -977,10 +1013,29 @@ Important invariants:
 - do not allow compact Date/Time picker hit-testing while End Repeat options are currently presented
 - keep `Use schedule for history?` out of UI; it remains internally always enabled for new items
 
+Manual Schedule presentation QA:
+- on a real device, two-finger tap Time + End Repeat; the Time picker must not get stuck in a highlighted-but-closed state, and End Repeat must not present over it
+- on a real device, two-finger tap Start Date + End Repeat; the native date picker and End Repeat popover must not present together
+- on a real device, two-finger tap compact Date + compact Time controls where both are visible; only one native picker path should win
+- on a real device, tap Repeat and End Repeat almost simultaneously; End Repeat must not remain visible over the pushed Repeat screen
+- vertical scrolling that starts directly on the Time capsule or near the End Repeat value must continue to scroll the sheet
+- if any future fix increases the 200 ms guards, re-run the scroll tests because longer guards can make the UI feel temporarily unresponsive
+
 Known tradeoff:
 - touching the compact Time picker or Repeat row can block End Repeat for up to 200 ms
 - touching End Repeat can block compact picker hit-testing for up to 200 ms before the popover-visible state takes over
 - this is intentional because it prevents observed real-device same-frame presentation races while keeping native controls and current UI unchanged
+
+### 13.9 Build Number Display
+Defined by the main target build phase and Settings/About UI.
+
+Behavior:
+- the app target increments `CURRENT_PROJECT_VERSION` by 1 during normal Xcode builds
+- Xcode previews skip the increment so preview refreshes do not churn build numbers
+- the generated bundle value is shown in Settings About as a six-digit value, for example `001025`
+- normal local builds intentionally mutate `LoonyBear.xcodeproj/project.pbxproj` because `CURRENT_PROJECT_VERSION` lives in the project file
+- a dirty project file containing only the auto build-number bump is expected after a build; do not remove or rewrite the script unless the build-number strategy changes
+- the build script should not be changed when working on UI, validation, reminder, archive, or backup behavior
 
 ## 14. Startup Health Check
 

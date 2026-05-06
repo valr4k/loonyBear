@@ -14,6 +14,7 @@ struct PillDetailsView: View {
     @State private var isShowingDeleteConfirmation = false
     @State private var deleteErrorMessage: String?
     @State private var isCalendarWarningDismissed = false
+    @State private var isNotFoundWarningDismissed = false
     @State private var displayedMonth: Date = {
         var calendar = Calendar.autoupdatingCurrent
         calendar.firstWeekday = 2
@@ -124,10 +125,6 @@ struct PillDetailsView: View {
                 if details.isArchived {
                     deleteButton
                 }
-
-                if let deleteErrorMessage {
-                    AppValidationBanner(message: deleteErrorMessage)
-                }
             } else if isIntegrityError {
                 ContentUnavailableView(
                     "Pill data problem",
@@ -137,13 +134,12 @@ struct PillDetailsView: View {
             } else {
                 ContentUnavailableView(
                     "Pill not found",
-                    systemImage: "pills",
-                    description: Text("This pill is no longer available.")
+                    systemImage: "pills"
                 )
             }
         }
         .overlay(alignment: .bottom) {
-            floatingCalendarWarningBanner
+            floatingBottomBanners
         }
         .navigationTitle("Pill Details")
         .navigationBarTitleDisplayMode(.inline)
@@ -197,6 +193,7 @@ struct PillDetailsView: View {
         }
         .animation(.easeInOut(duration: 0.18), value: floatingCalendarWarningMessage)
         .animation(.easeInOut(duration: 0.18), value: isCalendarWarningDismissed)
+        .animation(.easeInOut(duration: 0.18), value: isNotFoundWarningDismissed)
         .animation(.easeInOut(duration: 0.18), value: deleteErrorMessage)
     }
 
@@ -234,22 +231,48 @@ struct PillDetailsView: View {
         } else {
             ContentUnavailableView(
                 "Pill not found",
-                systemImage: "pills",
-                description: Text("This pill is no longer available.")
+                systemImage: "pills"
             )
         }
     }
 
     @ViewBuilder
-    private var floatingCalendarWarningBanner: some View {
-        if let message = floatingCalendarWarningMessage, !isCalendarWarningDismissed {
-            AppFloatingWarningBanner(message: message) {
-                isCalendarWarningDismissed = true
+    private var floatingBottomBanners: some View {
+        if shouldShowFloatingBottomBanners {
+            VStack(spacing: 10) {
+                if let message = notFoundWarningMessage, !isNotFoundWarningDismissed {
+                    AppFloatingWarningBanner(message: message) {
+                        isNotFoundWarningDismissed = true
+                    }
+                }
+
+                if let message = floatingCalendarWarningMessage, !isCalendarWarningDismissed {
+                    AppFloatingWarningBanner(message: message) {
+                        isCalendarWarningDismissed = true
+                    }
+                }
+
+                if let deleteErrorMessage {
+                    AppFloatingWarningBanner(message: deleteErrorMessage) {
+                        self.deleteErrorMessage = nil
+                    }
+                }
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 14)
             .zIndex(1)
         }
+    }
+
+    private var shouldShowFloatingBottomBanners: Bool {
+        (notFoundWarningMessage != nil && !isNotFoundWarningDismissed)
+            || (floatingCalendarWarningMessage != nil && !isCalendarWarningDismissed)
+            || deleteErrorMessage != nil
+    }
+
+    private var notFoundWarningMessage: String? {
+        guard !isLoadingDetails, details == nil, !isIntegrityError else { return nil }
+        return "This pill is no longer available."
     }
 
     private var floatingCalendarWarningMessage: String? {

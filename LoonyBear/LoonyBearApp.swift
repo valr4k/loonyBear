@@ -63,6 +63,10 @@ struct LoonyBearApp: App {
         Self.configureTabBarAppearance(for: appTint)
     }
 
+    static func refreshTabBarAppearance(for tint: AppTint) {
+        configureTabBarAppearance(for: tint)
+    }
+
     private static func configureTabBarAppearance(for tint: AppTint) {
         let appearance = UITabBarAppearance()
         appearance.configureWithDefaultBackground()
@@ -123,6 +127,7 @@ struct LoonyBearApp: App {
             tabBar.scrollEdgeAppearance = appearance
             tabBar.tintColor = selectedColor
             tabBar.unselectedItemTintColor = normalColor
+            tabBar.tintAdjustmentMode = .normal
         }
 
         view.subviews.forEach {

@@ -54,11 +54,13 @@ This rule is mandatory for local test runs and documentation examples.
 - Do not change backup schema casually without updating restore handling, validation, and tests.
 - Backup payloads include app appearance settings; preserve legacy decode behavior for backups without those settings.
 - Keep shared schedule UI in `AppDesign.swift`; Create/Edit should use the shared pushed Repeat editor, and Details should use the shared read-only Repeat presentation rather than drifting into separate schedule layouts.
+- Keep Apply From out of the customer-facing Edit UI. If Repeat changes, the hidden schedule version `effectiveFrom` is resolved in shared persistence logic from `max(today, startDate)` and must remain documented with schedule versioning tests.
 - Keep Schedule picker/popover protection shared through `AppSchedulePresentationGuard` and `appExclusiveTouchScope()`. Create/Edit must not grow separate picker-blocking state, and native compact `DatePicker` controls should stay native unless the product explicitly chooses a different visual pattern.
 - Do not attach the Time-row touch-down guard to Start Date. Start Date relies on the exclusive-touch scope only; an extra gesture can prevent the native compact date picker from opening.
+- Do not replace `appTouchDownAction` with a SwiftUI gesture on picker capsules. The current helper is intentionally implemented as a non-cancelling window-level observer so Time/End Repeat race protection does not steal vertical scrolling.
 - App tint should be added through shared helpers (`appAccentTint`, `appAccentForeground`, `AppTint`) so fixed system colors remain intentional.
 - Keep notification payload contracts stable when changing action behavior.
-- The main app target uses an Xcode run script to increment `CURRENT_PROJECT_VERSION` by 1 for normal builds. Xcode previews skip the increment, and the About screen formats the build as a short six-digit value.
+- The main app target uses an Xcode run script to increment `CURRENT_PROJECT_VERSION` by 1 for normal builds. Xcode previews skip the increment, and the About screen formats the build as a short six-digit value. Normal local builds intentionally edit `LoonyBear.xcodeproj/project.pbxproj`; seeing only that build-number change after a build is expected and should not be treated as unrelated churn.
 
 ## Testing Priorities
 
@@ -68,6 +70,9 @@ High-priority tests include:
 - schedule versioning
 - streak edge cases
 - notification action routing
+- End Date validation through `EndDateValidationSupport`: empty End Date, dates before lower bound, first scheduled day, later scheduled windows, edited schedule previews, and one-time Pill repeat
+- schedule version effectiveFrom behavior: Create uses startDate; Edit Repeat changes use hidden `max(today, startDate)` and do not auto-resolve to the next matching weekday
+- real-device Schedule interaction QA: two-finger Time + End Repeat, Start Date + End Repeat, Date + Time, Repeat + End Repeat, and vertical scrolling starting on the Time capsule and End Repeat value
 - reminder aggregation and snooze behavior
 - backup rotation and restore fallback behavior
 

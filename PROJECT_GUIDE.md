@@ -63,7 +63,7 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
   - start date
   - reminder settings
   - Repeat through Days or Interval
-  - End Date
+  - End Repeat / End Date
 - Habit details show:
   - name
   - streak metrics
@@ -75,7 +75,7 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
   - name
   - reminder
   - Repeat through the pushed Repeat screen
-  - End Date
+  - End Repeat / End Date
   - recent editable history
   - archive
   - delete
@@ -90,7 +90,7 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
   - start date
   - reminder settings
   - Repeat through Days or Interval
-  - End Date
+  - End Repeat / End Date
 - Pill details show:
   - name
   - dosage
@@ -106,7 +106,7 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
   - description
   - reminder
   - Repeat through the pushed Repeat screen
-  - End Date
+  - End Repeat / End Date
   - recent editable history
   - archive
   - delete
@@ -122,7 +122,7 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
 - Pill `Remind me in 10 mins` survives global regular pill reschedules.
 - Repeat uses a pushed editor with Days and Interval blocks. Days supports weekday combinations. Interval is `Every N days`, limited to 2 through 5 days, and for Pills only also includes `Never`. Weekday summaries are canonicalized as Daily, Weekdays, Weekends, `Weekly on Mon` for one selected weekday, or abbreviated day lists such as `Mon, Wed, Fri` for other combinations.
 - Pill Repeat can be `Never`; this means one scheduled day on Start Date. Habits do not expose `Never`.
-- Pills and Habits both use `End Date`. Empty end dates display `Never`.
+- Pills and Habits both use `End Repeat`; `On Date` reveals an `End Date` picker row. Empty end dates display `Never`.
 - Items can be manually archived from Edit. Archived items are final inactive storage: they stay on separate Archive pages, preserve their historical data, do not restore, and open read-only Details with Delete available at the bottom.
 - My Pills and My Habits show the Archive toolbar button only when that tracker has at least one archived item.
 - Settings supports System/Light/Dark appearance and Blue/Indigo/Green/Amber app color selection; Blue is the default and first palette option.
@@ -133,7 +133,7 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
 - Habit and Pill Details/Edit calendars show a small tertiary system-gray dot under days that match the active schedule history.
 - Missing past-day review warnings use a dismissible floating red material banner on Edit and Details screens; they do not list dates and do not take space inside the calendar layout.
 - Create/Edit Repeat selection opens as a pushed screen inside the sheet. Details shows Repeat as read-only text and does not open a schedule picker.
-- Create/Edit Schedule blocks keep the native compact Start Date, Time, and End Date pickers. End Date uses `max(today, startDate)` as its lower bound; when Start Date raises that lower bound above the selected End Date, the stored End Date is immediately clamped to the visible picker value so validation and UI stay in sync. A shared presentation guard prevents simultaneous picker/popover/navigation presentation races without changing the visible UI.
+- Create/Edit Schedule blocks keep the native compact Start Date, Time, and End Date pickers. End Date uses `max(today, startDate)` as its lower bound and is validated by shared schedule-aware logic: a selected End Date is valid only when at least one scheduled day exists between the lower bound and the selected date. The native picker binding keeps visible picker values inside its allowed range while editing, but Save does not silently raise an invalid End Date inside `normalizedDraft()`. Invalid End Date warnings are dismissible and reappear when the invalid state changes through form input. If Repeat changes on Edit, the hidden schedule version `effectiveFrom` is based on `max(today, startDate)`, bounded by the schedule-change technical window, normally saved at the lower bound, and not shown as Apply From. It is not adjusted to the next matching scheduled day. A shared presentation guard prevents simultaneous picker/popover/navigation presentation races without changing the visible UI.
 - End Repeat uses the native options popover. While it is open, neighboring compact pickers do not accept hit-testing; Time and End Repeat use a window-level touch-down observer to briefly block the opposite presentation path without stealing scroll gestures; Repeat navigation dismisses/briefly blocks End Repeat so the popover cannot remain over the pushed Repeat screen.
 - Edit Habit and Edit Pill delete confirmations use system alerts with `Cancel` and destructive `Delete` actions.
 - Backup actions are full-width capsule buttons; `Last backup` follows the cloud status icon color and uses `03 May at 22:35` style dates; backup action confirmations use system alerts with short action labels.

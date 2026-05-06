@@ -8,12 +8,13 @@ struct CreatePillView: View {
     @FocusState private var focusedField: Field?
     @State private var draft = PillDraft()
     @State private var validationMessage: String?
+    @State private var isValidationWarningDismissed = false
     @State private var createLimitWarningMessage: String?
     @State private var isCreateLimitWarningDismissed = false
     @State private var isScheduleWarningDismissed = false
     @State private var isEndDateWarningDismissed = false
-    @State private var scheduleInfoMessage: String?
-    @State private var scheduleInfoDismissTask: Task<Void, Never>?
+    @State private var scheduleNoticeMessage: String?
+    @State private var scheduleNoticeDismissTask: Task<Void, Never>?
     @State private var pendingScheduleRule: ScheduleRule?
     @State private var isSaving = false
     @State private var isDismissingKeyboardForNonTextControl = false
@@ -30,10 +31,6 @@ struct CreatePillView: View {
                     detailsSection
                     scheduleSection
                     descriptionSection
-
-                    if let validationMessage {
-                        AppValidationBanner(message: validationMessage)
-                    }
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -99,6 +96,12 @@ struct CreatePillView: View {
             .onChange(of: draft.endDate) { _, _ in
                 handleEndDateValidationInputsChanged()
             }
+            .onChange(of: draft.name) { _, _ in
+                handleNonScheduleValidationInputChanged()
+            }
+            .onChange(of: draft.dosage) { _, _ in
+                handleNonScheduleValidationInputChanged()
+            }
             .appNotificationSettingsAlert(isPresented: $isShowingNotificationSettingsAlert)
             .onChange(of: focusedField) { _, field in
                 guard field == .description else { return }
@@ -122,12 +125,12 @@ struct CreatePillView: View {
             }
             .animation(.easeInOut(duration: 0.18), value: validationMessage)
             .animation(.easeInOut(duration: 0.18), value: createLimitWarningMessage)
-            .animation(.easeInOut(duration: 0.18), value: scheduleInfoMessage)
+            .animation(.easeInOut(duration: 0.18), value: scheduleNoticeMessage)
             .animation(.easeInOut(duration: 0.18), value: isCreateLimitWarningDismissed)
             .animation(.easeInOut(duration: 0.18), value: isScheduleWarningDismissed)
             .animation(.easeInOut(duration: 0.18), value: isEndDateWarningDismissed)
             .onDisappear {
-                scheduleInfoDismissTask?.cancel()
+                scheduleNoticeDismissTask?.cancel()
             }
         }
     }
@@ -189,14 +192,14 @@ struct CreatePillView: View {
     }
 
     private var isEndDateValid: Bool {
-        guard !draft.scheduleRule.isOneTime, let endDate = draft.endDate else {
-            return true
-        }
-        let normalizedEndDate = Calendar.current.startOfDay(for: endDate)
-        guard normalizedEndDate >= selectableEndDateRange.lowerBound else {
-            return false
-        }
-        return hasScheduledDay(from: selectableEndDateRange.lowerBound, through: normalizedEndDate)
+        EndDateValidationSupport.isValid(
+            endDate: draft.endDate,
+            startDate: draft.startDate,
+            lowerBound: selectableEndDateRange.lowerBound,
+            schedules: validationScheduleVersions,
+            ignoresEndDate: draft.scheduleRule.isOneTime,
+            calendar: Calendar.current
+        )
     }
 
     private var endDateValidationMessage: String? {
@@ -212,35 +215,6 @@ struct CreatePillView: View {
                 version: 1
             ),
         ]
-    }
-
-    private func hasScheduledDay(from lowerBound: Date, through endDate: Date) -> Bool {
-        let calendar = Calendar.current
-        var cursor = calendar.startOfDay(for: lowerBound)
-        let normalizedEndDate = calendar.startOfDay(for: endDate)
-        let cappedEndDate = min(
-            normalizedEndDate,
-            calendar.date(byAdding: .day, value: 31, to: cursor).map { calendar.startOfDay(for: $0) } ?? normalizedEndDate
-        )
-
-        while cursor <= cappedEndDate {
-            if HistoryScheduleApplicability.isScheduled(
-                on: cursor,
-                startDate: draft.startDate,
-                endDate: normalizedEndDate,
-                from: validationScheduleVersions,
-                calendar: calendar
-            ) {
-                return true
-            }
-
-            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else {
-                break
-            }
-            cursor = calendar.startOfDay(for: next)
-        }
-
-        return false
     }
 
     private var startDateBinding: Binding<Date> {
@@ -276,15 +250,21 @@ struct CreatePillView: View {
                     }
                 }
 
+                if let message = validationFloatingWarningMessage {
+                    AppFloatingWarningBanner(message: message) {
+                        isValidationWarningDismissed = true
+                    }
+                }
+
                 if let message = createLimitWarningMessage, !isCreateLimitWarningDismissed {
                     AppFloatingWarningBanner(message: message) {
                         isCreateLimitWarningDismissed = true
                     }
                 }
 
-                if let message = scheduleInfoMessage {
+                if let message = scheduleNoticeMessage {
                     AppFloatingInfoBanner(message: message) {
-                        dismissScheduleInfo()
+                        dismissScheduleNotice()
                     }
                 }
             }
@@ -297,8 +277,9 @@ struct CreatePillView: View {
     private var shouldShowFloatingBottomBanners: Bool {
         (scheduleWarningMessage != nil && !isScheduleWarningDismissed)
             || endDateFloatingWarningMessage != nil
+            || validationFloatingWarningMessage != nil
             || (createLimitWarningMessage != nil && !isCreateLimitWarningDismissed)
-            || scheduleInfoMessage != nil
+            || scheduleNoticeMessage != nil
     }
 
     private var scheduleWarningMessage: String? {
@@ -310,12 +291,34 @@ struct CreatePillView: View {
         return endDateValidationMessage
     }
 
+    private var validationFloatingWarningMessage: String? {
+        guard !isValidationWarningDismissed else { return nil }
+        if let validationMessage {
+            return validationMessage
+        }
+        return visibleNonScheduleInvalidMessage
+    }
+
+    private var visibleNonScheduleInvalidMessage: String? {
+        if draft.name.isEmpty == false, draft.trimmedName.isEmpty {
+            return "Enter a pill name."
+        }
+        if draft.dosage.isEmpty == false, draft.trimmedDosage.isEmpty {
+            return "Enter a dosage."
+        }
+        return nil
+    }
+
     private func savePill() {
         guard isFormValid else {
             createLimitWarningMessage = nil
             if !draft.scheduleRule.isValidSelection {
                 isScheduleWarningDismissed = false
             }
+            if !isEndDateValid {
+                isEndDateWarningDismissed = false
+            }
+            isValidationWarningDismissed = false
             validationMessage = nonScheduleInvalidMessage
             return
         }
@@ -338,6 +341,7 @@ struct CreatePillView: View {
                 if isCreateLimitError(error, message: message) {
                     showCreateLimitWarning(message)
                 } else {
+                    isValidationWarningDismissed = false
                     validationMessage = message
                 }
                 isSaving = false
@@ -356,12 +360,20 @@ struct CreatePillView: View {
         isEndDateWarningDismissed = false
     }
 
+    private func handleNonScheduleValidationInputChanged() {
+        isValidationWarningDismissed = false
+        if nonScheduleInvalidMessage == nil,
+           validationMessage == "Enter a pill name." || validationMessage == "Enter a dosage." {
+            validationMessage = nil
+        }
+    }
+
     private func clearEndDateForNeverRepeat(showInfo: Bool) {
         guard draft.scheduleRule.isOneTime, draft.endDate != nil else { return }
         draft.endDate = nil
 
         if showInfo {
-            presentScheduleInfo(AppCopy.endDateRemovedForNeverRepeat)
+            presentScheduleNotice(AppCopy.endDateRemovedForNeverRepeat)
         }
     }
 
@@ -376,6 +388,7 @@ struct CreatePillView: View {
     private func showCreateLimitWarning(_ message: String) {
         validationMessage = nil
         createLimitWarningMessage = message
+        isValidationWarningDismissed = false
         isCreateLimitWarningDismissed = false
     }
 
@@ -386,36 +399,34 @@ struct CreatePillView: View {
             normalized.endDate = nil
         }
         if let endDate = normalized.endDate {
-            let today = Calendar.current.startOfDay(for: Date())
-            let lowerBound = max(today, Calendar.current.startOfDay(for: normalized.startDate))
-            normalized.endDate = max(Calendar.current.startOfDay(for: endDate), lowerBound)
+            normalized.endDate = Calendar.current.startOfDay(for: endDate)
         }
         return normalized
     }
 
-    private func presentScheduleInfo(_ message: String) {
-        scheduleInfoDismissTask?.cancel()
+    private func presentScheduleNotice(_ message: String) {
+        scheduleNoticeDismissTask?.cancel()
         withAnimation(.easeInOut(duration: 0.18)) {
-            scheduleInfoMessage = message
+            scheduleNoticeMessage = message
         }
 
-        scheduleInfoDismissTask = Task {
+        scheduleNoticeDismissTask = Task {
             try? await Task.sleep(for: .seconds(4))
             guard !Task.isCancelled else { return }
 
             await MainActor.run {
                 withAnimation(.easeInOut(duration: 0.18)) {
-                    scheduleInfoMessage = nil
+                    scheduleNoticeMessage = nil
                 }
             }
         }
     }
 
-    private func dismissScheduleInfo() {
-        scheduleInfoDismissTask?.cancel()
-        scheduleInfoDismissTask = nil
+    private func dismissScheduleNotice() {
+        scheduleNoticeDismissTask?.cancel()
+        scheduleNoticeDismissTask = nil
         withAnimation(.easeInOut(duration: 0.18)) {
-            scheduleInfoMessage = nil
+            scheduleNoticeMessage = nil
         }
     }
 

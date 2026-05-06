@@ -22,6 +22,7 @@ struct RootTabView: View {
     @EnvironmentObject private var pillAppState: PillAppState
     @ObservedObject private var quickActionCenter = HomeQuickActionCenter.shared
     @SceneStorage("selected_tab") private var selectedTabRawValue = AppTab.myPills.rawValue
+    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
     @State private var presentedHabitSheet: HabitSheet?
     @State private var presentedPillSheet: PillSheet?
     @SceneStorage("settings_route") private var settingsRouteRawValue = ""
@@ -50,7 +51,7 @@ struct RootTabView: View {
                 )
                 .environmentObject(pillAppState)
                 .navigationTitle("My Pills")
-                .sheet(item: $presentedPillSheet) { sheet in
+                .sheet(item: $presentedPillSheet, onDismiss: restoreTabBarVisualState) { sheet in
                     NavigationStack {
                         pillSheetContent(for: sheet)
                     }
@@ -77,7 +78,7 @@ struct RootTabView: View {
                 )
                 .environmentObject(appState)
                 .navigationTitle("My Habits")
-                .sheet(item: $presentedHabitSheet) { sheet in
+                .sheet(item: $presentedHabitSheet, onDismiss: restoreTabBarVisualState) { sheet in
                     NavigationStack {
                         habitSheetContent(for: sheet)
                     }
@@ -149,6 +150,13 @@ struct RootTabView: View {
         let rawValue = routes.last?.rawValue ?? ""
         guard settingsRouteRawValue != rawValue else { return }
         settingsRouteRawValue = rawValue
+    }
+
+    private func restoreTabBarVisualState() {
+        LoonyBearApp.refreshTabBarAppearance(for: AppTint.stored(rawValue: appTintRawValue))
+        DispatchQueue.main.async {
+            LoonyBearApp.refreshTabBarAppearance(for: AppTint.stored(rawValue: appTintRawValue))
+        }
     }
 
     private func routeQuickActionIfNeeded(_ action: HomeQuickAction?) {

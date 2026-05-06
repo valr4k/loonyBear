@@ -436,6 +436,75 @@ enum SchedulePreviewSupport {
     }
 }
 
+enum EndDateValidationSupport {
+    private static let searchWindowDays = 31
+
+    static func isValid<Schedule: HistoryScheduleVersionLike>(
+        endDate: Date?,
+        startDate: Date,
+        lowerBound: Date,
+        schedules: [Schedule],
+        ignoresEndDate: Bool = false,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Bool {
+        guard !ignoresEndDate else {
+            return true
+        }
+        guard let endDate else {
+            return true
+        }
+
+        let normalizedEndDate = calendar.startOfDay(for: endDate)
+        let normalizedLowerBound = calendar.startOfDay(for: lowerBound)
+        guard normalizedEndDate >= normalizedLowerBound else {
+            return false
+        }
+
+        return hasScheduledDay(
+            from: normalizedLowerBound,
+            through: normalizedEndDate,
+            startDate: startDate,
+            schedules: schedules,
+            calendar: calendar
+        )
+    }
+
+    static func hasScheduledDay<Schedule: HistoryScheduleVersionLike>(
+        from lowerBound: Date,
+        through endDate: Date,
+        startDate: Date,
+        schedules: [Schedule],
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Bool {
+        var cursor = calendar.startOfDay(for: lowerBound)
+        let normalizedEndDate = calendar.startOfDay(for: endDate)
+        let cappedEndDate = min(
+            normalizedEndDate,
+            calendar.date(byAdding: .day, value: searchWindowDays, to: cursor)
+                .map { calendar.startOfDay(for: $0) } ?? normalizedEndDate
+        )
+
+        while cursor <= cappedEndDate {
+            if HistoryScheduleApplicability.isScheduled(
+                on: cursor,
+                startDate: startDate,
+                endDate: normalizedEndDate,
+                from: schedules,
+                calendar: calendar
+            ) {
+                return true
+            }
+
+            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else {
+                break
+            }
+            cursor = calendar.startOfDay(for: next)
+        }
+
+        return false
+    }
+}
+
 enum DashboardScheduleSummary {
     static func text<Schedule: HistoryScheduleVersionLike>(
         latestSchedule: Schedule?,

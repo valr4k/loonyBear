@@ -59,7 +59,7 @@
         },
         {
           "title": "Creating a Habit",
-          "body": "Create Habit includes type, name, start date, reminder toggle, reminder time, Repeat, End Repeat, and End Date. Repeat opens a pushed editor with Days and Interval sections. Days supports weekday combinations. Interval is Every N days, limited to 2 through 5 days. Weekday summaries are Daily, Weekdays, Weekends, Weekly on Mon style labels for one selected weekday, or abbreviated day lists such as Mon, Wed, Fri for other combinations. Use schedule for history is no longer shown; new Habits use schedule-based history generation. The save button is enabled only when the habit name is not empty, the schedule rule is valid, and any selected End Date includes at least one scheduled day. If the 20-habit hard limit blocks creation, the error is shown as a dismissible floating warning banner."
+          "body": "Create Habit includes type, name, start date, reminder toggle, reminder time, Repeat, End Repeat, and End Date. Repeat opens a pushed editor with Days and Interval sections. Days supports weekday combinations. Interval is Every N days, limited to 2 through 5 days. Weekday summaries are Daily, Weekdays, Weekends, Weekly on Mon style labels for one selected weekday, or abbreviated day lists such as Mon, Wed, Fri for other combinations. Use schedule for history is no longer shown; new Habits use schedule-based history generation. The save button is enabled only when the habit name is not empty, the schedule rule is valid, and any selected End Date includes at least one scheduled day. Name, schedule, end-date, hard-limit, and unexpected action errors are shown as dismissible floating warning banners."
         },
         {
           "title": "Habit start date range",
@@ -71,11 +71,11 @@
         },
         {
           "title": "Habit details screen",
-          "body": "Habit Details shows name, a Streaks block with current streak, best streak, and completed for, a read-only Schedule block with Reminder and Repeat, a History block with Start Date and End Date, and a read-only calendar. Repeat uses the same display style as dashboard cards and does not open a popover. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Active Habit Details shows a dismissible floating warning banner when any past scheduled day needs review. If the only missing day is the active overdue day, the banner says Finish updating overdue days. Otherwise it says Finish updating past days. Archived Habit Details is read-only, hides Edit, suppresses missing-history review, and shows Delete at the bottom."
+          "body": "Habit Details shows name, a Streaks block with current streak, best streak, and completed for, a read-only Schedule block with Reminder and Repeat, a History block with Start Date and End Date, and a read-only calendar. Repeat uses the same display style as dashboard cards and does not open a popover. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Active Habit Details shows a dismissible floating warning banner when any past scheduled day needs review. If the only missing day is the active overdue day, the banner says Finish updating overdue days on the Edit screen. Otherwise it says Finish updating past days on the Edit screen. Archived Habit Details is read-only, hides Edit, suppresses missing-history review, and shows Delete at the bottom."
         },
         {
           "title": "Editing a Habit",
-          "body": "Edit Habit shows name, a Schedule block with Reminder, Time, Repeat, End Repeat, and End Date, an editable calendar, and Delete plus Archive at the bottom. Start Date is not editable from Edit. Repeat opens the pushed Repeat editor. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Missing past-day review is shown as a dismissible floating warning banner that does not take space inside the calendar layout, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a system alert with Cancel and Delete actions. Archive uses a system confirmation alert and is available only for active Habits."
+          "body": "Edit Habit shows name, a Schedule block with Reminder, Time, Repeat, End Repeat, and End Date, an editable calendar, and Delete plus Archive at the bottom. Start Date is not editable from Edit. Repeat opens the pushed Repeat editor. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Name, schedule, end-date, missing past-day, and unexpected action errors are shown as dismissible floating warning banners. Save is disabled until required history review is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a system alert with Cancel and Delete actions. Archive uses a system confirmation alert and is available only for active Habits."
         }
       ]
     },
@@ -104,7 +104,7 @@
         },
         {
           "title": "Today versus past days in Habit edit",
-          "body": "Today can still be empty, completed, or skipped. Every past editable scheduled Habit day must be Completed or Skipped before saving, including a past active overdue day. Saving Edit Habit does not auto-fill missing past scheduled days; if any past editable scheduled day is empty, the app shows a dismissible floating warning banner without listing dates and disables Save until the user chooses the state. Non-scheduled editable days may still be marked manually and count when marked. If the schedule is changed, the new schedule version resolves internally from today for active items, or from Start Date for future items."
+          "body": "Today can still be empty, completed, or skipped. Every past editable scheduled Habit day must be Completed or Skipped before saving, including a past active overdue day. Saving Edit Habit does not auto-fill missing past scheduled days; if any past editable scheduled day is empty, the app shows a dismissible floating warning banner without listing dates and disables Save until the user chooses the state. Non-scheduled editable days may still be marked manually and count when marked. If Repeat is changed, Edit creates a hidden new schedule version based on max(today, startDate), bounded by the schedule-change technical window, and normally saved at that lower bound. This hidden effectiveFrom is not shown as Apply From and is not adjusted to the next matching scheduled day."
         },
         {
           "title": "Current streak",
@@ -141,7 +141,7 @@
         },
         {
           "title": "Creating a Pill",
-          "body": "Create Pill includes name, dosage, start date, reminder toggle, reminder time, Repeat, End Repeat, End Date, and an optional description. Repeat opens a pushed editor with Days and Interval sections. Days supports weekday combinations. Interval includes Never for one-time Pills and Every N days, limited to 2 through 5 days. Weekday summaries are Daily, Weekdays, Weekends, Weekly on Mon style labels for one selected weekday, or abbreviated day lists such as Mon, Wed, Fri for other combinations. Use schedule for history is no longer shown; new Pills use schedule-based history generation. Save is enabled only when the pill name is not empty, the dosage is not empty, the schedule rule is valid, and any selected End Date includes at least one scheduled day. If the 20-pill hard limit blocks creation, the error is shown as a dismissible floating warning banner."
+          "body": "Create Pill includes name, dosage, start date, reminder toggle, reminder time, Repeat, End Repeat, End Date, and an optional description. Repeat opens a pushed editor with Days and Interval sections. Days supports weekday combinations. Interval includes Never for one-time Pills and Every N days, limited to 2 through 5 days. Weekday summaries are Daily, Weekdays, Weekends, Weekly on Mon style labels for one selected weekday, or abbreviated day lists such as Mon, Wed, Fri for other combinations. Use schedule for history is no longer shown; new Pills use schedule-based history generation. Save is enabled only when the pill name is not empty, the dosage is not empty, the schedule rule is valid, and any selected End Date includes at least one scheduled day. Name, dosage, schedule, end-date, hard-limit, and unexpected action errors are shown as dismissible floating warning banners."
         },
         {
           "title": "Pill start date range",
@@ -149,11 +149,11 @@
         },
         {
           "title": "Pill details screen",
-          "body": "Pill Details shows name, dosage, a Streak block with Taken for, a read-only Schedule block with Reminder and Repeat, a History block with Start Date and End Date, a read-only calendar, and description if one exists. Repeat uses the same display style as dashboard cards and does not open a popover. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Active Pill Details shows a dismissible floating warning banner when any past scheduled day needs review. If the only missing day is the active overdue day, the banner says Finish updating overdue days. Otherwise it says Finish updating past days. Archived Pill Details is read-only, hides Edit, suppresses missing-history review, and shows Delete at the bottom."
+          "body": "Pill Details shows name, dosage, a Streak block with Taken for, a read-only Schedule block with Reminder and Repeat, a History block with Start Date and End Date, a read-only calendar, and description if one exists. Repeat uses the same display style as dashboard cards and does not open a popover. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Active Pill Details shows a dismissible floating warning banner when any past scheduled day needs review. If the only missing day is the active overdue day, the banner says Finish updating overdue days on the Edit screen. Otherwise it says Finish updating past days on the Edit screen. Archived Pill Details is read-only, hides Edit, suppresses missing-history review, and shows Delete at the bottom."
         },
         {
           "title": "Editing a Pill",
-          "body": "Edit Pill shows name, dosage, a Schedule block with Reminder, Time, Repeat, and End Date, an editable calendar, description, and Delete plus Archive at the bottom. Start Date is not editable from Edit. Repeat opens the pushed Repeat editor. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Missing past-day review is shown as a dismissible floating warning banner that does not take space inside the calendar layout, and Save is disabled until it is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a system alert with Cancel and Delete actions. Archive uses a system confirmation alert and is available only for active Pills."
+          "body": "Edit Pill shows name, dosage, a Schedule block with Reminder, Time, Repeat, End Repeat, and End Date, an editable calendar, description, and Delete plus Archive at the bottom. Start Date is not editable from Edit. Repeat opens the pushed Repeat editor. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Name, dosage, schedule, end-date, missing past-day, and unexpected action errors are shown as dismissible floating warning banners. Save is disabled until required history review is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a system alert with Cancel and Delete actions. Archive uses a system confirmation alert and is available only for active Pills."
         }
       ]
     },
@@ -186,7 +186,7 @@
         },
         {
           "title": "Today versus past days in Pill edit",
-          "body": "Today can still be empty, taken, or skipped. Every past editable scheduled Pill day must be Taken or Skipped before saving, including a past active overdue day. Saving Edit Pill does not auto-fill missing past scheduled days; if any past editable scheduled day is empty, the app shows a dismissible floating warning banner without listing dates and disables Save until the user chooses the state. Non-scheduled editable days may still be marked manually and count when marked. If the schedule is changed, the new schedule version resolves internally from today for active items, or from Start Date for future items."
+          "body": "Today can still be empty, taken, or skipped. Every past editable scheduled Pill day must be Taken or Skipped before saving, including a past active overdue day. Saving Edit Pill does not auto-fill missing past scheduled days; if any past editable scheduled day is empty, the app shows a dismissible floating warning banner without listing dates and disables Save until the user chooses the state. Non-scheduled editable days may still be marked manually and count when marked. If Repeat is changed, Edit creates a hidden new schedule version based on max(today, startDate), bounded by the schedule-change technical window, and normally saved at that lower bound. This hidden effectiveFrom is not shown as Apply From and is not adjusted to the next matching scheduled day."
         },
         {
           "title": "Pill totals",
@@ -259,8 +259,8 @@
           "body": "When a newer scheduled due day appears, older empty due scheduled days become history gaps. They remain manual review and can only be fixed in Edit."
         },
         {
-          "title": "End Date and archive",
-          "body": "End Date is optional for both Pills and Habits. If a date is selected, the final active scheduled day is the last scheduled day on or before that date. The End Date picker lower bound is max(today, startDate); when Start Date raises that lower bound above the selected End Date, the stored End Date is moved to the new lower bound so the picker display, validation banner, and Save state match. Once that final day is taken/completed or skipped, the item archives automatically without confirmation. If the final day remains empty, the item stays active and can become overdue. Repeat Never for Pills is a one-time schedule on Start Date and archives automatically after that day is taken or skipped."
+          "title": "End Repeat, End Date, and archive",
+          "body": "End Repeat is optional for both Pills and Habits. The Schedule UI shows an End Repeat options row with Never or On Date; the End Date picker row appears only for On Date. If a date is selected, the final active scheduled day is the last scheduled day on or before that date. The End Date picker lower bound is max(today, startDate), and Edit can raise that lower bound to the hidden schedule-change effectiveFrom after Repeat changes. A selected End Date is valid only when at least one scheduled day exists between the active lower bound and the selected date. If not, Save stays disabled and the app shows the dismissible floating warning End date must be on or after the first scheduled day. The native picker keeps visible values inside its allowed range while editing, but Save does not silently raise End Date. Once the final day is taken/completed or skipped, the item archives automatically without confirmation. If the final day remains empty, the item stays active and can become overdue. Manual Archive also uses confirmation. Archive preserves reminder, repeat, end date, and history as historical data. Repeat Never for Pills is a one-time schedule on Start Date, clears and ignores End Date, and archives automatically after that day is taken or skipped."
         }
       ]
     },
@@ -322,7 +322,7 @@
         },
         {
           "title": "Version footer",
-          "body": "Settings shows Version <short version> and Build <build number> from the app bundle metadata. Build numbers are auto-incremented from CURRENT_PROJECT_VERSION during each build and displayed as a six-digit value, for example 001025."
+          "body": "Settings shows Version <short version> and Build <build number> from the app bundle metadata. Build numbers are auto-incremented from CURRENT_PROJECT_VERSION during normal builds and displayed as a six-digit value, for example 001025. Xcode previews skip the increment. Because CURRENT_PROJECT_VERSION lives in the Xcode project, a normal build can leave project.pbxproj changed by the build-number bump."
         }
       ]
     },
@@ -372,7 +372,7 @@
         },
         {
           "title": "Reminder time rules",
-          "body": "ReminderTime stores hour and minute as integers. ReminderTime.default rounds the current time up to a 5-minute boundary. If rounding reaches 60 minutes, the hour is incremented and minute becomes 0. Create/Edit reminder time rows use the native compact system time picker. Create Start Date rows use the native compact system date picker. End Date rows use the native compact system date picker and clamp the stored selected date into the current lower bound when that lower bound changes. Schedule blocks keep native system pickers and protect them with a shared presentation guard: while the End Repeat options popover is open, neighboring compact pickers ignore hit-testing; Time and End Repeat touch-downs briefly block the opposite presentation path through a non-cancelling window-level observer; and Repeat navigation dismisses and briefly blocks End Repeat so the popover cannot survive over the pushed Repeat screen. Edit screens do not expose Start Date."
+          "body": "ReminderTime stores hour and minute as integers. ReminderTime.default rounds the current time up to a 5-minute boundary. If rounding reaches 60 minutes, the hour is incremented and minute becomes 0. Create/Edit reminder time rows use the native compact system time picker. Create Start Date rows use the native compact system date picker. End Date rows use the native compact system date picker, keep visible values inside the active lower bound while editing, and use shared schedule-aware validation instead of silent Save correction. Schedule blocks keep native system pickers and protect them with a shared presentation guard: while the End Repeat options popover is open, neighboring compact pickers ignore hit-testing; Time and End Repeat touch-downs briefly block the opposite presentation path through a non-cancelling window-level observer; and Repeat navigation dismisses and briefly blocks End Repeat so the popover cannot survive over the pushed Repeat screen. Edit screens do not expose Start Date."
         },
         {
           "title": "Schedule model",
@@ -401,7 +401,7 @@
         },
         {
           "title": "Schedule applicability",
-          "body": "HistoryScheduleApplicability can compute past editable days, past scheduled editable days, past required editable days, and scheduled calendar indicator days. Effective schedule for a given day is the latest schedule version whose effectiveFrom is not later than that day, ordered by effectiveFrom, version, and createdAt. Weekly rules use weekday membership. Every-N-days interval rules use the active schedule version effectiveFrom as the interval anchor. Edit schedule changes use today as effectiveFrom for active items and Start Date as effectiveFrom for future items; the calendar preview drops replaced future schedule versions so dots match the post-save schedule."
+          "body": "HistoryScheduleApplicability can compute past editable days, past scheduled editable days, past required editable days, and scheduled calendar indicator days. Effective schedule for a given day is the latest schedule version whose effectiveFrom is not later than that day, ordered by effectiveFrom, version, and createdAt. Weekly rules use weekday membership. Every-N-days interval rules use the active schedule version effectiveFrom as the interval anchor. Create stores the first schedule version at Start Date. Edit stores a new schedule version only when Repeat changes. Apply From is not exposed in the UI; the hidden schedule-change effectiveFrom is based on max(today, startDate), bounded by the end of the second next calendar month, and normally saved at the lower bound. The resolver does not move it to the next matching weekday or skip explicit history states. The calendar preview drops replaced future schedule versions so dots match the post-save schedule."
         }
       ]
     },
@@ -410,7 +410,7 @@
       "items": [
         {
           "title": "Create Habit validations",
-          "body": "CreateHabitUseCase requires a non-empty trimmed name and a valid schedule rule. CoreDataHabitRepository also enforces a hard limit of 20 habits. Create Habit presents hard-limit errors with the shared dismissible floating warning banner."
+          "body": "CreateHabitUseCase requires a non-empty trimmed name and a valid schedule rule. CoreDataHabitRepository also enforces a hard limit of 20 habits. Create Habit also validates optional End Date before Save: the selected date must include at least one scheduled day from the active lower bound through End Date. Create Habit presents form validation, hard-limit errors, end-date errors, and unexpected action failures with the shared dismissible floating warning banner."
         },
         {
           "title": "Habit create storage",
@@ -422,7 +422,7 @@
         },
         {
           "title": "Habit update behavior",
-          "body": "Habit update changes name, reminder fields, optional End Date, and optionally inserts a new HabitScheduleVersion if the schedule rule changed. The new schedule version starts from today for active items, or from Start Date for future items. Editable history is normalized and written back day by day using manual edit or skipped sources. Update validation requires every past editable scheduled day to be Completed or Skipped; missing scheduled past states block save instead of being auto-filled. Archived Habits are final inactive storage and are not restored."
+          "body": "Habit update changes name, reminder fields, optional End Date, and optionally inserts a new HabitScheduleVersion if the schedule rule changed. Apply From is hidden; the new schedule version starts at the hidden effectiveFrom based on max(today, startDate), bounded by the end of the second next calendar month, and normally saved at the lower bound. This hidden resolver is schedule-agnostic and does not skip explicit history states. Editable history is normalized and written back day by day using manual edit or skipped sources. Update validation requires every past editable scheduled day to be Completed or Skipped; missing scheduled past states block save instead of being auto-filled. Archived Habits are final inactive storage, open read-only Details, are not edited or restored, and can only be deleted."
         },
         {
           "title": "Habit today actions",
@@ -439,7 +439,7 @@
       "items": [
         {
           "title": "Create Pill validations",
-          "body": "Create Pill requires a non-empty trimmed name, a non-empty trimmed dosage, and a valid schedule rule. CoreDataPillRepository also enforces a hard limit of 20 pills. Create Pill presents hard-limit errors with the shared dismissible floating warning banner."
+          "body": "Create Pill requires a non-empty trimmed name, a non-empty trimmed dosage, and a valid schedule rule. CoreDataPillRepository also enforces a hard limit of 20 pills. Create Pill also validates optional End Date before Save unless Repeat is Never: the selected date must include at least one scheduled day from the active lower bound through End Date. Repeat Never clears and ignores End Date. Create Pill presents form validation, hard-limit errors, end-date errors, and unexpected action failures with the shared dismissible floating warning banner."
         },
         {
           "title": "Create Pill day generation",
@@ -451,7 +451,7 @@
         },
         {
           "title": "Pill update behavior",
-          "body": "Pill update changes name, dosage, details, reminder fields, optional End Date, and optionally inserts a new PillScheduleVersion if the schedule rule changed. The new schedule version starts from today for active items, or from Start Date for future items. Editable history is normalized and written back day by day using manual edit or skipped sources. Update validation requires every past editable scheduled day to be Taken or Skipped; missing scheduled past states block save instead of being auto-filled. Archived Pills are final inactive storage and are not restored."
+          "body": "Pill update changes name, dosage, details, reminder fields, optional End Date, and optionally inserts a new PillScheduleVersion if the schedule rule changed. Apply From is hidden; the new schedule version starts at the hidden effectiveFrom based on max(today, startDate), bounded by the end of the second next calendar month, and normally saved at the lower bound. This hidden resolver is schedule-agnostic and does not skip explicit history states. Repeat Never clears and ignores End Date. Editable history is normalized and written back day by day using manual edit or skipped sources. Update validation requires every past editable scheduled day to be Taken or Skipped; missing scheduled past states block save instead of being auto-filled. Archived Pills are final inactive storage, open read-only Details, are not edited or restored, and can only be deleted."
         },
         {
           "title": "Pill today actions",
