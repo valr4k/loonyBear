@@ -138,12 +138,14 @@ struct MyHabitsView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                Button {
-                    isShowingArchive = true
-                } label: {
-                    AppToolbarIconLabel("Archived Habits", systemName: "archivebox")
+                if hasArchivedHabits {
+                    Button {
+                        isShowingArchive = true
+                    } label: {
+                        AppToolbarIconLabel("Archived Habits", systemName: "archivebox")
+                    }
+                    .appAccentTint()
                 }
-                .appAccentTint()
 
                 Button {
                     onCreateHabit()
@@ -188,6 +190,12 @@ struct MyHabitsView: View {
 
     private var allHabits: [HabitCardProjection] {
         appState.dashboard.sections.flatMap(\.habits)
+    }
+
+    private var hasArchivedHabits: Bool {
+        appState.dashboard.sections.contains { section in
+            section.id == .archived && !section.habits.isEmpty
+        }
     }
 
     private var sections: [HabitSectionProjection] {

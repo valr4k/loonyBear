@@ -473,7 +473,7 @@ Rules:
 - manual Archive is available from Edit for active items with a system confirmation alert
 - Archive preserves the stored reminder, repeat, end date, and history rows as historical data
 - Restore is not available for archived items; a new cycle is created as a new item
-- archived items are shown from separate Archive pages opened by the dashboard Archive toolbar button; Archive pages list cards without dashboard grouping sections
+- archived items are shown from separate Archive pages opened by the dashboard Archive toolbar button; the toolbar button is visible only when archived items exist for that dashboard, and Archive pages list cards without dashboard grouping sections
 
 ## 8. Notifications
 
@@ -856,7 +856,7 @@ Details schedule behavior:
 - Details no longer opens any schedule picker or schedule overlay
 
 Archive page behavior:
-- My Pills and My Habits expose an Archive toolbar button beside Add
+- My Pills and My Habits expose an Archive toolbar button beside Add only when the corresponding archive is non-empty
 - Archive pages show archived cards without Today/Pending or Build/Quit sections
 - archived cards do not expose day-state leading swipe actions
 - archived cards open Info/Details only
@@ -896,6 +896,7 @@ Behavior:
 - the options popover contains `Never` and `On Date`
 - when `On Date` is selected, a date row appears below the options row with the same compact capsule display
 - the date row uses the native compact system date picker
+- the date row range lower bound is `max(today, startDate)` on Create and the supplied edit lower bound on Edit; `AppOptionalEndDatePickerRow` normalizes that lower bound to start-of-day and clamps the bound `endDate` upward when the lower bound changes, so native picker display, validation banners, and Save enabled state never read different dates
 - the End Repeat trigger uses `appTouchDownAction` to call `AppSchedulePresentationGuard.blockPickersForEndDateOptionsTouch()` as soon as the user touches the options value
 - the End Repeat button action also calls `blockPickersForEndDateOptionsTouch()` immediately before presenting the popover, so the protection still runs if the touch-down observer is missed
 - the touch-down helper is window-level and non-cancelling, so it must not steal vertical scroll gestures near the End Repeat value

@@ -21,7 +21,7 @@ This file describes the behavioral rules that are currently implemented in code.
 - Future Habit cards show `Starts 03 May 2026` style dates.
 - Habits use the same `End Repeat` and `End Date` labels as Pills. If no end date is selected, the UI displays `Never`.
 - Habits can be manually archived from Edit. Archived Habits move to the separate Habit Archive page and do not produce today actions, overdue state, notifications, badge count, or history review. Archived Habits preserve their stored reminder, repeat, end date, and history as historical data.
-- My Habits has an Archive toolbar button that opens archived Habits without Build/Quit sections.
+- My Habits shows the Archive toolbar button only when at least one archived Habit exists. The button opens archived Habits without Build/Quit sections.
 
 ## Habit History Modes
 
@@ -102,7 +102,7 @@ This file describes the behavioral rules that are currently implemented in code.
 - Pills use an `End Date` label for optional end dates. If no end date is selected, the UI displays `Never`.
 - Pills can use `Repeat = Never`, which means one scheduled day on the Pill start date. Habits do not expose this option.
 - Pills can be manually archived from Edit. Archived Pills move to the separate Pill Archive page and do not produce today actions, overdue state, notifications, badge count, or history review. Archived Pills preserve their stored reminder, repeat, end date, and history as historical data.
-- My Pills has an Archive toolbar button that opens archived Pills without Today/Pending sections.
+- My Pills shows the Archive toolbar button only when at least one archived Pill exists. The button opens archived Pills without Today/Pending sections.
 
 ## Pill History Modes
 
@@ -177,6 +177,7 @@ This file describes the behavioral rules that are currently implemented in code.
 
 - End Date is optional for both Pills and Habits.
 - If a date is selected, the final active scheduled day is the last scheduled day on or before that date.
+- The End Date picker lower bound is `max(today, startDate)`. If Start Date changes and the selected End Date falls before the new lower bound, the selected End Date is immediately moved to the new lower bound so the displayed picker value and validation state match.
 - Once the final scheduled day has a completed/taken or skipped state, the item is archived automatically without confirmation.
 - If the final scheduled day is still empty, the item remains active and can become overdue with the same `Today`, `Yesterday`, or date labels as other overdue items.
 - Manual Archive asks for confirmation.

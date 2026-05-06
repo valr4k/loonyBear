@@ -1055,6 +1055,9 @@ struct AppOptionalEndDatePickerRow: View {
         .onChange(of: dismissOptionsSignal) { _, _ in
             setEndDateOptionsPresented(false)
         }
+        .onChange(of: normalizedRangeLowerBound) { _, _ in
+            clampSelectedDateIntoRange()
+        }
         .onDisappear {
             setEndDateOptionsPresented(false)
         }
@@ -1133,7 +1136,20 @@ struct AppOptionalEndDatePickerRow: View {
 
     private var clampedFallbackDate: Date {
         let normalizedFallback = Calendar.current.startOfDay(for: fallbackDate)
-        return max(normalizedFallback, range.lowerBound)
+        return max(normalizedFallback, normalizedRangeLowerBound)
+    }
+
+    private var normalizedRangeLowerBound: Date {
+        Calendar.current.startOfDay(for: range.lowerBound)
+    }
+
+    private func clampSelectedDateIntoRange() {
+        guard let selectedDate = date.map({ Calendar.current.startOfDay(for: $0) }),
+              selectedDate < normalizedRangeLowerBound else {
+            return
+        }
+
+        date = normalizedRangeLowerBound
     }
 }
 

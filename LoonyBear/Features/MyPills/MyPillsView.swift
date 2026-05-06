@@ -139,12 +139,14 @@ struct MyPillsView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                Button {
-                    isShowingArchive = true
-                } label: {
-                    AppToolbarIconLabel("Archived Pills", systemName: "archivebox")
+                if hasArchivedPills {
+                    Button {
+                        isShowingArchive = true
+                    } label: {
+                        AppToolbarIconLabel("Archived Pills", systemName: "archivebox")
+                    }
+                    .appAccentTint()
                 }
-                .appAccentTint()
 
                 Button {
                     onCreatePill()
@@ -182,6 +184,10 @@ struct MyPillsView: View {
 
     private var activePills: [PillCardProjection] {
         pills.filter { !$0.isArchived }
+    }
+
+    private var hasArchivedPills: Bool {
+        pills.contains { $0.isArchived }
     }
 
     private var sections: [PillDashboardSectionProjection] {

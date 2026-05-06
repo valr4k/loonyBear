@@ -201,9 +201,9 @@ On every `.active` scene phase:
 - Pills support reordering through `sortOrder`.
 - Backup covers both trackers and app appearance settings in one archive schema.
 - Backup owns create/restore feedback through floating banners; restore success refreshes app state and shows a green banner on the Backup screen.
-- Habit and Pill dashboards expose separate Archive pages backed by stored `isArchived` facts.
+- Habit and Pill dashboards expose separate Archive pages backed by stored `isArchived` facts. The Archive toolbar entry is conditional and appears only when the corresponding dashboard has archived items.
 - Schedule editing is shared through a pushed Repeat editor with Days and Interval sections.
-- End Date and Pill one-time repeat rules are stored facts; active/archive state, overdue, reminders, and calendar dots are derived from those facts at read time.
+- End Date and Pill one-time repeat rules are stored facts; active/archive state, overdue, reminders, and calendar dots are derived from those facts at read time. Shared Schedule UI clamps the stored End Date binding into the current `max(today, startDate)` lower bound when Start Date changes, keeping native picker display and validation synchronized.
 - Schedule Create/Edit picker safety is centralized in shared UI infrastructure: native compact `DatePicker` controls and Repeat `NavigationLink` stay system-owned, while `AppSchedulePresentationGuard`, the Schedule card exclusive-touch scope, a window-level touch-down observer, and the End Repeat dismiss signal prevent simultaneous picker/popover/navigation presentation races without attaching scroll-stealing SwiftUI gestures to the picker capsules.
 - App tint updates are applied through SwiftUI tint helpers and visible UIKit tab/navigation bar updates.
 - Widget snapshot currently serializes Habit dashboard data only.
