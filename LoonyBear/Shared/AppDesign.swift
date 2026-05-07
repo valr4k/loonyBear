@@ -184,19 +184,30 @@ struct AppToolbarIconLabel: View {
     }
 }
 
-struct AppNeutralCapsuleActionButtonStyle: ButtonStyle {
+struct AppMaterialCapsuleActionButtonStyle: ButtonStyle {
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .padding(.vertical, 13)
+            .padding(.horizontal, 26)
+            .padding(.vertical, 15)
             .frame(maxWidth: .infinity)
             .background {
                 Capsule()
-                    .fill(Color(uiColor: .systemFill))
+                    .fill(colorScheme == .light ? Color(uiColor: .systemGray4) : Color.clear)
+
+                Capsule()
+                    .fill(.ultraThinMaterial)
+                    .id(colorScheme)
             }
-            .opacity(configuration.isPressed && isEnabled ? 0.72 : 1)
+            .opacity(opacity(isPressed: configuration.isPressed))
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+
+    private func opacity(isPressed: Bool) -> Double {
+        guard isEnabled else { return 0.45 }
+        return isPressed ? 0.72 : 1
     }
 }
 
@@ -785,25 +796,55 @@ private struct AppCreateRepeatPickerRow<Destination: View>: View {
     }
 }
 
+private struct AppReadOnlyRepeatRow: View {
+    let value: String
+
+    var body: some View {
+        HStack(spacing: 16) {
+            Text("Repeat")
+                .foregroundStyle(.primary)
+
+            Spacer()
+
+            HStack(spacing: 6) {
+                Text(value)
+                    .multilineTextAlignment(.trailing)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .allowsTightening(true)
+
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+            }
+            .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, AppLayout.rowHorizontalPadding)
+        .padding(.vertical, AppLayout.rowVerticalPadding)
+    }
+}
+
 struct AppReminderTimeRows: View {
     @Binding var isEnabled: Bool
     @Binding var reminderDate: Date
     let onTimeTap: (() -> Void)?
     let onPickerTouchDown: (() -> Void)?
     let isPickerPresentationBlocked: Bool
+    let isReadOnly: Bool
 
     init(
         isEnabled: Binding<Bool>,
         reminderDate: Binding<Date>,
         onTimeTap: (() -> Void)? = nil,
         onPickerTouchDown: (() -> Void)? = nil,
-        isPickerPresentationBlocked: Bool = false
+        isPickerPresentationBlocked: Bool = false,
+        isReadOnly: Bool = false
     ) {
         _isEnabled = isEnabled
         _reminderDate = reminderDate
         self.onTimeTap = onTimeTap
         self.onPickerTouchDown = onPickerTouchDown
         self.isPickerPresentationBlocked = isPickerPresentationBlocked
+        self.isReadOnly = isReadOnly
     }
 
     var body: some View {
@@ -838,15 +879,23 @@ struct AppReminderTimeRows: View {
 
             Spacer()
 
-            DatePicker("", selection: $reminderDate, displayedComponents: .hourAndMinute)
-                .datePickerStyle(.compact)
-                .labelsHidden()
-                .appAccentTint()
-                .fixedSize()
-                .allowsHitTesting(!isPickerPresentationBlocked)
-                .appTouchDownAction {
-                    onPickerTouchDown?()
-                }
+            if isReadOnly {
+                Text(reminderDate.formatted(date: .omitted, time: .shortened))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .multilineTextAlignment(.trailing)
+            } else {
+                DatePicker("", selection: $reminderDate, displayedComponents: .hourAndMinute)
+                    .datePickerStyle(.compact)
+                    .labelsHidden()
+                    .appAccentTint()
+                    .fixedSize()
+                    .allowsHitTesting(!isPickerPresentationBlocked)
+                    .appTouchDownAction {
+                        onPickerTouchDown?()
+                    }
+            }
         }
         .padding(.horizontal, AppLayout.rowHorizontalPadding)
         .padding(.vertical, AppLayout.rowVerticalPadding)
@@ -862,27 +911,27 @@ struct AppReminderTimeRows: View {
     }
 }
 
-struct AppStartDatePickerRow: View {
+struct AppDatePickerRow: View {
+    let title: String
     @Binding var date: Date
-    let range: ClosedRange<Date>?
     let onTap: (() -> Void)?
     let isPickerPresentationBlocked: Bool
 
     init(
+        title: String = "Start Date",
         date: Binding<Date>,
-        range: ClosedRange<Date>? = nil,
         onTap: (() -> Void)? = nil,
         isPickerPresentationBlocked: Bool = false
     ) {
+        self.title = title
         _date = date
-        self.range = range
         self.onTap = onTap
         self.isPickerPresentationBlocked = isPickerPresentationBlocked
     }
 
     var body: some View {
         HStack(spacing: 16) {
-            Text("Start Date")
+            Text(title)
                 .foregroundStyle(.primary)
 
             Spacer()
@@ -898,23 +947,13 @@ struct AppStartDatePickerRow: View {
         })
     }
 
-    @ViewBuilder
     private var datePicker: some View {
-        if let range {
-            DatePicker("", selection: $date, in: range, displayedComponents: .date)
-                .datePickerStyle(.compact)
-                .labelsHidden()
-                .appAccentTint()
-                .fixedSize()
-                .allowsHitTesting(!isPickerPresentationBlocked)
-        } else {
-            DatePicker("", selection: $date, displayedComponents: .date)
-                .datePickerStyle(.compact)
-                .labelsHidden()
-                .appAccentTint()
-                .fixedSize()
-                .allowsHitTesting(!isPickerPresentationBlocked)
-        }
+        DatePicker("", selection: $date, displayedComponents: .date)
+            .datePickerStyle(.compact)
+            .labelsHidden()
+            .appAccentTint()
+            .fixedSize()
+            .allowsHitTesting(!isPickerPresentationBlocked)
     }
 }
 
@@ -933,7 +972,6 @@ struct AppOptionalEndDatePickerRow: View {
     let title: String
     let emptyTitle: String
     @Binding var date: Date?
-    let range: PartialRangeFrom<Date>
     let fallbackDate: Date
     let isEnabled: Bool
     let onTap: (() -> Void)?
@@ -942,13 +980,16 @@ struct AppOptionalEndDatePickerRow: View {
     let onOptionsTouchDown: (() -> Void)?
     let isOptionsPresentationBlocked: Bool
     let isPickerPresentationBlocked: Bool
+    let isReadOnly: Bool
     @State private var isShowingEndDateOptions = false
+    // Keep the compact DatePicker bound to concrete state. A computed Date? binding
+    // can drop some calendar selections before SwiftUI writes them back.
+    @State private var pickerDate: Date
 
     init(
         title: String = "End Repeat",
         emptyTitle: String = "Never",
         date: Binding<Date?>,
-        range: PartialRangeFrom<Date>,
         fallbackDate: Date,
         isEnabled: Bool = true,
         onTap: (() -> Void)? = nil,
@@ -956,12 +997,12 @@ struct AppOptionalEndDatePickerRow: View {
         onOptionsPresentationChange: @escaping (Bool) -> Void = { _ in },
         onOptionsTouchDown: (() -> Void)? = nil,
         isOptionsPresentationBlocked: Bool = false,
-        isPickerPresentationBlocked: Bool = false
+        isPickerPresentationBlocked: Bool = false,
+        isReadOnly: Bool = false
     ) {
         self.title = title
         self.emptyTitle = emptyTitle
         _date = date
-        self.range = range
         self.fallbackDate = fallbackDate
         self.isEnabled = isEnabled
         self.onTap = onTap
@@ -970,29 +1011,86 @@ struct AppOptionalEndDatePickerRow: View {
         self.onOptionsTouchDown = onOptionsTouchDown
         self.isOptionsPresentationBlocked = isOptionsPresentationBlocked
         self.isPickerPresentationBlocked = isPickerPresentationBlocked
+        self.isReadOnly = isReadOnly
+        _pickerDate = State(initialValue: date.wrappedValue ?? fallbackDate)
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 16) {
-                Text(title)
-                    .foregroundStyle(.primary)
+            optionsRow
 
-                Spacer()
+            if isEnabled, date != nil {
+                AppSectionDivider()
+                if isReadOnly {
+                    readOnlyDateRow
+                } else {
+                    AppDatePickerRow(
+                        title: "End Date",
+                        date: $pickerDate,
+                        onTap: onTap,
+                        isPickerPresentationBlocked: isPickerPresentationBlocked
+                    )
+                }
+            }
+        }
+        .onChange(of: dismissOptionsSignal) { _, _ in
+            setEndDateOptionsPresented(false)
+        }
+        .onChange(of: date) { _, newDate in
+            pickerDate = newDate ?? fallbackDate
+        }
+        .onChange(of: fallbackDate) { _, newFallbackDate in
+            if date == nil {
+                pickerDate = newFallbackDate
+            }
+        }
+        .onChange(of: pickerDate) { _, newDate in
+            if date != nil {
+                date = newDate
+            }
+        }
+        .onAppear {
+            pickerDate = date ?? fallbackDate
+        }
+        .onDisappear {
+            setEndDateOptionsPresented(false)
+        }
+    }
 
+    private var endDateOptionsPopover: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            endDateOptionButton(title: "Never", isSelected: date == nil) {
+                applyEndDateSelection(nil)
+            }
+
+            endDateOptionButton(title: "On Date", isSelected: date != nil) {
+                applyEndDateSelection(date ?? fallbackDate)
+            }
+        }
+        .frame(width: 220)
+        .padding(.vertical, 8)
+        .presentationCompactAdaptation(.popover)
+    }
+
+    private var optionsRow: some View {
+        HStack(spacing: 16) {
+            Text(title)
+                .foregroundStyle(.primary)
+
+            Spacer()
+
+            if isReadOnly {
+                Text(optionTitle)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .multilineTextAlignment(.trailing)
+            } else {
                 Button {
-                    guard isEnabled, !isOptionsPresentationBlocked else { return }
-                    AppDescriptionFieldSupport.dismissKeyboard()
-                    onTap?()
-                    guard !isShowingEndDateOptions else {
-                        setEndDateOptionsPresented(false)
-                        return
-                    }
-                    onOptionsTouchDown?()
-                    setEndDateOptionsPresented(true)
+                    toggleOptions()
                 } label: {
                     HStack(spacing: 6) {
-                        Text(date == nil ? emptyTitle : "On Date")
+                        Text(optionTitle)
                             .lineLimit(1)
                             .fixedSize(horizontal: true, vertical: false)
                         Image(systemName: "chevron.up.chevron.down")
@@ -1009,73 +1107,38 @@ struct AppOptionalEndDatePickerRow: View {
                     onOptionsTouchDown?()
                 }
             }
-            .padding(.horizontal, AppLayout.rowHorizontalPadding)
-            .padding(.vertical, AppLayout.rowVerticalPadding)
-            .contentShape(Rectangle())
-            .simultaneousGesture(TapGesture().onEnded {
-                AppDescriptionFieldSupport.dismissKeyboard()
-                onTap?()
-            })
-            .popover(
-                isPresented: endDateOptionsPresentationBinding,
-                attachmentAnchor: .point(.trailing),
-                arrowEdge: .trailing
-            ) {
-                endDateOptionsPopover
-            }
-
-            if isEnabled, date != nil {
-                AppSectionDivider()
-
-                HStack(spacing: 16) {
-                    Text("End Date")
-                        .foregroundStyle(.primary)
-
-                    Spacer()
-
-                    DatePicker("", selection: dateBinding, in: range, displayedComponents: .date)
-                        .datePickerStyle(.compact)
-                        .labelsHidden()
-                        .appAccentTint()
-                        .fixedSize()
-                        .allowsHitTesting(!isPickerPresentationBlocked)
-                }
-                .padding(.horizontal, AppLayout.rowHorizontalPadding)
-                .padding(.vertical, AppLayout.rowVerticalPadding)
-                .contentShape(Rectangle())
-                .simultaneousGesture(TapGesture().onEnded {
-                    AppDescriptionFieldSupport.dismissKeyboard()
-                    onTap?()
-                })
-            }
         }
-        .transaction { transaction in
-            transaction.animation = nil
-        }
-        .onChange(of: dismissOptionsSignal) { _, _ in
-            setEndDateOptionsPresented(false)
-        }
-        .onChange(of: normalizedRangeLowerBound) { _, _ in
-            clampSelectedDateIntoRange()
-        }
-        .onDisappear {
-            setEndDateOptionsPresented(false)
+        .padding(.horizontal, AppLayout.rowHorizontalPadding)
+        .padding(.vertical, AppLayout.rowVerticalPadding)
+        .contentShape(Rectangle())
+        .simultaneousGesture(TapGesture().onEnded {
+            AppDescriptionFieldSupport.dismissKeyboard()
+            onTap?()
+        })
+        .popover(
+            isPresented: endDateOptionsPresentationBinding,
+            attachmentAnchor: .point(.trailing),
+            arrowEdge: .trailing
+        ) {
+            endDateOptionsPopover
         }
     }
 
-    private var endDateOptionsPopover: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            endDateOptionButton(title: "Never", isSelected: date == nil) {
-                applyEndDateSelection(nil)
-            }
+    private var readOnlyDateRow: some View {
+        HStack(spacing: 16) {
+            Text("End Date")
+                .foregroundStyle(.primary)
 
-            endDateOptionButton(title: "On Date", isSelected: date != nil) {
-                applyEndDateSelection(clampedFallbackDate)
-            }
+            Spacer()
+
+            Text((date ?? fallbackDate).formatted(date: .abbreviated, time: .omitted))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .multilineTextAlignment(.trailing)
         }
-        .frame(width: 220)
-        .padding(.vertical, 8)
-        .presentationCompactAdaptation(.popover)
+        .padding(.horizontal, AppLayout.rowHorizontalPadding)
+        .padding(.vertical, AppLayout.rowVerticalPadding)
     }
 
     private func endDateOptionButton(
@@ -1104,8 +1167,24 @@ struct AppOptionalEndDatePickerRow: View {
     }
 
     private func applyEndDateSelection(_ newDate: Date?) {
+        if let newDate {
+            pickerDate = newDate
+        }
         date = newDate
         setEndDateOptionsPresented(false)
+    }
+
+    private func toggleOptions() {
+        guard isEnabled, !isOptionsPresentationBlocked else { return }
+        AppDescriptionFieldSupport.dismissKeyboard()
+        onTap?()
+
+        if isShowingEndDateOptions {
+            setEndDateOptionsPresented(false)
+        } else {
+            onOptionsTouchDown?()
+            setEndDateOptionsPresented(true)
+        }
     }
 
     private var endDateOptionsPresentationBinding: Binding<Bool> {
@@ -1123,34 +1202,10 @@ struct AppOptionalEndDatePickerRow: View {
         onOptionsPresentationChange(isPresented)
     }
 
-    private var dateBinding: Binding<Date> {
-        Binding(
-            get: {
-                date.map { Calendar.current.startOfDay(for: $0) } ?? clampedFallbackDate
-            },
-            set: { newValue in
-                date = Calendar.current.startOfDay(for: newValue)
-            }
-        )
+    private var optionTitle: String {
+        date == nil ? emptyTitle : "On Date"
     }
 
-    private var clampedFallbackDate: Date {
-        let normalizedFallback = Calendar.current.startOfDay(for: fallbackDate)
-        return max(normalizedFallback, normalizedRangeLowerBound)
-    }
-
-    private var normalizedRangeLowerBound: Date {
-        Calendar.current.startOfDay(for: range.lowerBound)
-    }
-
-    private func clampSelectedDateIntoRange() {
-        guard let selectedDate = date.map({ Calendar.current.startOfDay(for: $0) }),
-              selectedDate < normalizedRangeLowerBound else {
-            return
-        }
-
-        date = normalizedRangeLowerBound
-    }
 }
 
 @MainActor
@@ -1206,11 +1261,9 @@ private final class AppSchedulePresentationGuard: ObservableObject {
 
 struct AppCreateScheduleSection<RepeatDestination: View>: View {
     @Binding var startDate: Date
-    let startDateRange: ClosedRange<Date>?
     @Binding var reminderEnabled: Bool
     @Binding var reminderDate: Date
     @Binding var endDate: Date?
-    let endDateRange: PartialRangeFrom<Date>
     let isEndDateEnabled: Bool
     let endDateTitle: String
     let endDateEmptyTitle: String
@@ -1225,11 +1278,9 @@ struct AppCreateScheduleSection<RepeatDestination: View>: View {
 
     init(
         startDate: Binding<Date>,
-        startDateRange: ClosedRange<Date>? = nil,
         reminderEnabled: Binding<Bool>,
         reminderDate: Binding<Date>,
         endDate: Binding<Date?>,
-        endDateRange: PartialRangeFrom<Date>,
         isEndDateEnabled: Bool = true,
         endDateTitle: String = "End Repeat",
         endDateEmptyTitle: String = "Never",
@@ -1241,11 +1292,9 @@ struct AppCreateScheduleSection<RepeatDestination: View>: View {
         @ViewBuilder repeatDestination: () -> RepeatDestination
     ) {
         _startDate = startDate
-        self.startDateRange = startDateRange
         _reminderEnabled = reminderEnabled
         _reminderDate = reminderDate
         _endDate = endDate
-        self.endDateRange = endDateRange
         self.isEndDateEnabled = isEndDateEnabled
         self.endDateTitle = endDateTitle
         self.endDateEmptyTitle = endDateEmptyTitle
@@ -1263,9 +1312,8 @@ struct AppCreateScheduleSection<RepeatDestination: View>: View {
 
             AppCard {
                 VStack(alignment: .leading, spacing: 0) {
-                    AppStartDatePickerRow(
+                    AppDatePickerRow(
                         date: $startDate,
-                        range: startDateRange,
                         onTap: startDateTap,
                         isPickerPresentationBlocked: presentationGuard.isPickerPresentationBlocked
                     )
@@ -1298,7 +1346,6 @@ struct AppCreateScheduleSection<RepeatDestination: View>: View {
                         title: endDateTitle,
                         emptyTitle: endDateEmptyTitle,
                         date: $endDate,
-                        range: endDateRange,
                         fallbackDate: startDate,
                         isEnabled: isEndDateEnabled,
                         onTap: endDateTap,
@@ -1324,11 +1371,11 @@ struct AppCreateScheduleSection<RepeatDestination: View>: View {
 }
 
 struct AppEditScheduleSection<RepeatDestination: View>: View {
+    let startDate: Date
     @Binding var reminderEnabled: Bool
     @Binding var reminderDate: Date
     let repeatSummary: String
     @Binding var endDate: Date?
-    let endDateRange: PartialRangeFrom<Date>
     let endDateFallback: Date
     let isEndDateEnabled: Bool
     let endDateTitle: String
@@ -1336,16 +1383,17 @@ struct AppEditScheduleSection<RepeatDestination: View>: View {
     let reminderTimeTap: (() -> Void)?
     let repeatTap: (() -> Void)?
     let endDateTap: (() -> Void)?
+    let isReadOnly: Bool
     @ViewBuilder let repeatDestination: RepeatDestination
     @StateObject private var presentationGuard = AppSchedulePresentationGuard()
     @State private var endDateOptionsDismissSignal = 0
 
     init(
+        startDate: Date,
         reminderEnabled: Binding<Bool>,
         reminderDate: Binding<Date>,
         repeatSummary: String,
         endDate: Binding<Date?>,
-        endDateRange: PartialRangeFrom<Date>,
         endDateFallback: Date,
         isEndDateEnabled: Bool = true,
         endDateTitle: String = "End Repeat",
@@ -1353,13 +1401,14 @@ struct AppEditScheduleSection<RepeatDestination: View>: View {
         reminderTimeTap: (() -> Void)? = nil,
         repeatTap: (() -> Void)? = nil,
         endDateTap: (() -> Void)? = nil,
+        isReadOnly: Bool = false,
         @ViewBuilder repeatDestination: () -> RepeatDestination
     ) {
+        self.startDate = startDate
         _reminderEnabled = reminderEnabled
         _reminderDate = reminderDate
         self.repeatSummary = repeatSummary
         _endDate = endDate
-        self.endDateRange = endDateRange
         self.endDateFallback = endDateFallback
         self.isEndDateEnabled = isEndDateEnabled
         self.endDateTitle = endDateTitle
@@ -1367,6 +1416,7 @@ struct AppEditScheduleSection<RepeatDestination: View>: View {
         self.reminderTimeTap = reminderTimeTap
         self.repeatTap = repeatTap
         self.endDateTap = endDateTap
+        self.isReadOnly = isReadOnly
         self.repeatDestination = repeatDestination()
     }
 
@@ -1376,24 +1426,33 @@ struct AppEditScheduleSection<RepeatDestination: View>: View {
 
             AppCard {
                 VStack(alignment: .leading, spacing: 0) {
+                    AppStartDateValueRow(date: startDate)
+
+                    AppSectionDivider()
+
                     AppReminderTimeRows(
                         isEnabled: $reminderEnabled,
                         reminderDate: $reminderDate,
                         onTimeTap: reminderTimeTap,
                         onPickerTouchDown: presentationGuard.blockEndDateOptionsForPickerTouch,
-                        isPickerPresentationBlocked: presentationGuard.isPickerPresentationBlocked
+                        isPickerPresentationBlocked: presentationGuard.isPickerPresentationBlocked,
+                        isReadOnly: isReadOnly
                     )
 
                     AppSectionDivider()
 
-                    AppCreateRepeatPickerRow(
-                        value: repeatSummary,
-                        onTap: {
-                            dismissEndDateOptionsForRepeatNavigation()
-                            repeatTap?()
+                    if isReadOnly {
+                        AppReadOnlyRepeatRow(value: repeatSummary)
+                    } else {
+                        AppCreateRepeatPickerRow(
+                            value: repeatSummary,
+                            onTap: {
+                                dismissEndDateOptionsForRepeatNavigation()
+                                repeatTap?()
+                            }
+                        ) {
+                            repeatDestination
                         }
-                    ) {
-                        repeatDestination
                     }
 
                     AppSectionDivider()
@@ -1402,7 +1461,6 @@ struct AppEditScheduleSection<RepeatDestination: View>: View {
                         title: endDateTitle,
                         emptyTitle: endDateEmptyTitle,
                         date: $endDate,
-                        range: endDateRange,
                         fallbackDate: endDateFallback,
                         isEnabled: isEndDateEnabled,
                         onTap: endDateTap,
@@ -1410,7 +1468,8 @@ struct AppEditScheduleSection<RepeatDestination: View>: View {
                         onOptionsPresentationChange: presentationGuard.setEndDateOptionsPresented,
                         onOptionsTouchDown: presentationGuard.blockPickersForEndDateOptionsTouch,
                         isOptionsPresentationBlocked: presentationGuard.isEndDateOptionsPresentationBlocked,
-                        isPickerPresentationBlocked: presentationGuard.isPickerPresentationBlocked
+                        isPickerPresentationBlocked: presentationGuard.isPickerPresentationBlocked,
+                        isReadOnly: isReadOnly
                     )
                 }
             }

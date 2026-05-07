@@ -132,6 +132,7 @@ struct PillHistoryCalendarView: View {
     @Binding var takenDays: Set<Date>
     @Binding var skippedDays: Set<Date>
     let availableMonths: [Date]
+    var isReadOnly = false
     let onMonthChange: (Date) -> Void
 
     private var calendar: Calendar {
@@ -149,11 +150,12 @@ struct PillHistoryCalendarView: View {
             PillCalendarDayView(
                 dayNumber: calendar.component(.day, from: date),
                 style: dayStyle(for: date),
+                isEditable: !isReadOnly && editableDays.contains(date),
                 isScheduled: isScheduled(date),
                 cellSize: cellSize
             )
             .contentShape(Circle())
-            .allowsHitTesting(editableDays.contains(date))
+            .allowsHitTesting(!isReadOnly && editableDays.contains(date))
             .onTapGesture {
                 toggle(date)
             }
@@ -161,6 +163,7 @@ struct PillHistoryCalendarView: View {
     }
 
     private func toggle(_ date: Date) {
+        guard !isReadOnly else { return }
         let normalizedDate = calendar.startOfDay(for: date)
         guard editableDays.contains(normalizedDate) else { return }
 
@@ -197,15 +200,16 @@ struct PillHistoryCalendarView: View {
     }
 
     private func dayStyle(for date: Date) -> PillCalendarDayStyle {
-        guard editableDays.contains(date) else {
-            return .disabled
-        }
         if takenDays.contains(date) {
             return .taken
         } else if skippedDays.contains(date) {
             return .skipped
-        } else {
+        } else if isReadOnly {
+            return .disabled
+        } else if editableDays.contains(date) {
             return .available
+        } else {
+            return .disabled
         }
     }
 
@@ -270,6 +274,7 @@ private enum PillCalendarDayStyle {
 private struct PillCalendarDayView: View {
     let dayNumber: Int
     let style: PillCalendarDayStyle
+    let isEditable: Bool
     let isScheduled: Bool
     let cellSize: CGFloat
     @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
@@ -313,12 +318,16 @@ private struct PillCalendarDayView: View {
     private var backgroundColor: Color {
         switch style {
         case .taken:
-            return appTint.accentColor.opacity(0.18)
+            return appTint.accentColor.opacity(markedBackgroundOpacity)
         case .skipped:
-            return Color(uiColor: .systemRed).opacity(0.18)
+            return Color(uiColor: .systemRed).opacity(markedBackgroundOpacity)
         case .available, .disabled:
             return .clear
         }
+    }
+
+    private var markedBackgroundOpacity: Double {
+        isEditable ? 0.18 : 0.48
     }
 
     private var markerSize: CGFloat {

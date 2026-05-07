@@ -130,7 +130,7 @@ struct HabitDetailsView: View {
         }
         .navigationTitle(details?.type.sectionTitle ?? "Habit")
         .navigationBarTitleDisplayMode(.inline)
-        .alert("Delete Habit?", isPresented: $isShowingDeleteConfirmation) {
+        .alert("Permanently Delete Habit?", isPresented: $isShowingDeleteConfirmation) {
             Button("Delete", role: .destructive) {
                 deleteHabit()
             }
@@ -185,15 +185,15 @@ struct HabitDetailsView: View {
     }
 
     private var deleteButton: some View {
-        Button(role: .destructive) {
+        Button {
             isShowingDeleteConfirmation = true
         } label: {
             Label("Delete", systemImage: "trash")
+                .foregroundStyle(.red)
                 .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.bordered)
-        .buttonBorderShape(.capsule)
-        .controlSize(.large)
+        .buttonStyle(AppMaterialCapsuleActionButtonStyle())
+        .tint(.red)
         .frame(maxWidth: .infinity)
     }
 
@@ -416,6 +416,7 @@ private struct ReadOnlyMonthCalendarView: View {
             HabitCalendarDayView(
                 dayNumber: calendar.component(.day, from: date),
                 style: dayStyle(for: date),
+                isEditable: false,
                 isScheduled: isScheduled(date),
                 cellSize: cellSize
             )

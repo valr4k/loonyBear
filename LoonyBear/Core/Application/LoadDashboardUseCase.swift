@@ -23,7 +23,7 @@ struct LoadDashboardUseCase {
             sections.append(
                 HabitSectionProjection(
                     id: .archived,
-                    title: "Archived",
+                    title: "Recently Deleted",
                     habits: archivedHabits
                 )
             )

@@ -30,7 +30,7 @@
         },
         {
           "title": "App tint",
-          "body": "Settings stores an app color: Blue, Indigo, Green, or Amber. Blue is the default app color and appears first in the palette. App colors apply to supported accent surfaces, while page backgrounds remain the system grouped background. Amber uses the iOS system orange color. Legacy stored tint values default, gray, yellow, cyan, teal, brown, red, and white are treated as Blue. Editable schedule checkmarks, Settings app-row icons, and Calendar Taken/Completed markers use the selected app color. Read-only schedule checkmarks, toggles, segmented picker selection, skipped markers, overdue and warning colors, card Edit/Info swipe actions, and Backup action rows remain fixed system colors."
+          "body": "Settings stores an app color: Blue, Indigo, Green, or Amber. Blue is the default app color and appears first in the palette. App colors apply to supported accent surfaces, while page backgrounds remain the system grouped background. Amber uses the iOS system orange color. Legacy stored tint values default, gray, yellow, cyan, teal, brown, red, and white are treated as Blue. Editable schedule checkmarks, Settings app-row icons, and Calendar Taken/Completed markers use the selected app color. Read-only schedule checkmarks, toggles, segmented picker selection, skipped markers, overdue and warning colors, and Backup action rows remain fixed system colors."
         },
         {
           "title": "Badge refresh cadence",
@@ -47,15 +47,15 @@
         },
         {
           "title": "What a Habit card shows",
-          "body": "Each Habit card shows the name, the current schedule summary, the current streak text, the reminder text if a reminder exists, and a status icon. If there is an active overdue scheduled day, the card shows a red Today, Yesterday, or date label such as 03 May 2026. Future Habits show Starts plus the start date. Archived Habits live on the separate Habit Archive page. Active overdue is not counted as a history gap. If recent history still needs review for another required scheduled day, the card also shows an amber warning icon. Otherwise, a green checkmark circle means completed today and a red xmark circle means skipped today."
+          "body": "Each Habit card shows the name, the current schedule summary, the current streak text, the reminder text if a reminder exists, and a status icon. If there is an active overdue scheduled day, the card shows a red Today, Yesterday, or date label such as 03 May 2026. Future Habits show Starts plus the start date. Soft-deleted Habits live on the separate Recently Deleted page. Active overdue is not counted as a history gap. If recent history still needs review for another required scheduled day, the card also shows an amber warning icon. Otherwise, a green checkmark circle means completed today and a red xmark circle means skipped today."
         },
         {
           "title": "Habit swipe actions",
-          "body": "Leading swipe actions are used for day-state changes on active started Habits. Future and archived Habit cards do not expose day-state leading swipe actions. If today is already completed or skipped, the swipe action clears today's state with the arrow.uturn.backward system symbol. If today has no state, the swipe actions are Complete and Skip. Trailing swipe exposes Edit and Info. Edit uses system blue, Info uses system indigo, and Delete is not in card swipe actions."
+          "body": "Leading swipe actions are used for day-state changes on active started Habits. Future and archived Habit cards do not expose day-state leading swipe actions. If today is already completed or skipped, the swipe action clears today's state with the arrow.uturn.backward system symbol. If today has no state, the swipe actions are Complete and Skip. Tapping an active Habit card opens Edit Habit. Habit cards do not expose trailing swipe actions, and Delete is not in card swipe actions."
         },
         {
-          "title": "Habit Archive page",
-          "body": "My Habits shows the Archive toolbar button only when at least one archived Habit exists. The Habit Archive page shows archived Habits without Build or Quit sections. Archived Habit cards do not expose day-state leading swipe actions. Archived Habits open read-only Details, do not expose Edit or Restore, and can be deleted from Details."
+          "title": "Habit Recently Deleted page",
+          "body": "My Habits shows the Recently Deleted toolbar button only when at least one soft-deleted Habit exists. Recently Deleted shows soft-deleted Habits without Build or Quit sections. Soft-deleted Habit cards do not expose day-state leading swipe actions. Soft-deleted Habits open a read-only item screen, do not expose Edit or Restore, and can be permanently deleted from that screen."
         },
         {
           "title": "Creating a Habit",
@@ -63,7 +63,7 @@
         },
         {
           "title": "Habit start date range",
-          "body": "Habit start date can be selected from the last 5 years through the end of the second next calendar month. A future Habit remains in its normal Build or Quit dashboard section, shows Starts 03 May 2026 style dates, and has no today action/status, no overdue state, no notifications, and no history review before its start date."
+          "body": "Habit start date uses the native compact system date picker with no app-level selectable range. A future Habit remains in its normal Build or Quit dashboard section, shows Starts 03 May 2026 style dates, and has no today action/status, no overdue state, no notifications, and no history review before its start date."
         },
         {
           "title": "Habit reminder permission behavior",
@@ -71,11 +71,11 @@
         },
         {
           "title": "Habit details screen",
-          "body": "Habit Details shows name, a Streaks block with current streak, best streak, and completed for, a read-only Schedule block with Reminder and Repeat, a History block with Start Date and End Date, and a read-only calendar. Repeat uses the same display style as dashboard cards and does not open a popover. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Active Habit Details shows a dismissible floating warning banner when any past scheduled day needs review. If the only missing day is the active overdue day, the banner says Finish updating overdue days on the Edit screen. Otherwise it says Finish updating past days on the Edit screen. Archived Habit Details is read-only, hides Edit, suppresses missing-history review, and shows Delete at the bottom."
+          "body": "Habit Details shows name, a Streaks block with current streak, best streak, and completed for, a read-only Schedule block with Reminder and Repeat, a History block with Start Date and End Date, and a read-only calendar. Repeat uses the same display style as dashboard cards and does not open a popover. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Active Habit Details shows a dismissible floating warning banner when any past scheduled day needs review. If the only missing day is the active overdue day, the banner says Finish updating overdue days on the Edit screen. Otherwise it says Finish updating past days on the Edit screen. Soft-deleted Habits open a read-only item screen that suppresses missing-history review and shows permanent Delete at the bottom."
         },
         {
           "title": "Editing a Habit",
-          "body": "Edit Habit shows name, a Schedule block with Reminder, Time, Repeat, End Repeat, and End Date, an editable calendar, and Delete plus Archive at the bottom. Start Date is not editable from Edit. Repeat opens the pushed Repeat editor. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Name, schedule, end-date, missing past-day, and unexpected action errors are shown as dismissible floating warning banners. Save is disabled until required history review is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a system alert with Cancel and Delete actions. Archive uses a system confirmation alert and is available only for active Habits."
+          "body": "Edit Habit shows name, a Schedule block with Reminder, Time, Repeat, End Repeat, and End Date, an editable calendar, and one Delete action at the bottom for active Habits. Start Date is not editable from Edit. Repeat opens the pushed Repeat editor. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Name, schedule, end-date, missing past-day, and unexpected action errors are shown as dismissible floating warning banners. Save is disabled until required history review is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Active Delete uses a system confirmation alert and moves the Habit to Recently Deleted instead of permanently deleting it."
         }
       ]
     },
@@ -129,15 +129,15 @@
         },
         {
           "title": "What a Pill card shows",
-          "body": "Each Pill card shows the name, dosage, schedule summary, total taken days, reminder text if a reminder exists, and a status icon. If there is an active overdue scheduled day, the card shows a red Today, Yesterday, or date label such as 03 May 2026. Future Pills appear in Pending and show Starts plus the start date. Archived Pills live on the separate Pill Archive page. Active overdue is not counted as a history gap. If recent history still needs review for another required scheduled day, the card also shows an amber warning icon. Otherwise, a green checkmark circle means taken today and a red xmark circle means skipped today."
+          "body": "Each Pill card shows the name, dosage, schedule summary, total taken days, reminder text if a reminder exists, and a status icon. If there is an active overdue scheduled day, the card shows a red Today, Yesterday, or date label such as 03 May 2026. Future Pills appear in Pending and show Starts plus the start date. Soft-deleted Pills live on the separate Recently Deleted page. Active overdue is not counted as a history gap. If recent history still needs review for another required scheduled day, the card also shows an amber warning icon. Otherwise, a green checkmark circle means taken today and a red xmark circle means skipped today."
         },
         {
           "title": "Pill swipe actions",
-          "body": "Leading swipe actions are used for day-state changes on active started Pills. Future and archived Pill cards do not expose day-state leading swipe actions. If today is already taken or skipped, the swipe action clears today's state with the arrow.uturn.backward system symbol. If today has no state, the swipe actions are Taken and Skip. Trailing swipe exposes Edit and Info. Edit uses system blue, Info uses system indigo, and Delete is not in card swipe actions."
+          "body": "Leading swipe actions are used for day-state changes on active started Pills. Future and archived Pill cards do not expose day-state leading swipe actions. If today is already taken or skipped, the swipe action clears today's state with the arrow.uturn.backward system symbol. If today has no state, the swipe actions are Taken and Skip. Tapping an active Pill card opens Edit Pill. Pill cards do not expose trailing swipe actions, and Delete is not in card swipe actions."
         },
         {
-          "title": "Pill Archive page",
-          "body": "My Pills shows the Archive toolbar button only when at least one archived Pill exists. The Pill Archive page shows archived Pills without Today or Pending sections. Archived Pill cards do not expose day-state leading swipe actions. Archived Pills open read-only Details, do not expose Edit or Restore, and can be deleted from Details."
+          "title": "Pill Recently Deleted page",
+          "body": "My Pills shows the Recently Deleted toolbar button only when at least one soft-deleted Pill exists. Recently Deleted shows soft-deleted Pills without Today or Pending sections. Soft-deleted Pill cards do not expose day-state leading swipe actions. Soft-deleted Pills open a read-only item screen, do not expose Edit or Restore, and can be permanently deleted from that screen."
         },
         {
           "title": "Creating a Pill",
@@ -145,15 +145,15 @@
         },
         {
           "title": "Pill start date range",
-          "body": "Pill start date can be selected from the last 5 years through the end of the second next calendar month. A future Pill appears in Pending and shows Starts 03 May 2026 style dates, but it has no today action/status, no overdue state, no notifications, and no history review before its start date."
+          "body": "Pill start date uses the native compact system date picker with no app-level selectable range. A future Pill appears in Pending and shows Starts 03 May 2026 style dates, but it has no today action/status, no overdue state, no notifications, and no history review before its start date."
         },
         {
           "title": "Pill details screen",
-          "body": "Pill Details shows name, dosage, a Streak block with Taken for, a read-only Schedule block with Reminder and Repeat, a History block with Start Date and End Date, a read-only calendar, and description if one exists. Repeat uses the same display style as dashboard cards and does not open a popover. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Active Pill Details shows a dismissible floating warning banner when any past scheduled day needs review. If the only missing day is the active overdue day, the banner says Finish updating overdue days on the Edit screen. Otherwise it says Finish updating past days on the Edit screen. Archived Pill Details is read-only, hides Edit, suppresses missing-history review, and shows Delete at the bottom."
+          "body": "Pill Details shows name, dosage, a Streak block with Taken for, a read-only Schedule block with Reminder and Repeat, a History block with Start Date and End Date, a read-only calendar, and description if one exists. Repeat uses the same display style as dashboard cards and does not open a popover. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Active Pill Details shows a dismissible floating warning banner when any past scheduled day needs review. If the only missing day is the active overdue day, the banner says Finish updating overdue days on the Edit screen. Otherwise it says Finish updating past days on the Edit screen. Soft-deleted Pills open a read-only item screen that suppresses missing-history review and shows permanent Delete at the bottom."
         },
         {
           "title": "Editing a Pill",
-          "body": "Edit Pill shows name, dosage, a Schedule block with Reminder, Time, Repeat, End Repeat, and End Date, an editable calendar, description, and Delete plus Archive at the bottom. Start Date is not editable from Edit. Repeat opens the pushed Repeat editor. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Name, dosage, schedule, end-date, missing past-day, and unexpected action errors are shown as dismissible floating warning banners. Save is disabled until required history review is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Delete uses a system alert with Cancel and Delete actions. Archive uses a system confirmation alert and is available only for active Pills."
+          "body": "Edit Pill shows name, dosage, a Schedule block with Reminder, Time, Repeat, End Repeat, and End Date, an editable calendar, description, and one Delete action at the bottom for active Pills. Start Date is not editable from Edit. Repeat opens the pushed Repeat editor. The calendar shows a small tertiary system-gray dot under dates that match the effective schedule history. Name, dosage, schedule, end-date, missing past-day, and unexpected action errors are shown as dismissible floating warning banners. Save is disabled until required history review is resolved. A past active overdue day is included in Edit validation and uses overdue-specific warning copy when it is the only missing day. Active Delete uses a system confirmation alert and moves the Pill to Recently Deleted instead of permanently deleting it."
         }
       ]
     },
@@ -259,8 +259,8 @@
           "body": "When a newer scheduled due day appears, older empty due scheduled days become history gaps. They remain manual review and can only be fixed in Edit."
         },
         {
-          "title": "End Repeat, End Date, and archive",
-          "body": "End Repeat is optional for both Pills and Habits. The Schedule UI shows an End Repeat options row with Never or On Date; the End Date picker row appears only for On Date. If a date is selected, the final active scheduled day is the last scheduled day on or before that date. The End Date picker lower bound is max(today, startDate), and Edit can raise that lower bound to the hidden schedule-change effectiveFrom after Repeat changes. A selected End Date is valid only when at least one scheduled day exists between the active lower bound and the selected date. If not, Save stays disabled and the app shows the dismissible floating warning End date must be on or after the first scheduled day. The native picker keeps visible values inside its allowed range while editing, but Save does not silently raise End Date. Once the final day is taken/completed or skipped, the item archives automatically without confirmation. If the final day remains empty, the item stays active and can become overdue. Manual Archive also uses confirmation. Archive preserves reminder, repeat, end date, and history as historical data. Repeat Never for Pills is a one-time schedule on Start Date, clears and ignores End Date, and archives automatically after that day is taken or skipped."
+          "title": "End Repeat, End Date, and Recently Deleted",
+          "body": "End Repeat is optional for both Pills and Habits. The Schedule UI shows an End Repeat options row with Never or On Date; the End Date picker row appears only for On Date. If a date is selected, the final active scheduled day is the last scheduled day on or before that date. The End Date row uses the native compact system date picker with no app-level selectable range. A selected End Date is valid only when at least one scheduled day exists between the active lower bound and the selected date. If not, Save stays disabled and the app shows the dismissible floating warning End date must be on or after the first scheduled day. Save does not silently raise End Date. Once the final day is taken/completed or skipped, the item moves to Recently Deleted automatically without confirmation. If the final day remains empty, the item stays active and can become overdue. Manual Delete also uses confirmation and moves the item to Recently Deleted. Soft delete preserves reminder, repeat, end date, and history as historical data. Repeat Never for Pills is a one-time schedule on Start Date, clears and ignores End Date, and moves the Pill to Recently Deleted automatically after that day is taken or skipped."
         }
       ]
     },
@@ -372,7 +372,7 @@
         },
         {
           "title": "Reminder time rules",
-          "body": "ReminderTime stores hour and minute as integers. ReminderTime.default rounds the current time up to a 5-minute boundary. If rounding reaches 60 minutes, the hour is incremented and minute becomes 0. Create/Edit reminder time rows use the native compact system time picker. Create Start Date rows use the native compact system date picker. End Date rows use the native compact system date picker, keep visible values inside the active lower bound while editing, and use shared schedule-aware validation instead of silent Save correction. Schedule blocks keep native system pickers and protect them with a shared presentation guard: while the End Repeat options popover is open, neighboring compact pickers ignore hit-testing; Time and End Repeat touch-downs briefly block the opposite presentation path through a non-cancelling window-level observer; and Repeat navigation dismisses and briefly blocks End Repeat so the popover cannot survive over the pushed Repeat screen. Edit screens do not expose Start Date."
+          "body": "ReminderTime stores hour and minute as integers. ReminderTime.default rounds the current time up to a 5-minute boundary. If rounding reaches 60 minutes, the hour is incremented and minute becomes 0. Create/Edit reminder time rows use the native compact system time picker. Create Start Date rows use the native compact system date picker with no app-level selectable range. End Date rows use the native compact system date picker with no app-level selectable range and use shared schedule-aware validation instead of silent Save correction. Schedule blocks keep native system pickers and protect them with a shared presentation guard: while the End Repeat options popover is open, neighboring compact pickers ignore hit-testing; Time and End Repeat touch-downs briefly block the opposite presentation path through a non-cancelling window-level observer; and Repeat navigation dismisses and briefly blocks End Repeat so the popover cannot survive over the pushed Repeat screen. Edit screens do not expose Start Date."
         },
         {
           "title": "Schedule model",
@@ -422,7 +422,7 @@
         },
         {
           "title": "Habit update behavior",
-          "body": "Habit update changes name, reminder fields, optional End Date, and optionally inserts a new HabitScheduleVersion if the schedule rule changed. Apply From is hidden; the new schedule version starts at the hidden effectiveFrom based on max(today, startDate), bounded by the end of the second next calendar month, and normally saved at the lower bound. This hidden resolver is schedule-agnostic and does not skip explicit history states. Editable history is normalized and written back day by day using manual edit or skipped sources. Update validation requires every past editable scheduled day to be Completed or Skipped; missing scheduled past states block save instead of being auto-filled. Archived Habits are final inactive storage, open read-only Details, are not edited or restored, and can only be deleted."
+          "body": "Habit update changes name, reminder fields, optional End Date, and optionally inserts a new HabitScheduleVersion if the schedule rule changed. Apply From is hidden; the new schedule version starts at the hidden effectiveFrom based on max(today, startDate), bounded by the end of the second next calendar month, and normally saved at the lower bound. This hidden resolver is schedule-agnostic and does not skip explicit history states. Editable history is normalized and written back day by day using manual edit or skipped sources. Update validation requires every past editable scheduled day to be Completed or Skipped; missing scheduled past states block save instead of being auto-filled. Soft-deleted Habits are final inactive storage, open a read-only item screen, are not edited or restored, and can only be permanently deleted."
         },
         {
           "title": "Habit today actions",
@@ -451,7 +451,7 @@
         },
         {
           "title": "Pill update behavior",
-          "body": "Pill update changes name, dosage, details, reminder fields, optional End Date, and optionally inserts a new PillScheduleVersion if the schedule rule changed. Apply From is hidden; the new schedule version starts at the hidden effectiveFrom based on max(today, startDate), bounded by the end of the second next calendar month, and normally saved at the lower bound. This hidden resolver is schedule-agnostic and does not skip explicit history states. Repeat Never clears and ignores End Date. Editable history is normalized and written back day by day using manual edit or skipped sources. Update validation requires every past editable scheduled day to be Taken or Skipped; missing scheduled past states block save instead of being auto-filled. Archived Pills are final inactive storage, open read-only Details, are not edited or restored, and can only be deleted."
+          "body": "Pill update changes name, dosage, details, reminder fields, optional End Date, and optionally inserts a new PillScheduleVersion if the schedule rule changed. Apply From is hidden; the new schedule version starts at the hidden effectiveFrom based on max(today, startDate), bounded by the end of the second next calendar month, and normally saved at the lower bound. This hidden resolver is schedule-agnostic and does not skip explicit history states. Repeat Never clears and ignores End Date. Editable history is normalized and written back day by day using manual edit or skipped sources. Update validation requires every past editable scheduled day to be Taken or Skipped; missing scheduled past states block save instead of being auto-filled. Soft-deleted Pills are final inactive storage, open a read-only item screen, are not edited or restored, and can only be permanently deleted."
         },
         {
           "title": "Pill today actions",

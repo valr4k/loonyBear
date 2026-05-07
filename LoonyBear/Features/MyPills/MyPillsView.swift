@@ -6,18 +6,18 @@ struct MyPillsView: View {
     @State private var isShowingArchive = false
     let currentTime: Date
     let onCreatePill: () -> Void
-    let onShowPillInfo: (PillCardProjection) -> Void
+    let onOpenArchivedPill: (PillCardProjection) -> Void
     let onEditPill: (PillCardProjection) -> Void
 
     init(
         currentTime: Date = Date(),
         onCreatePill: @escaping () -> Void = {},
-        onShowPillInfo: @escaping (PillCardProjection) -> Void = { _ in },
+        onOpenArchivedPill: @escaping (PillCardProjection) -> Void = { _ in },
         onEditPill: @escaping (PillCardProjection) -> Void = { _ in }
     ) {
         self.currentTime = currentTime
         self.onCreatePill = onCreatePill
-        self.onShowPillInfo = onShowPillInfo
+        self.onOpenArchivedPill = onOpenArchivedPill
         self.onEditPill = onEditPill
     }
 
@@ -30,7 +30,7 @@ struct MyPillsView: View {
                 ContentUnavailableView(
                     pills.isEmpty ? "No pills yet" : "No active pills",
                     systemImage: "pills",
-                    description: Text(pills.isEmpty ? "Create your first pill to track dosage, reminders, and taken days." : "Archived pills live on the Archive page.")
+                    description: Text(pills.isEmpty ? "Create your first pill to track dosage, reminders, and taken days." : "Deleted pills live in Recently Deleted.")
                 )
             } else {
                 List {
@@ -47,6 +47,10 @@ struct MyPillsView: View {
                             .listRowInsets(EdgeInsets())
 	                            .listRowBackground(Color.clear)
 	                            .listRowSeparator(.hidden)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                onEditPill(pill)
+                            }
 	                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
 	                                if pill.isArchived || pill.startsInFuture {
 	                                    EmptyView()
@@ -106,21 +110,6 @@ struct MyPillsView: View {
                                     .tint(.red)
                                 }
 	                            }
-	                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-	                                Button {
-	                                    onShowPillInfo(pill)
-	                                } label: {
-	                                    Image(systemName: "info")
-	                                }
-	                                .tint(.indigo)
-
-	                                Button {
-	                                    onEditPill(pill)
-	                                } label: {
-	                                    Image(systemName: "pencil")
-	                                }
-	                                .tint(.blue)
-	                            }
                         }
                     }
                 }
@@ -133,7 +122,7 @@ struct MyPillsView: View {
         .navigationDestination(isPresented: $isShowingArchive) {
             ArchivedPillsView(
                 currentTime: currentTime,
-                onShowPillInfo: onShowPillInfo
+                onOpenPill: onOpenArchivedPill
             )
             .environmentObject(pillAppState)
         }
@@ -143,7 +132,7 @@ struct MyPillsView: View {
                     Button {
                         isShowingArchive = true
                     } label: {
-                        AppToolbarIconLabel("Archived Pills", systemName: "archivebox")
+                        AppToolbarIconLabel("Recently Deleted", systemName: "tray.badge")
                     }
                     .appAccentTint()
                 }
@@ -234,15 +223,15 @@ struct MyPillsView: View {
 private struct ArchivedPillsView: View {
     @EnvironmentObject private var pillAppState: PillAppState
     let currentTime: Date
-    let onShowPillInfo: (PillCardProjection) -> Void
+    let onOpenPill: (PillCardProjection) -> Void
 
     var body: some View {
         Group {
             if archivedPills.isEmpty {
                 ContentUnavailableView(
-                    "No archived pills",
-                    systemImage: "archivebox",
-                    description: Text("Archived pills will appear here.")
+                    "No recently deleted pills",
+                    systemImage: "trash",
+                    description: Text("Deleted pills will appear here.")
                 )
             } else {
                 List {
@@ -256,13 +245,9 @@ private struct ArchivedPillsView: View {
                         .listRowInsets(EdgeInsets())
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button {
-                                onShowPillInfo(pill)
-                            } label: {
-                                Image(systemName: "info")
-                            }
-                            .tint(.indigo)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            onOpenPill(pill)
                         }
                     }
                 }
@@ -271,7 +256,7 @@ private struct ArchivedPillsView: View {
                 .scrollContentBackground(.hidden)
             }
         }
-        .navigationTitle("Archived Pills")
+        .navigationTitle("Recently Deleted")
         .navigationBarTitleDisplayMode(.inline)
         .background(AppBackground(style: .pills))
         .appTintedBackButton()

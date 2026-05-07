@@ -129,8 +129,8 @@ Important fields:
 
 - `startDate` is stored as a normalized start-of-day date.
 - `endDate` is optional and stored as a normalized start-of-day date when present. The UI labels the option row as `End Repeat`; the stored fact is still the optional `endDate`.
-- `isArchived` marks items that have moved to the separate Archive pages and should not produce active today actions, overdue state, reminders, badge count, or history review.
-- Archiving does not delete or rewrite reminder settings, repeat settings, end date, or history rows. Those stored values remain historical facts for archived Details and backups.
+- `isArchived` marks items that have moved to the separate Recently Deleted pages and should not produce active today actions, overdue state, reminders, badge count, or history review.
+- Soft delete does not delete or rewrite reminder settings, repeat settings, end date, or history rows. Those stored values remain historical facts for read-only deleted Details and backups.
 - Reminder times are stored as hour and minute integer components.
 - Habit and Pill history mode are stored in `historyModeRaw`.
 - Schedule changes are append-only through new version rows.

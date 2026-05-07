@@ -9,6 +9,7 @@ struct EditPillView: View {
     private let onDeleteSuccess: () -> Void
     private let onArchiveSuccess: () -> Void
     private let showsCloseButton: Bool
+    private let isReadOnly: Bool
     private let requiredPastScheduledDays: Set<Date>
     private let scheduledDates: Set<Date>
     private let scheduleHistory: [PillScheduleVersion]
@@ -40,6 +41,7 @@ struct EditPillView: View {
     init(
         details: PillDetailsProjection,
         showsCloseButton: Bool = true,
+        isReadOnly: Bool = false,
         onSaveSuccess: @escaping () -> Void = {},
         onDeleteSuccess: @escaping () -> Void = {},
         onArchiveSuccess: @escaping () -> Void = {}
@@ -48,6 +50,7 @@ struct EditPillView: View {
         self.onDeleteSuccess = onDeleteSuccess
         self.onArchiveSuccess = onArchiveSuccess
         self.showsCloseButton = showsCloseButton
+        self.isReadOnly = isReadOnly
         requiredPastScheduledDays = details.requiredPastScheduledDays
         scheduledDates = details.scheduledDates
         scheduleHistory = details.scheduleHistory
@@ -74,7 +77,10 @@ struct EditPillView: View {
         ScrollViewReader { proxy in
             AppScreen(backgroundStyle: .pills, topPadding: 8) {
                 detailsSection
+                    .disabled(isReadOnly)
+                streakSection
                 scheduleSection
+                    .disabled(isReadOnly)
 
                 VStack(alignment: .leading, spacing: 8) {
                     AppFormSectionHeader(title: "Calendar")
@@ -87,6 +93,7 @@ struct EditPillView: View {
                             takenDays: $draft.takenDays,
                             skippedDays: $draft.skippedDays,
                             availableMonths: availableMonths,
+                            isReadOnly: isReadOnly,
                             onMonthChange: { displayedMonth = $0 }
                         )
                         .simultaneousGesture(TapGesture().onEnded {
@@ -99,6 +106,7 @@ struct EditPillView: View {
                 }
 
                 descriptionSection
+                    .disabled(isReadOnly)
 
                 actionButtons
             }
@@ -110,10 +118,10 @@ struct EditPillView: View {
                 focusedField = nil
                 AppDescriptionFieldSupport.dismissKeyboard()
             }
-            .navigationTitle("Edit Pill")
+            .navigationTitle(isReadOnly ? "Pill" : "Edit Pill")
             .navigationBarTitleDisplayMode(.inline)
             .scrollDismissesKeyboard(.immediately)
-            .alert("Delete Pill?", isPresented: $isShowingDeleteConfirmation) {
+            .alert("Permanently Delete Pill?", isPresented: $isShowingDeleteConfirmation) {
                 Button("Delete", role: .destructive) {
                     deletePill()
                 }
@@ -123,7 +131,7 @@ struct EditPillView: View {
                 Text("This pill will be permanently deleted.")
             }
             .alert(archiveConfirmationTitle, isPresented: $isShowingArchiveConfirmation) {
-                Button("Archive") {
+                Button("Delete", role: .destructive) {
                     setPillArchived()
                 }
 
@@ -147,15 +155,17 @@ struct EditPillView: View {
                     }
                 }
 
-                ToolbarItem(placement: .confirmationAction) {
-                    Button {
-                        save()
-                    } label: {
-                        AppToolbarIconLabel("Save", systemName: "checkmark")
+                if !isReadOnly {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button {
+                            save()
+                        } label: {
+                            AppToolbarIconLabel("Save", systemName: "checkmark")
+                        }
+                        .appToolbarActionTint(isDisabled: !isFormValid || hasMissingPastDays || isSaving)
+                        .fontWeight(.semibold)
+                        .disabled(!isFormValid || hasMissingPastDays || isSaving)
                     }
-                    .appToolbarActionTint(isDisabled: !isFormValid || hasMissingPastDays || isSaving)
-                    .fontWeight(.semibold)
-                    .disabled(!isFormValid || hasMissingPastDays || isSaving)
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
@@ -243,18 +253,33 @@ struct EditPillView: View {
         AppPillDetailsCard(name: $draft.name, dosage: $draft.dosage)
     }
 
+    private var streakSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            AppFormSectionHeader(title: "Streak")
+
+            AppCard {
+                AppPlainValueRow(
+                    title: "Taken for",
+                    value: DayCountFormatter.compactDurationString(for: draft.takenDays.count),
+                    valueColor: AnyShapeStyle(.secondary)
+                )
+            }
+        }
+    }
+
     private var scheduleSection: some View {
         AppEditScheduleSection(
+            startDate: draft.startDate,
             reminderEnabled: $draft.reminderEnabled,
             reminderDate: $draft.reminderTime.dateBinding(fallback: ReminderTime.default()),
             repeatSummary: draft.scheduleRule.compactSummary,
             endDate: $draft.endDate,
-            endDateRange: selectableEndDateRange,
-            endDateFallback: draft.startDate,
+            endDateFallback: defaultEndDateFallback,
             isEndDateEnabled: !draft.scheduleRule.isOneTime,
             reminderTimeTap: dismissKeyboardForNonTextControl,
             repeatTap: dismissKeyboardForNonTextControl,
-            endDateTap: dismissKeyboardForNonTextControl
+            endDateTap: dismissKeyboardForNonTextControl,
+            isReadOnly: isReadOnly
         ) {
             AppCreateRepeatEditorScreen(
                 backgroundStyle: .pills,
@@ -268,56 +293,64 @@ struct EditPillView: View {
         }
     }
 
+    private var defaultEndDateFallback: Date {
+        Calendar.current.startOfDay(for: Date())
+    }
+
     private var descriptionSection: some View {
         AppFormCardSection(title: "Description") {
-            TextField(AppCopy.pillDescriptionPlaceholder, text: $draft.details, axis: .vertical)
-                .appAccentTint()
-                .focused($focusedField, equals: .description)
-                .lineLimit(3 ... 6)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 18)
+            if isReadOnly {
+                Text(draft.details.isEmpty ? AppCopy.pillDescriptionPlaceholder : draft.details)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 18)
+            } else {
+                TextField(AppCopy.pillDescriptionPlaceholder, text: $draft.details, axis: .vertical)
+                    .appAccentTint()
+                    .focused($focusedField, equals: .description)
+                    .lineLimit(3 ... 6)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 18)
+            }
         }
         .id(Field.description)
     }
 
     private var actionButtons: some View {
         VStack(spacing: 10) {
-            if !isArchived {
-                archiveButton
+            if isArchived {
+                deleteButton
+            } else if !isReadOnly {
+                softDeleteButton
             }
-            deleteButton
         }
     }
 
     private var deleteButton: some View {
-        Button(role: .destructive) {
+        Button {
             isShowingDeleteConfirmation = true
         } label: {
             Label("Delete", systemImage: "trash")
+                .foregroundStyle(.red)
                 .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.bordered)
-        .buttonBorderShape(.capsule)
-        .controlSize(.large)
+        .buttonStyle(AppMaterialCapsuleActionButtonStyle())
+        .tint(.red)
         .frame(maxWidth: .infinity)
         .disabled(isSaving)
     }
 
-    private var archiveButton: some View {
+    private var softDeleteButton: some View {
         Button {
             isShowingArchiveConfirmation = true
         } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "archivebox")
-                    .imageScale(.medium)
-                    .foregroundStyle(isSaving ? .secondary : .primary)
-
-                Text("Archive")
-                    .foregroundStyle(isSaving ? .secondary : .primary)
-            }
-            .frame(maxWidth: .infinity)
+            Label("Delete", systemImage: "trash")
+                .foregroundStyle(.red)
+                .frame(maxWidth: .infinity)
         }
-        .buttonStyle(AppNeutralCapsuleActionButtonStyle())
+        .buttonStyle(AppMaterialCapsuleActionButtonStyle())
+        .tint(.red)
         .frame(maxWidth: .infinity)
         .disabled(isSaving)
     }
@@ -327,11 +360,12 @@ struct EditPillView: View {
     }
 
     private var availableMonths: [Date] {
-        let months = HistoryMonthWindow.months(containing: editableHistoryDays)
-        if !months.isEmpty {
-            return months
-        }
-        return [HistoryMonthWindow.displayMonth(startDate: draft.startDate)]
+        let months = HistoryMonthWindow.months(
+            from: draft.startDate,
+            through: HistoryMonthWindow.detailsCalendarEndDate(startDate: draft.startDate),
+            calendar: Calendar.current
+        )
+        return months.isEmpty ? [HistoryMonthWindow.displayMonth(startDate: draft.startDate)] : months
     }
 
     private var isFormValid: Bool {
@@ -387,20 +421,20 @@ struct EditPillView: View {
         effectiveFromRange.lowerBound
     }
 
-    private var selectableEndDateRange: PartialRangeFrom<Date> {
+    private var endDateValidationLowerBound: Date {
         let today = Calendar.current.startOfDay(for: Date())
         var lowerBound = max(today, Calendar.current.startOfDay(for: draft.startDate))
         if shouldUseScheduleEffectiveFrom, let effectiveFrom = currentEffectiveFromResolution?.resolvedDate {
             lowerBound = max(lowerBound, effectiveFrom)
         }
-        return lowerBound...
+        return lowerBound
     }
 
     private var isEndDateValid: Bool {
         EndDateValidationSupport.isValid(
             endDate: draft.endDate,
             startDate: draft.startDate,
-            lowerBound: selectableEndDateRange.lowerBound,
+            lowerBound: endDateValidationLowerBound,
             schedules: validationScheduleVersions,
             ignoresEndDate: draft.scheduleRule.isOneTime,
             calendar: Calendar.current
@@ -458,19 +492,19 @@ struct EditPillView: View {
     @ViewBuilder
     private var floatingBottomBanners: some View {
         VStack(spacing: 10) {
-            if let message = scheduleWarningMessage, !isScheduleWarningDismissed {
+            if !isReadOnly, let message = scheduleWarningMessage, !isScheduleWarningDismissed {
                 AppFloatingWarningBanner(message: message) {
                     isScheduleWarningDismissed = true
                 }
             }
 
-            if let message = floatingHistoryWarningMessage, !isHistoryWarningDismissed {
+            if !isReadOnly, let message = floatingHistoryWarningMessage, !isHistoryWarningDismissed {
                 AppFloatingWarningBanner(message: message) {
                     isHistoryWarningDismissed = true
                 }
             }
 
-            if let message = endDateFloatingWarningMessage {
+            if !isReadOnly, let message = endDateFloatingWarningMessage {
                 AppFloatingWarningBanner(message: message) {
                     isEndDateWarningDismissed = true
                 }
@@ -529,11 +563,11 @@ struct EditPillView: View {
     }
 
     private var archiveConfirmationTitle: String {
-        "Archive Pill?"
+        "Delete Pill?"
     }
 
     private var archiveConfirmationMessage: String {
-        "This pill will move to Archive."
+        "This pill will be moved to Recently Deleted."
     }
 
     private func save() {
@@ -604,6 +638,7 @@ struct EditPillView: View {
     }
 
     private func applyPendingScheduleRuleIfNeeded() {
+        guard !isReadOnly else { return }
         guard let scheduleRule = pendingScheduleRule else { return }
         pendingScheduleRule = nil
         guard draft.scheduleRule != scheduleRule else { return }
@@ -611,6 +646,7 @@ struct EditPillView: View {
     }
 
     private func clearEndDateForNeverRepeat(showInfo: Bool) {
+        guard !isReadOnly else { return }
         guard draft.scheduleRule.isOneTime, draft.endDate != nil else { return }
         draft.endDate = nil
 
@@ -691,6 +727,7 @@ struct EditPillView: View {
     }
 
     private func resolveEffectiveFromSelection(showAdjustmentBanner _: Bool) {
+        guard !isReadOnly else { return }
         guard shouldUseScheduleEffectiveFrom else {
             draft.scheduleEffectiveFrom = nil
             return

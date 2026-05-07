@@ -142,11 +142,9 @@ struct CreatePillView: View {
     private var scheduleSection: some View {
         AppCreateScheduleSection(
             startDate: startDateBinding,
-            startDateRange: selectableStartDateRange,
             reminderEnabled: $draft.reminderEnabled,
             reminderDate: $draft.reminderTime.dateBinding(fallback: ReminderTime.default()),
             endDate: $draft.endDate,
-            endDateRange: selectableEndDateRange,
             isEndDateEnabled: !draft.scheduleRule.isOneTime,
             repeatSummary: draft.scheduleRule.compactSummary,
             startDateTap: dismissKeyboardForNonTextControl,
@@ -177,14 +175,9 @@ struct CreatePillView: View {
         .id(Field.description)
     }
 
-    private var selectableStartDateRange: ClosedRange<Date> {
-        StartDateSelectionWindow.range(offset: DateComponents(year: -5))
-    }
-
-    private var selectableEndDateRange: PartialRangeFrom<Date> {
+    private var endDateValidationLowerBound: Date {
         let today = Calendar.current.startOfDay(for: Date())
-        let lowerBound = max(today, Calendar.current.startOfDay(for: draft.startDate))
-        return lowerBound...
+        return max(today, Calendar.current.startOfDay(for: draft.startDate))
     }
 
     private var isFormValid: Bool {
@@ -195,7 +188,7 @@ struct CreatePillView: View {
         EndDateValidationSupport.isValid(
             endDate: draft.endDate,
             startDate: draft.startDate,
-            lowerBound: selectableEndDateRange.lowerBound,
+            lowerBound: endDateValidationLowerBound,
             schedules: validationScheduleVersions,
             ignoresEndDate: draft.scheduleRule.isOneTime,
             calendar: Calendar.current

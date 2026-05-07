@@ -5,18 +5,18 @@ struct MyHabitsView: View {
     @State private var isShowingArchive = false
     let currentTime: Date
     let onCreateHabit: () -> Void
-    let onShowHabitInfo: (HabitCardProjection) -> Void
+    let onOpenArchivedHabit: (HabitCardProjection) -> Void
     let onEditHabit: (HabitCardProjection) -> Void
 
     init(
         currentTime: Date = Date(),
         onCreateHabit: @escaping () -> Void = {},
-        onShowHabitInfo: @escaping (HabitCardProjection) -> Void = { _ in },
+        onOpenArchivedHabit: @escaping (HabitCardProjection) -> Void = { _ in },
         onEditHabit: @escaping (HabitCardProjection) -> Void = { _ in }
     ) {
         self.currentTime = currentTime
         self.onCreateHabit = onCreateHabit
-        self.onShowHabitInfo = onShowHabitInfo
+        self.onOpenArchivedHabit = onOpenArchivedHabit
         self.onEditHabit = onEditHabit
     }
 
@@ -29,7 +29,7 @@ struct MyHabitsView: View {
                 ContentUnavailableView(
                     allHabits.isEmpty ? "No habits yet" : "No active habits",
                     systemImage: "checklist",
-                    description: Text(allHabits.isEmpty ? "Create your first habit to start tracking your progress." : "Archived habits live on the Archive page.")
+                    description: Text(allHabits.isEmpty ? "Create your first habit to start tracking your progress." : "Deleted habits live in Recently Deleted.")
                 )
             } else {
                 List {
@@ -46,6 +46,10 @@ struct MyHabitsView: View {
                             .listRowInsets(EdgeInsets())
 	                            .listRowBackground(Color.clear)
 	                            .listRowSeparator(.hidden)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                onEditHabit(habit)
+                            }
 	                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
 	                                if habit.isArchived || habit.startsInFuture {
 	                                    EmptyView()
@@ -105,21 +109,6 @@ struct MyHabitsView: View {
                                     .tint(.red)
                                 }
 	                            }
-	                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-	                                Button {
-	                                    onShowHabitInfo(habit)
-	                                } label: {
-	                                    Image(systemName: "info")
-	                                }
-	                                .tint(.indigo)
-
-	                                Button {
-	                                    onEditHabit(habit)
-	                                } label: {
-	                                    Image(systemName: "pencil")
-	                                }
-	                                .tint(.blue)
-	                            }
                         }
                     }
                 }
@@ -132,7 +121,7 @@ struct MyHabitsView: View {
         .navigationDestination(isPresented: $isShowingArchive) {
             ArchivedHabitsView(
                 currentTime: currentTime,
-                onShowHabitInfo: onShowHabitInfo
+                onOpenHabit: onOpenArchivedHabit
             )
             .environmentObject(appState)
         }
@@ -142,7 +131,7 @@ struct MyHabitsView: View {
                     Button {
                         isShowingArchive = true
                     } label: {
-                        AppToolbarIconLabel("Archived Habits", systemName: "archivebox")
+                        AppToolbarIconLabel("Recently Deleted", systemName: "tray.badge")
                     }
                     .appAccentTint()
                 }
@@ -226,15 +215,15 @@ struct MyHabitsView: View {
 private struct ArchivedHabitsView: View {
     @EnvironmentObject private var appState: HabitAppState
     let currentTime: Date
-    let onShowHabitInfo: (HabitCardProjection) -> Void
+    let onOpenHabit: (HabitCardProjection) -> Void
 
     var body: some View {
         Group {
             if archivedHabits.isEmpty {
                 ContentUnavailableView(
-                    "No archived habits",
-                    systemImage: "archivebox",
-                    description: Text("Archived habits will appear here.")
+                    "No recently deleted habits",
+                    systemImage: "trash",
+                    description: Text("Deleted habits will appear here.")
                 )
             } else {
                 List {
@@ -248,13 +237,9 @@ private struct ArchivedHabitsView: View {
                         .listRowInsets(EdgeInsets())
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button {
-                                onShowHabitInfo(habit)
-                            } label: {
-                                Image(systemName: "info")
-                            }
-                            .tint(.indigo)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            onOpenHabit(habit)
                         }
                     }
                 }
@@ -263,7 +248,7 @@ private struct ArchivedHabitsView: View {
                 .scrollContentBackground(.hidden)
             }
         }
-        .navigationTitle("Archived Habits")
+        .navigationTitle("Recently Deleted")
         .navigationBarTitleDisplayMode(.inline)
         .background(AppBackground(style: .habits))
         .appTintedBackButton()

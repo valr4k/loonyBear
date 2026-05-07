@@ -209,19 +209,6 @@ enum HistoryMonthWindow {
     }
 }
 
-enum StartDateSelectionWindow {
-    static func range(
-        offset: DateComponents,
-        today: Date = Date(),
-        calendar: Calendar = .autoupdatingCurrent
-    ) -> ClosedRange<Date> {
-        let normalizedToday = calendar.startOfDay(for: today)
-        let earliest = calendar.date(byAdding: offset, to: normalizedToday) ?? normalizedToday
-        let latest = HistoryMonthWindow.endOfSecondNextMonth(from: normalizedToday, calendar: calendar)
-        return earliest ... latest
-    }
-}
-
 struct ScheduleEffectiveFromResolution: Equatable {
     let selectedDate: Date
     let resolvedDate: Date

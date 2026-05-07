@@ -143,7 +143,7 @@ struct PillDetailsView: View {
         }
         .navigationTitle("Pill Details")
         .navigationBarTitleDisplayMode(.inline)
-        .alert("Delete Pill?", isPresented: $isShowingDeleteConfirmation) {
+        .alert("Permanently Delete Pill?", isPresented: $isShowingDeleteConfirmation) {
             Button("Delete", role: .destructive) {
                 deletePill()
             }
@@ -198,15 +198,15 @@ struct PillDetailsView: View {
     }
 
     private var deleteButton: some View {
-        Button(role: .destructive) {
+        Button {
             isShowingDeleteConfirmation = true
         } label: {
             Label("Delete", systemImage: "trash")
+                .foregroundStyle(.red)
                 .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.bordered)
-        .buttonBorderShape(.capsule)
-        .controlSize(.large)
+        .buttonStyle(AppMaterialCapsuleActionButtonStyle())
+        .tint(.red)
         .frame(maxWidth: .infinity)
     }
 

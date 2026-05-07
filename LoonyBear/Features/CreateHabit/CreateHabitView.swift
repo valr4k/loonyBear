@@ -123,11 +123,9 @@ struct CreateHabitView: View {
     private var scheduleSection: some View {
         AppCreateScheduleSection(
             startDate: startDateBinding,
-            startDateRange: selectableStartDateRange,
             reminderEnabled: $draft.reminderEnabled,
             reminderDate: $draft.reminderTime.dateBinding(fallback: ReminderTime(hour: 20, minute: 0)),
             endDate: $draft.endDate,
-            endDateRange: selectableEndDateRange,
             repeatSummary: draft.scheduleRule.compactSummary,
             startDateTap: dismissKeyboardForNonTextControl,
             reminderTimeTap: dismissKeyboardForNonTextControl,
@@ -144,14 +142,9 @@ struct CreateHabitView: View {
         }
     }
 
-    private var selectableStartDateRange: ClosedRange<Date> {
-        StartDateSelectionWindow.range(offset: DateComponents(year: -5))
-    }
-
-    private var selectableEndDateRange: PartialRangeFrom<Date> {
+    private var endDateValidationLowerBound: Date {
         let today = Calendar.current.startOfDay(for: Date())
-        let lowerBound = max(today, Calendar.current.startOfDay(for: draft.startDate))
-        return lowerBound...
+        return max(today, Calendar.current.startOfDay(for: draft.startDate))
     }
 
     private var isFormValid: Bool {
@@ -162,7 +155,7 @@ struct CreateHabitView: View {
         EndDateValidationSupport.isValid(
             endDate: draft.endDate,
             startDate: draft.startDate,
-            lowerBound: selectableEndDateRange.lowerBound,
+            lowerBound: endDateValidationLowerBound,
             schedules: validationScheduleVersions,
             calendar: Calendar.current
         )

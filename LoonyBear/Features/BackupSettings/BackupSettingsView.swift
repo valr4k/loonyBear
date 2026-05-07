@@ -296,9 +296,8 @@ private struct BackupActionButton: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .buttonStyle(.bordered)
-        .buttonBorderShape(.capsule)
-        .controlSize(.large)
+        .buttonStyle(AppMaterialCapsuleActionButtonStyle())
+        .tint(tint)
         .frame(maxWidth: .infinity)
         .disabled(!isEnabled)
     }

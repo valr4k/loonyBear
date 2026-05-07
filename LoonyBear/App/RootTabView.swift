@@ -42,8 +42,8 @@ struct RootTabView: View {
                     onCreatePill: {
                         presentedPillSheet = .create
                     },
-                    onShowPillInfo: { pill in
-                        presentedPillSheet = .details(pill.id)
+                    onOpenArchivedPill: { pill in
+                        presentedPillSheet = .archivedReadOnly(pill.id)
                     },
                     onEditPill: { pill in
                         presentedPillSheet = .edit(pill.id)
@@ -69,8 +69,8 @@ struct RootTabView: View {
                     onCreateHabit: {
                         presentedHabitSheet = .create
                     },
-                    onShowHabitInfo: { habit in
-                        presentedHabitSheet = .details(habit.id)
+                    onOpenArchivedHabit: { habit in
+                        presentedHabitSheet = .archivedReadOnly(habit.id)
                     },
                     onEditHabit: { habit in
                         presentedHabitSheet = .edit(habit.id)
@@ -183,19 +183,11 @@ struct RootTabView: View {
         case .create:
             CreateHabitView()
                 .environmentObject(appState)
-        case .details(let habitID):
-            if let habit = habitProjection(for: habitID) {
-                HabitDetailsView(habit: habit)
-                    .environmentObject(appState)
-            } else {
-                ContentUnavailableView(
-                    "Habit not found",
-                    systemImage: "checklist",
-                    description: Text("This habit is no longer available.")
-                )
-            }
         case .edit(let habitID):
             HabitEditSheetLoader(habitID: habitID)
+                .environmentObject(appState)
+        case .archivedReadOnly(let habitID):
+            HabitEditSheetLoader(habitID: habitID, isReadOnly: true)
                 .environmentObject(appState)
         }
     }
@@ -206,32 +198,13 @@ struct RootTabView: View {
         case .create:
             CreatePillView()
                 .environmentObject(pillAppState)
-        case .details(let pillID):
-            if let pill = pillProjection(for: pillID) {
-                PillDetailsView(pill: pill)
-                    .environmentObject(pillAppState)
-            } else {
-                ContentUnavailableView(
-                    "Pill not found",
-                    systemImage: "pills",
-                    description: Text("This pill is no longer available.")
-                )
-            }
         case .edit(let pillID):
             PillEditSheetLoader(pillID: pillID)
                 .environmentObject(pillAppState)
+        case .archivedReadOnly(let pillID):
+            PillEditSheetLoader(pillID: pillID, isReadOnly: true)
+                .environmentObject(pillAppState)
         }
-    }
-
-    private func habitProjection(for id: UUID) -> HabitCardProjection? {
-        appState.dashboard.sections
-            .flatMap(\.habits)
-            .first { $0.id == id }
-    }
-
-    private func pillProjection(for id: UUID) -> PillCardProjection? {
-        pillAppState.dashboard.pills
-            .first { $0.id == id }
     }
 
     private var overdueHabitCount: Int {
@@ -252,6 +225,7 @@ struct RootTabView: View {
 private struct HabitEditSheetLoader: View {
     @EnvironmentObject private var appState: HabitAppState
     let habitID: UUID
+    var isReadOnly = false
     @State private var state: HabitEditSheetLoadState = .loading
 
     var body: some View {
@@ -260,7 +234,7 @@ private struct HabitEditSheetLoader: View {
             case .loading:
                 ProgressView()
             case .found(let details):
-                EditHabitView(details: details)
+                EditHabitView(details: details, isReadOnly: isReadOnly)
                     .environmentObject(appState)
             case .notFound:
                 ContentUnavailableView(
@@ -300,6 +274,7 @@ private enum HabitEditSheetLoadState {
 private struct PillEditSheetLoader: View {
     @EnvironmentObject private var pillAppState: PillAppState
     let pillID: UUID
+    var isReadOnly = false
     @State private var state: PillEditSheetLoadState = .loading
 
     var body: some View {
@@ -308,7 +283,7 @@ private struct PillEditSheetLoader: View {
             case .loading:
                 ProgressView()
             case .found(let details):
-                EditPillView(details: details)
+                EditPillView(details: details, isReadOnly: isReadOnly)
                     .environmentObject(pillAppState)
             case .notFound:
                 ContentUnavailableView(
@@ -359,34 +334,34 @@ enum AppTab: String, Hashable {
 
 private enum HabitSheet: Hashable, Identifiable {
     case create
-    case details(UUID)
     case edit(UUID)
+    case archivedReadOnly(UUID)
 
     var id: String {
         switch self {
         case .create:
             return "create"
-        case .details(let id):
-            return "details_\(id.uuidString)"
         case .edit(let id):
             return "edit_\(id.uuidString)"
+        case .archivedReadOnly(let id):
+            return "archived_read_only_\(id.uuidString)"
         }
     }
 }
 
 private enum PillSheet: Hashable, Identifiable {
     case create
-    case details(UUID)
     case edit(UUID)
+    case archivedReadOnly(UUID)
 
     var id: String {
         switch self {
         case .create:
             return "create"
-        case .details(let id):
-            return "details_\(id.uuidString)"
         case .edit(let id):
             return "edit_\(id.uuidString)"
+        case .archivedReadOnly(let id):
+            return "archived_read_only_\(id.uuidString)"
         }
     }
 }

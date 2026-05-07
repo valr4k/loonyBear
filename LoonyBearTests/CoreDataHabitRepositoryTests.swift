@@ -61,7 +61,7 @@ struct CoreDataHabitRepositoryTests {
         let archivedHabit = try #require(archivedSection.habits.first)
 
         #expect(archivedDashboard.sections.map(\.id) == [.archived])
-        #expect(archivedSection.title == "Archived")
+        #expect(archivedSection.title == "Recently Deleted")
         #expect(archivedHabit.id == habitID)
         #expect(archivedHabit.isArchived)
         #expect(!archivedHabit.isReminderScheduledToday)
