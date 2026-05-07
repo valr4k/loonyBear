@@ -41,7 +41,7 @@ struct CreatePillView: View {
             .overlay(alignment: .bottom) {
                 floatingBottomBanners
             }
-            .navigationTitle("Create Pill")
+            .navigationTitle("Add new Pill")
             .navigationBarTitleDisplayMode(.inline)
             .scrollDismissesKeyboard(.immediately)
             .safeAreaInset(edge: .bottom) {

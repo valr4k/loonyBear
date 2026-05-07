@@ -284,6 +284,10 @@ private struct PillCalendarDayView: View {
             if style == .taken || style == .skipped {
                 Circle()
                     .fill(backgroundColor)
+                    .overlay {
+                        Circle()
+                            .strokeBorder(borderColor, lineWidth: borderWidth)
+                    }
                     .frame(width: markerSize, height: markerSize)
             }
 
@@ -326,8 +330,25 @@ private struct PillCalendarDayView: View {
         }
     }
 
+    private var borderColor: Color {
+        guard isEditable else { return .clear }
+
+        switch style {
+        case .taken:
+            return appTint.accentColor.opacity(0.45)
+        case .skipped:
+            return Color(uiColor: .systemRed).opacity(0.45)
+        case .available, .disabled:
+            return .clear
+        }
+    }
+
+    private var borderWidth: CGFloat {
+        isEditable ? 1 : 0
+    }
+
     private var markedBackgroundOpacity: Double {
-        isEditable ? 0.18 : 0.48
+        isEditable ? 0.22 : 0.18
     }
 
     private var markerSize: CGFloat {
@@ -339,7 +360,7 @@ private struct PillCalendarDayView: View {
     }
 
     private var scheduleIndicatorOffset: CGFloat {
-        markerSize / 2 - scheduleIndicatorSize
+        markerSize / 2 - scheduleIndicatorSize - 2
     }
 
     private var scheduleIndicatorColor: Color {

@@ -29,7 +29,7 @@ The app has exactly 3 tabs:
 
 The default selected tab is `My Pills`.
 
-Create, Details, and Edit flows for Habits and Pills open as modal sheets.
+Create flows and item Details flows for Habits and Pills open as modal sheets. Create sheet titles are `Add new Pill` and `Add new Habit`. Active item Details sheets are titled `Pill Details` and `Habit Details` and are editable. Recently Deleted item Details reuse the same layout in read-only mode.
 
 Settings uses route-based navigation:
 - `SettingsRoute.backup`
@@ -194,7 +194,7 @@ Functions:
 - `scheduledDays(...)`
 - `effectiveWeekdays(on:from:calendar:)`
 
-These helpers are used to determine which past editable days must be finalized according to schedule and history mode. Editable history never includes days before `startDate` or future days. `scheduledDays(...)` returns the normalized schedule-matching dates through a supplied end date so Details/Edit calendars can draw schedule indicators, including future scheduled dots, without changing stored history.
+These helpers are used to determine which past editable days must be finalized according to schedule and history mode. Editable history never includes days before `startDate` or future days. `scheduledDays(...)` returns the normalized schedule-matching dates through a supplied end date so Details calendars can draw schedule indicators, including future scheduled dots, without changing stored history.
 
 ## 5. Habit Pipeline
 
@@ -265,9 +265,9 @@ Rules:
 `clearHabitDayStateToday(id:)`
 - deletes today's row if present
 
-Card leading swipe actions call the day-specific variants for `activeOverdueDay` when it is set. Otherwise they target today. History gaps cannot be repaired from the card; they must be fixed in Edit.
+Card leading swipe actions call the day-specific variants for `activeOverdueDay` when it is set. Otherwise they target today. History gaps cannot be repaired from the card; they must be fixed in the active Details sheet.
 
-Tapping an active Habit card opens Edit Habit. Habit cards do not expose trailing swipe actions. Delete is not available from card swipe actions.
+Tapping an active Habit card opens the editable `Habit Details` sheet. Habit cards do not expose trailing swipe actions. Delete is not available from card swipe actions.
 
 ### 5.8 Habit Update
 `updateHabit(from:)`:
@@ -275,7 +275,7 @@ Tapping an active Habit card opens Edit Habit. Habit cards do not expose trailin
 - updates reminder flags and time
 - updates optional End Date (`endDate`)
 - inserts a new `HabitScheduleVersion` if the schedule rule changed
-- changed Repeat uses a hidden schedule version `effectiveFrom`; Edit Habit does not show an Apply From field
+- changed Repeat uses a hidden schedule version `effectiveFrom`; Habit Details does not show an Apply From field
 - hidden `effectiveFrom` uses `minimumDate = max(today, startDate)`
 - hidden `effectiveFrom` uses `maximumDate = max(minimumDate, endOfSecondNextMonth(today))`
 - the selected/base date is `draft.scheduleEffectiveFrom` when present, otherwise `minimumDate`; current UI does not expose a picker, so this is normally `minimumDate`
@@ -288,11 +288,11 @@ Tapping an active Habit card opens Edit Habit. Habit cards do not expose trailin
 - uses `pastDefaultSelection: .none`
 - validates that every past editable scheduled day is either `manual edit`/completed or `skipped`
 - throws `EditableHistoryValidationError.missingHabitPastDays` if a past editable scheduled day is empty
-- Edit Habit includes a past active overdue day in save validation and disables Save until it is resolved
-- Edit Habit surfaces missing past-day review through the dismissible `AppFloatingWarningBanner`; if only the active overdue day is missing, the banner uses overdue-specific copy
+- active Habit Details includes a past active overdue day in save validation and disables Save until it is resolved
+- active Habit Details surfaces missing past-day review through the dismissible `AppFloatingWarningBanner`; if only the active overdue day is missing, the banner uses overdue-specific copy
 - Habit Details computes missing past days from `requiredPastScheduledDays`; it shows `Finish updating overdue days on the Edit screen.` when the only missing day is the active overdue day, otherwise it shows `Finish updating past days on the Edit screen.`
-- active Edit Habit exposes one `Delete` action; it is a soft delete that calls the existing archive path and confirms with `Delete Habit?` / `This habit will move to Recently Deleted.`
-- soft-deleted Habits open a read-only item screen, suppress missing-history review, and expose permanent `Delete` at the bottom with confirmation
+- active Habit Details exposes one `Delete` action; it is a soft delete that calls the existing archive path and confirms with `Delete this Habit?` / `This Habit will be moved to Recently Deleted.`
+- soft-deleted Habits open the same item screen in read-only mode, suppress missing-history review, hide Save and Repeat navigation, and expose permanent `Delete` at the bottom with `Permanently delete this Habit?` / `This Habit will be permanently deleted.`
 - missing past-day warning copy intentionally omits the date list; the validation error still carries the missing dates for logic/tests
 - rewrites rows day by day using `manual edit` or `skipped`
 - removes duplicate history rows for the same day except the primary latest row
@@ -319,7 +319,7 @@ Projection fields include:
 - `isArchived`
 - sort order
 
-If `activeOverdueDay` is set, Habit cards show a red `Today`, `Yesterday`, or `03 May 2026` style date label. Future cards show `Starts 03 May 2026` style dates. Soft-deleted cards live on the separate Recently Deleted page and do not show active day actions, overdue state, scheduled reminder state, or history-review state. `activeOverdueDay` is derived from the latest due scheduled day: if that latest due day is empty, it is active overdue; if it already has completed/skipped state, there is no active overdue even if older due days are empty. `needsHistoryReview` excludes the active overdue day, so Habit cards show the amber history warning icon alongside overdue only when another required past scheduled day is empty. `HabitDetailsProjection.requiredPastScheduledDays` still includes the active overdue day for Details and Edit validation. If neither applies, the card shows today's completed/skipped status.
+If `activeOverdueDay` is set, Habit cards show a red `Today`, `Yesterday`, or `03 May 2026` style date label. Future cards show `Starts 03 May 2026` style dates. Soft-deleted cards live on the separate Recently Deleted page and do not show active day actions, overdue state, scheduled reminder state, or history-review state. `activeOverdueDay` is derived from the latest due scheduled day: if that latest due day is empty, it is active overdue; if it already has completed/skipped state, there is no active overdue even if older due days are empty. `needsHistoryReview` excludes the active overdue day, so Habit cards show the amber history warning icon alongside overdue only when another required past scheduled day is empty. `HabitDetailsProjection.requiredPastScheduledDays` still includes the active overdue day for active Details validation. If neither applies, the card shows today's completed/skipped status.
 
 ## 6. Pill Pipeline
 
@@ -382,9 +382,9 @@ Create flow writes:
 `clearPillDayStateToday(id:)`
 - deletes today's row if present
 
-Card leading swipe actions call the day-specific variants for `activeOverdueDay` when it is set. Otherwise they target today. History gaps cannot be repaired from the card; they must be fixed in Edit.
+Card leading swipe actions call the day-specific variants for `activeOverdueDay` when it is set. Otherwise they target today. History gaps cannot be repaired from the card; they must be fixed in the active Details sheet.
 
-Tapping an active Pill card opens Edit Pill. Pill cards do not expose trailing swipe actions. Delete is not available from card swipe actions.
+Tapping an active Pill card opens the editable `Pill Details` sheet. Pill cards do not expose trailing swipe actions. Delete is not available from card swipe actions.
 
 ### 6.8 Pill Update
 `updatePill(from:)`:
@@ -392,7 +392,7 @@ Tapping an active Pill card opens Edit Pill. Pill cards do not expose trailing s
 - updates reminder flags and time
 - updates optional End Date
 - inserts a new `PillScheduleVersion` if the schedule rule changed
-- changed Repeat uses a hidden schedule version `effectiveFrom`; Edit Pill does not show an Apply From field
+- changed Repeat uses a hidden schedule version `effectiveFrom`; Pill Details does not show an Apply From field
 - hidden `effectiveFrom` uses `minimumDate = max(today, startDate)`
 - hidden `effectiveFrom` uses `maximumDate = max(minimumDate, endOfSecondNextMonth(today))`
 - the selected/base date is `draft.scheduleEffectiveFrom` when present, otherwise `minimumDate`; current UI does not expose a picker, so this is normally `minimumDate`
@@ -405,11 +405,11 @@ Tapping an active Pill card opens Edit Pill. Pill cards do not expose trailing s
 - uses `pastDefaultSelection: .none`
 - validates that every past editable scheduled day is either `manual edit`/taken or `skipped`
 - throws `EditableHistoryValidationError.missingPillPastDays` if a past editable scheduled day is empty
-- Edit Pill includes a past active overdue day in save validation and disables Save until it is resolved
-- Edit Pill surfaces missing past-day review through the dismissible `AppFloatingWarningBanner`; if only the active overdue day is missing, the banner uses overdue-specific copy
+- active Pill Details includes a past active overdue day in save validation and disables Save until it is resolved
+- active Pill Details surfaces missing past-day review through the dismissible `AppFloatingWarningBanner`; if only the active overdue day is missing, the banner uses overdue-specific copy
 - Pill Details computes missing past days from `requiredPastScheduledDays`; it shows `Finish updating overdue days on the Edit screen.` when the only missing day is the active overdue day, otherwise it shows `Finish updating past days on the Edit screen.`
-- active Edit Pill exposes one `Delete` action; it is a soft delete that calls the existing archive path and confirms with `Delete Pill?` / `This pill will move to Recently Deleted.`
-- soft-deleted Pills open a read-only item screen, suppress missing-history review, and expose permanent `Delete` at the bottom with confirmation
+- active Pill Details exposes one `Delete` action; it is a soft delete that calls the existing archive path and confirms with `Delete this Pill?` / `This Pill will be moved to Recently Deleted.`
+- soft-deleted Pills open the same item screen in read-only mode, suppress missing-history review, hide Save and Repeat navigation, and expose permanent `Delete` at the bottom with `Permanently delete this Pill?` / `This Pill will be permanently deleted.`
 - missing past-day warning copy intentionally omits the date list; the validation error still carries the missing dates for logic/tests
 - rewrites rows day by day using `manual edit` or `skipped`
 - removes duplicate history rows for the same day except the primary latest row
@@ -437,7 +437,7 @@ Projection fields include:
 - `isArchived`
 - sort order
 
-If `activeOverdueDay` is set, Pill cards show a red `Today`, `Yesterday`, or `03 May 2026` style date label. Future cards show `Starts 03 May 2026` style dates and remain in Pending. Soft-deleted cards live on the separate Recently Deleted page and do not show active day actions, overdue state, scheduled reminder state, or history-review state. `activeOverdueDay` is derived from the latest due scheduled day: if that latest due day is empty, it is active overdue; if it already has taken/skipped state, there is no active overdue even if older due days are empty. `needsHistoryReview` excludes the active overdue day, so Pill cards show the amber history warning icon alongside overdue only when another required past scheduled day is empty. `PillDetailsProjection.requiredPastScheduledDays` still includes the active overdue day for Details and Edit validation. If neither applies, the card shows today's taken/skipped status.
+If `activeOverdueDay` is set, Pill cards show a red `Today`, `Yesterday`, or `03 May 2026` style date label. Future cards show `Starts 03 May 2026` style dates and remain in Pending. Soft-deleted cards live on the separate Recently Deleted page and do not show active day actions, overdue state, scheduled reminder state, or history-review state. `activeOverdueDay` is derived from the latest due scheduled day: if that latest due day is empty, it is active overdue; if it already has taken/skipped state, there is no active overdue even if older due days are empty. `needsHistoryReview` excludes the active overdue day, so Pill cards show the amber history warning icon alongside overdue only when another required past scheduled day is empty. `PillDetailsProjection.requiredPastScheduledDays` still includes the active overdue day for active Details validation. If neither applies, the card shows today's taken/skipped status.
 
 ## 7. Streak Engine
 
@@ -484,7 +484,7 @@ Rules:
 - `End Repeat` displays `Never` when `endDate == nil` and `On Date` when `endDate != nil`
 - the `End Date` date row is visible only when `On Date` is selected
 - if an end date exists, the final active scheduled day is the last scheduled day on or before that date
-- shared End Date validation runs on Create and Edit for both Habits and Pills
+- shared End Date validation runs on Create and active Details for both Habits and Pills
 - the End Date validation lower bound is `max(today, startDate)` on Create; Edit can further raise it to the hidden schedule-change `effectiveFrom` when Repeat changed
 - a selected End Date is valid only if at least one scheduled day exists from the active lower bound through the selected End Date
 - validation scans forward from the lower bound for up to `EndDateValidationSupport.searchWindowDays` (`31`) days or until the selected End Date, whichever comes first
@@ -513,7 +513,7 @@ Includes:
 
 `localDate` identifier format is `YYYYMMDD`.
 
-Create/Edit reminder permission behavior:
+Create and active Details reminder permission behavior:
 - toggling Reminder on calls the shared authorization helper
 - `.notDetermined` can show the system notification permission prompt
 - `.denied` cannot show that prompt again, so the toggle is reverted and the UI shows an alert with `Open Settings`
@@ -544,7 +544,7 @@ Constants:
 Candidate rules:
 - reminder enabled
 - valid reminder time
-- item is not archived
+- item is not soft-deleted (`isArchived == false`)
 - day is not before start date
 - day is not after the final scheduled day when an end date exists
 - weekday matches schedule
@@ -584,7 +584,7 @@ Action behavior:
 - `pill.take` creates a positive `notification` intake if needed
 - `pill.skip` creates a skipped intake if needed
 - `pill.remind_later` creates a delayed pill reminder `10` minutes from now
-- archived Pills and days after a final scheduled day are not regular reminder candidates
+- soft-deleted Pills and days after a final scheduled day are not regular reminder candidates
 
 ### 8.5 Snoozed Pill Notification Rules
 The Pill notification service distinguishes regular scheduled notifications from remind-later notifications.
@@ -613,7 +613,7 @@ A Habit is overdue when:
 - the latest due scheduled day has reminder time passed, or 00:00 has passed when reminders are disabled
 - the latest due scheduled day is neither completed nor skipped
 - the active overdue day is excluded from Dashboard card missing-history review while it remains the latest due scheduled day
-- Details and Edit still require a past active overdue day to be completed or skipped
+- active Details still require a past active overdue day to be completed or skipped
 - older empty due scheduled days remain missing history and require manual review
 
 ### 9.3 Overdue Pill Rule
@@ -623,7 +623,7 @@ A Pill is overdue when:
 - the latest due scheduled day has reminder time passed, or 00:00 has passed when reminders are disabled
 - the latest due scheduled day is neither taken nor skipped
 - the active overdue day is excluded from Dashboard card missing-history review while it remains the latest due scheduled day
-- Details and Edit still require a past active overdue day to be taken or skipped
+- active Details still require a past active overdue day to be taken or skipped
 - older empty due scheduled days remain missing history and require manual review
 
 Badge and overdue calculation do not use overdue anchors as source of truth.
@@ -720,9 +720,10 @@ UI behavior:
 - `Last backup` dates use `03 May at 22:35` style formatting
 - green means a readable backup exists
 - red means no readable backup is available
-- `Create Backup` and `Restore Backup` are full-width capsule buttons
+- `Create Backup`, `Restore Backup`, and item Delete actions use `AppMaterialCapsuleActionButtonStyle`
+- the shared action style keeps a capsule shape, uses `.ultraThinMaterial`, adds a `systemGray4` base only in light mode, and uses a clear base in dark mode
 - `Create Backup` uses the primary label color
-- `Restore Backup` stays system red
+- `Restore Backup` and destructive Delete actions stay system red
 - create and restore confirmation prompts use system alerts instead of popover-style confirmation dialogs; action labels are shortened to `Backup` and `Restore`
 - the Home Screen `Create Backup` quick action is dynamic after first launch and routes only to Settings > Backup
 - Folder selection only grants access and reloads backup metadata; it never applies the backup automatically
@@ -833,9 +834,19 @@ Appearance behavior:
 
 Shared warning overlay behavior:
 - `AppFloatingWarningBanner` is defined in `LoonyBear/Shared/AppDesign.swift`.
-- Edit Habit, Edit Pill, Habit Details, and Pill Details use it for missing past-day review.
+- active Habit Details and Pill Details use it for missing past-day review.
 - The banner is an overlay pinned near the bottom of the visible screen, uses `ultraThinMaterial` with a fixed system-red warning tint, can be dismissed, and disappears automatically when the missing-day condition is resolved.
 - Because the banner is not part of the scroll content, resolving the final missing day does not shift the calendar upward.
+
+### 13.1.1 Shared Text Field Wrapper
+Defined in `LoonyBear/Shared/AppDesign.swift`.
+
+Behavior:
+- centered name/dosage fields use the UIKit-backed centered text field wrapper
+- the wrapper uses the app tint only for the caret through `tintColor`
+- keyboard return uses `UIReturnKeyType.default`; the app does not force `.done` or a custom keyboard action key
+- pressing Return resigns first responder through the text field delegate
+- the wrapper does not expose a clear button and keeps placeholder text in tertiary label color
 
 ### 13.2 Rules & Logic Screen
 Defined in `LoonyBear/Features/Settings/RulesLogicView.swift`.
@@ -853,14 +864,27 @@ Behavior:
 - month navigation is controlled by the header chevron buttons
 - horizontal swipe paging is disabled
 - the day grid uses a stable six-week footprint and adjusts vertical row spacing for months with fewer visible week rows
-- Habit and Pill Details/Edit calendar day views can draw a small `tertiaryLabel` dot under dates that match the effective schedule history
+- Habit and Pill Details calendar day views can draw a small `tertiaryLabel` dot under dates that match the effective schedule history
+- active Details calendars show the full stored month history, but only days in `EditableHistoryWindow.dates(startDate:)` can receive taps
+- read-only Recently Deleted calendars reuse the same month surface without hit-testing
+- completed/taken/skipped days draw circular markers; editable marked days draw a subtle border, while non-editable/read-only marked days keep a softer historical marker
+
+### 13.3.1 Dashboard List Section Headers
+Defined in the dashboard list views.
+
+Behavior:
+- My Pills and My Habits use native SwiftUI `List` + `Section` headers for Today/Pending and Build/Quit grouping
+- section headers keep native sticky header behavior during scroll
+- headers are not custom list rows
+- the app only applies light presentation styling: `.font(.title3.weight(.semibold))`, `.foregroundStyle(.secondary)`, and `.textCase(nil)`
+- row backgrounds stay owned by the surrounding card/list styling; do not replace system section headers with custom rows unless the product explicitly chooses to give up sticky behavior again
 
 ### 13.4 Shared Schedule UI
 Defined in `LoonyBear/Shared/AppDesign.swift`.
 
-Create/Edit schedule behavior:
+Create and active Details schedule behavior:
 - Create screens use `AppCreateScheduleSection`
-- Edit screens use `AppEditScheduleSection`
+- active Details screens use `AppEditScheduleSection`
 - both sections contain Reminder, Time, Repeat, and optional End Date rows; Create also contains Start Date
 - Repeat opens `AppCreateRepeatEditorScreen` as a pushed screen inside the same sheet navigation stack
 - the Repeat screen has `Days` and `Interval` sections
@@ -869,27 +893,29 @@ Create/Edit schedule behavior:
 - `Use schedule for history?` is not exposed in the UI; new items use schedule-based history generation
 - the schedule card applies `appExclusiveTouchScope()` so UIKit controls inside the same Schedule block do not accept true simultaneous multi-touch presentations
 - system date/time presentation remains owned by native compact `DatePicker` controls; the app gates touch delivery, but it does not replace those controls with custom popovers or inline pickers
-- Create/Edit share `AppSchedulePresentationGuard` as a `@StateObject`; do not reintroduce separate per-screen state for picker/popover blocking
+- Create and active Details share `AppSchedulePresentationGuard` as a `@StateObject`; do not reintroduce separate per-screen state for picker/popover blocking
 - `appTouchDownAction` is implemented as a UIKit window-level touch observer that checks whether the touch falls inside the marked control. It does not cancel touches, delay touches, or attach a SwiftUI drag/tap gesture to the visible picker capsule.
 - Repeat navigation stays a native `NavigationLink`; before the push starts, the Schedule section dismisses any open End Repeat popover and briefly blocks End Repeat presentation
 
-Details schedule behavior:
-- Details screens show a read-only Schedule section
-- Repeat uses the same display text style as Dashboard cards
-- Details no longer opens any schedule picker or schedule overlay
+Active Details schedule behavior:
+- active Pill Details and Habit Details are the editable item screens
+- the Schedule section shows Start Date as read-only, then Reminder, optional Time, Repeat, End Repeat, and optional End Date
+- Repeat uses the same display text style as Dashboard cards and opens the pushed Repeat editor
+- Start Date is informational only on active Details; changing it after create is not supported
 
 Recently Deleted page behavior:
 - My Pills and My Habits expose a Recently Deleted toolbar button beside Add only when the corresponding deleted-item list is non-empty
 - Recently Deleted pages show soft-deleted cards without Today/Pending or Build/Quit sections
 - soft-deleted cards do not expose day-state leading swipe actions
 - soft-deleted cards open a read-only item screen only
+- the read-only item screen uses the same visual layout as active Details, but disables text fields, toggles, date pickers, Repeat navigation, End Repeat options, calendar editing, Save, and soft Delete
 - the read-only item screen suppresses missing-history review and exposes permanent Delete at the bottom
 
 ### 13.5 Reminder Time UI
 Defined in `LoonyBear/Shared/AppDesign.swift`.
 
 Behavior:
-- Create/Edit reminder time rows render the selected time with a native compact `DatePicker`
+- Create and active Details reminder time rows render the selected time with a native compact `DatePicker`
 - the system compact control opens its own time picker
 - tapping the row also dismisses keyboard focus before the control interaction
 - the compact Time `DatePicker` uses `appTouchDownAction` to call `AppSchedulePresentationGuard.blockEndDateOptionsForPickerTouch()`
@@ -906,7 +932,7 @@ Behavior:
 - the system compact control opens its own date picker
 - tapping the row also dismisses keyboard focus before the control interaction
 - Habit and Pill Create use the native compact system date picker without an app-level selectable range
-- Edit screens do not expose Start Date
+- active Details screens show Start Date as a read-only row and do not expose a Start Date picker
 - Start Date participates in the schedule card exclusive-touch scope, but it does not install an additional touch-down gesture
 
 ### 13.7 End Date UI
@@ -918,6 +944,8 @@ Behavior:
 - empty values display `Never`
 - the options popover contains `Never` and `On Date`
 - when `On Date` is selected, a date row appears below the options row with the same compact capsule display
+- Create screens use today at start-of-day as the fallback date when `On Date` is selected from an empty End Date, so the default is not coupled to the selected Start Date
+- active Details screens pass the same today fallback through `AppEditScheduleSection.defaultEndDateFallback`
 - the date row uses the native compact system date picker
 - the date row uses the native compact system date picker without an app-level selectable range
 - End Date validity is centralized in `EndDateValidationSupport`: `nil` is valid, one-time Pill repeat can opt out of End Date validation, selected dates before the lower bound are invalid, and selected dates at or after the lower bound must contain at least one scheduled day in the active schedule preview window
@@ -997,7 +1025,7 @@ Important invariants:
 - do not replace the window-level `appTouchDownAction` implementation with a SwiftUI `DragGesture`, `LongPressGesture`, or `TapGesture`; those variants can steal vertical scrolling from compact picker capsules and End Repeat
 - keep `appTouchDownAction` limited to the compact Time picker and the End Repeat options value unless a real-device reproduction proves another control needs it
 - do not add a post-close delay after End Repeat popover dismissal unless a reproducible regression requires it
-- do not split the guard back into separate Create/Edit state variables
+- do not split the guard back into separate Create/Details state variables
 - keep the transient presentation blocks short; they are currently 200 ms and exist only to cover same-frame / very-fast presentation races
 - do not allow End Repeat option presentation while `isEndDateOptionsPresentationBlocked` is true
 - do not allow compact Date/Time picker hit-testing while End Repeat options are currently presented
@@ -1025,7 +1053,7 @@ Behavior:
 - the generated bundle value is shown in Settings About as a six-digit value, for example `001025`
 - normal local builds intentionally mutate `LoonyBear.xcodeproj/project.pbxproj` because `CURRENT_PROJECT_VERSION` lives in the project file
 - a dirty project file containing only the auto build-number bump is expected after a build; do not remove or rewrite the script unless the build-number strategy changes
-- the build script should not be changed when working on UI, validation, reminder, archive, or backup behavior
+- the build script should not be changed when working on UI, validation, reminder, Recently Deleted, or backup behavior
 
 ## 14. Startup Health Check
 

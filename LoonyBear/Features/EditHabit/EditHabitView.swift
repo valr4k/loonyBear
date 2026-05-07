@@ -103,17 +103,17 @@ struct EditHabitView: View {
         .onTapGesture {
             AppDescriptionFieldSupport.dismissKeyboard()
         }
-        .navigationTitle(isReadOnly ? "Habit" : "Edit Habit")
+        .navigationTitle("Habit Details")
         .navigationBarTitleDisplayMode(.inline)
         .scrollDismissesKeyboard(.immediately)
-        .alert("Permanently Delete Habit?", isPresented: $isShowingDeleteConfirmation) {
+        .alert("Permanently delete this Habit?", isPresented: $isShowingDeleteConfirmation) {
             Button("Delete", role: .destructive) {
                 deleteHabit()
             }
 
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This habit will be permanently deleted.")
+            Text("This Habit will be permanently deleted.")
         }
         .alert(archiveConfirmationTitle, isPresented: $isShowingArchiveConfirmation) {
             Button("Delete", role: .destructive) {
@@ -536,11 +536,11 @@ struct EditHabitView: View {
     }
 
     private var archiveConfirmationTitle: String {
-        "Delete Habit?"
+        "Delete this Habit?"
     }
 
     private var archiveConfirmationMessage: String {
-        "This habit will move to Recently Deleted."
+        "This Habit will be moved to Recently Deleted."
     }
 
     private func save() {
@@ -858,6 +858,10 @@ struct HabitCalendarDayView: View {
             if style == .completed || style == .skipped {
                 Circle()
                     .fill(backgroundColor)
+                    .overlay {
+                        Circle()
+                            .strokeBorder(borderColor, lineWidth: borderWidth)
+                    }
                     .frame(width: markerSize, height: markerSize)
             }
 
@@ -900,8 +904,25 @@ struct HabitCalendarDayView: View {
         }
     }
 
+    private var borderColor: Color {
+        guard isEditable else { return .clear }
+
+        switch style {
+        case .completed:
+            return appTint.accentColor.opacity(0.45)
+        case .skipped:
+            return Color(uiColor: .systemRed).opacity(0.45)
+        case .available, .disabled:
+            return .clear
+        }
+    }
+
+    private var borderWidth: CGFloat {
+        isEditable ? 1 : 0
+    }
+
     private var markedBackgroundOpacity: Double {
-        isEditable ? 0.18 : 0.48
+        isEditable ? 0.22 : 0.18
     }
 
     private var markerSize: CGFloat {
@@ -913,7 +934,7 @@ struct HabitCalendarDayView: View {
     }
 
     private var scheduleIndicatorOffset: CGFloat {
-        markerSize / 2 - scheduleIndicatorSize
+        markerSize / 2 - scheduleIndicatorSize - 2
     }
 
     private var scheduleIndicatorColor: Color {

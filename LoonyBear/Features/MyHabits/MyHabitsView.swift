@@ -33,82 +33,82 @@ struct MyHabitsView: View {
                 )
             } else {
                 List {
-                    ForEach(Array(sections.enumerated()), id: \.element.id) { sectionIndex, section in
-                        sectionHeader(section.title, isFirst: sectionIndex == 0)
-
-                        ForEach(Array(section.habits.enumerated()), id: \.element.id) { index, habit in
-                            HabitCardView(
-                                habit: habit,
-                                position: rowPosition(for: index, count: section.habits.count),
-                                currentTime: currentTime
-                            )
-                            .padding(.horizontal, 10)
-                            .listRowInsets(EdgeInsets())
-	                            .listRowBackground(Color.clear)
-	                            .listRowSeparator(.hidden)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                onEditHabit(habit)
-                            }
-	                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
-	                                if habit.isArchived || habit.startsInFuture {
-	                                    EmptyView()
-                                } else if let overdueDay = habit.activeOverdueDay {
-                                    Button {
-                                        performSwipeAction {
-                                            await appState.completeHabitDay(id: habit.id, on: overdueDay, animatedRefresh: true)
-                                        }
-                                    } label: {
-                                        Image(systemName: "checkmark")
-                                    }
-                                    .tint(.green)
-
-                                    Button {
-                                        performSwipeAction {
-                                            await appState.skipHabitDay(id: habit.id, on: overdueDay, animatedRefresh: true)
-                                        }
-                                    } label: {
-                                        Image(systemName: "xmark")
-                                    }
-                                    .tint(.red)
-                                } else if habit.isCompletedToday {
-                                    Button {
-                                        performSwipeAction {
-                                            await appState.clearHabitDayStateToday(id: habit.id, animatedRefresh: true)
-                                        }
-                                    } label: {
-                                        Image(systemName: "arrow.uturn.backward")
-                                    }
-                                    .tint(.orange)
-                                } else if habit.isSkippedToday {
-                                    Button {
-                                        performSwipeAction {
-                                            await appState.clearHabitDayStateToday(id: habit.id, animatedRefresh: true)
-                                        }
-                                    } label: {
-                                        Image(systemName: "arrow.uturn.backward")
-                                    }
-                                    .tint(.orange)
-                                } else {
-                                    Button {
-                                        performSwipeAction {
-                                            await appState.completeHabitToday(id: habit.id, animatedRefresh: true)
-                                        }
-                                    } label: {
-                                        Image(systemName: "checkmark")
-                                    }
-                                    .tint(.green)
-
-                                    Button {
-                                        performSwipeAction {
-                                            await appState.skipHabitToday(id: habit.id, animatedRefresh: true)
-                                        }
-                                    } label: {
-                                        Image(systemName: "xmark")
-                                    }
-                                    .tint(.red)
+                    ForEach(sections) { section in
+                        Section(section.title) {
+                            ForEach(Array(section.habits.enumerated()), id: \.element.id) { index, habit in
+                                HabitCardView(
+                                    habit: habit,
+                                    position: rowPosition(for: index, count: section.habits.count),
+                                    currentTime: currentTime
+                                )
+                                .padding(.horizontal, 10)
+                                .listRowInsets(EdgeInsets())
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    onEditHabit(habit)
                                 }
-	                            }
+                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                                    if habit.isArchived || habit.startsInFuture {
+                                        EmptyView()
+                                    } else if let overdueDay = habit.activeOverdueDay {
+                                        Button {
+                                            performSwipeAction {
+                                                await appState.completeHabitDay(id: habit.id, on: overdueDay, animatedRefresh: true)
+                                            }
+                                        } label: {
+                                            Image(systemName: "checkmark")
+                                        }
+                                        .tint(.green)
+
+                                        Button {
+                                            performSwipeAction {
+                                                await appState.skipHabitDay(id: habit.id, on: overdueDay, animatedRefresh: true)
+                                            }
+                                        } label: {
+                                            Image(systemName: "xmark")
+                                        }
+                                        .tint(.red)
+                                    } else if habit.isCompletedToday {
+                                        Button {
+                                            performSwipeAction {
+                                                await appState.clearHabitDayStateToday(id: habit.id, animatedRefresh: true)
+                                            }
+                                        } label: {
+                                            Image(systemName: "arrow.uturn.backward")
+                                        }
+                                        .tint(.orange)
+                                    } else if habit.isSkippedToday {
+                                        Button {
+                                            performSwipeAction {
+                                                await appState.clearHabitDayStateToday(id: habit.id, animatedRefresh: true)
+                                            }
+                                        } label: {
+                                            Image(systemName: "arrow.uturn.backward")
+                                        }
+                                        .tint(.orange)
+                                    } else {
+                                        Button {
+                                            performSwipeAction {
+                                                await appState.completeHabitToday(id: habit.id, animatedRefresh: true)
+                                            }
+                                        } label: {
+                                            Image(systemName: "checkmark")
+                                        }
+                                        .tint(.green)
+
+                                        Button {
+                                            performSwipeAction {
+                                                await appState.skipHabitToday(id: habit.id, animatedRefresh: true)
+                                            }
+                                        } label: {
+                                            Image(systemName: "xmark")
+                                        }
+                                        .tint(.red)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -151,19 +151,6 @@ struct MyHabitsView: View {
         } message: {
             Text(appState.actionErrorMessage ?? "")
         }
-    }
-
-    private func sectionHeader(_ title: String, isFirst: Bool) -> some View {
-        Text(title)
-            .font(.title3.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 20)
-            .padding(.top, isFirst ? 0 : 14)
-            .padding(.bottom, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .listRowInsets(EdgeInsets())
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
     }
 
     private var actionErrorAlertBinding: Binding<Bool> {

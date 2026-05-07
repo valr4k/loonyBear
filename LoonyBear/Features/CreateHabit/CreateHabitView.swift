@@ -30,7 +30,7 @@ struct CreateHabitView: View {
         .overlay(alignment: .bottom) {
             floatingBottomBanners
         }
-        .navigationTitle("Create Habit")
+        .navigationTitle("Add new Habit")
         .navigationBarTitleDisplayMode(.inline)
         .scrollDismissesKeyboard(.immediately)
         .toolbar {

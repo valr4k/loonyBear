@@ -143,14 +143,14 @@ struct PillDetailsView: View {
         }
         .navigationTitle("Pill Details")
         .navigationBarTitleDisplayMode(.inline)
-        .alert("Permanently Delete Pill?", isPresented: $isShowingDeleteConfirmation) {
+        .alert("Permanently delete this Pill?", isPresented: $isShowingDeleteConfirmation) {
             Button("Delete", role: .destructive) {
                 deletePill()
             }
 
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This pill will be permanently deleted.")
+            Text("This Pill will be permanently deleted.")
         }
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {

@@ -34,82 +34,82 @@ struct MyPillsView: View {
                 )
             } else {
                 List {
-                    ForEach(Array(sections.enumerated()), id: \.element.id) { sectionIndex, section in
-                        sectionHeader(section.title, isFirst: sectionIndex == 0)
-
-                        ForEach(Array(section.pills.enumerated()), id: \.element.id) { index, pill in
-                            PillCardView(
-                                pill: pill,
-                                position: rowPosition(for: index, count: section.pills.count),
-                                currentTime: currentTime
-                            )
-                            .padding(.horizontal, 10)
-                            .listRowInsets(EdgeInsets())
-	                            .listRowBackground(Color.clear)
-	                            .listRowSeparator(.hidden)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                onEditPill(pill)
-                            }
-	                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
-	                                if pill.isArchived || pill.startsInFuture {
-	                                    EmptyView()
-                                } else if let overdueDay = pill.activeOverdueDay {
-                                    Button {
-                                        performSwipeAction {
-                                            await pillAppState.markPillTaken(id: pill.id, on: overdueDay, animatedRefresh: true)
-                                        }
-                                    } label: {
-                                        Image(systemName: "checkmark")
-                                    }
-                                    .tint(.green)
-
-                                    Button {
-                                        performSwipeAction {
-                                            await pillAppState.skipPillDay(id: pill.id, on: overdueDay, animatedRefresh: true)
-                                        }
-                                    } label: {
-                                        Image(systemName: "xmark")
-                                    }
-                                    .tint(.red)
-                                } else if pill.isTakenToday {
-                                    Button {
-                                        performSwipeAction {
-                                            await pillAppState.clearPillDayStateToday(id: pill.id, animatedRefresh: true)
-                                        }
-                                    } label: {
-                                        Image(systemName: "arrow.uturn.backward")
-                                    }
-                                    .tint(.orange)
-                                } else if pill.isSkippedToday {
-                                    Button {
-                                        performSwipeAction {
-                                            await pillAppState.clearPillDayStateToday(id: pill.id, animatedRefresh: true)
-                                        }
-                                    } label: {
-                                        Image(systemName: "arrow.uturn.backward")
-                                    }
-                                    .tint(.orange)
-                                } else {
-                                    Button {
-                                        performSwipeAction {
-                                            await pillAppState.markTakenToday(id: pill.id, animatedRefresh: true)
-                                        }
-                                    } label: {
-                                        Image(systemName: "checkmark")
-                                    }
-                                    .tint(.green)
-
-                                    Button {
-                                        performSwipeAction {
-                                            await pillAppState.skipPillToday(id: pill.id, animatedRefresh: true)
-                                        }
-                                    } label: {
-                                        Image(systemName: "xmark")
-                                    }
-                                    .tint(.red)
+                    ForEach(sections) { section in
+                        Section(section.title) {
+                            ForEach(Array(section.pills.enumerated()), id: \.element.id) { index, pill in
+                                PillCardView(
+                                    pill: pill,
+                                    position: rowPosition(for: index, count: section.pills.count),
+                                    currentTime: currentTime
+                                )
+                                .padding(.horizontal, 10)
+                                .listRowInsets(EdgeInsets())
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    onEditPill(pill)
                                 }
-	                            }
+                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                                    if pill.isArchived || pill.startsInFuture {
+                                        EmptyView()
+                                    } else if let overdueDay = pill.activeOverdueDay {
+                                        Button {
+                                            performSwipeAction {
+                                                await pillAppState.markPillTaken(id: pill.id, on: overdueDay, animatedRefresh: true)
+                                            }
+                                        } label: {
+                                            Image(systemName: "checkmark")
+                                        }
+                                        .tint(.green)
+
+                                        Button {
+                                            performSwipeAction {
+                                                await pillAppState.skipPillDay(id: pill.id, on: overdueDay, animatedRefresh: true)
+                                            }
+                                        } label: {
+                                            Image(systemName: "xmark")
+                                        }
+                                        .tint(.red)
+                                    } else if pill.isTakenToday {
+                                        Button {
+                                            performSwipeAction {
+                                                await pillAppState.clearPillDayStateToday(id: pill.id, animatedRefresh: true)
+                                            }
+                                        } label: {
+                                            Image(systemName: "arrow.uturn.backward")
+                                        }
+                                        .tint(.orange)
+                                    } else if pill.isSkippedToday {
+                                        Button {
+                                            performSwipeAction {
+                                                await pillAppState.clearPillDayStateToday(id: pill.id, animatedRefresh: true)
+                                            }
+                                        } label: {
+                                            Image(systemName: "arrow.uturn.backward")
+                                        }
+                                        .tint(.orange)
+                                    } else {
+                                        Button {
+                                            performSwipeAction {
+                                                await pillAppState.markTakenToday(id: pill.id, animatedRefresh: true)
+                                            }
+                                        } label: {
+                                            Image(systemName: "checkmark")
+                                        }
+                                        .tint(.green)
+
+                                        Button {
+                                            performSwipeAction {
+                                                await pillAppState.skipPillToday(id: pill.id, animatedRefresh: true)
+                                            }
+                                        } label: {
+                                            Image(systemName: "xmark")
+                                        }
+                                        .tint(.red)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -152,19 +152,6 @@ struct MyPillsView: View {
         } message: {
             Text(pillAppState.actionErrorMessage ?? "")
         }
-    }
-
-    private func sectionHeader(_ title: String, isFirst: Bool) -> some View {
-        Text(title)
-            .font(.title3.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 20)
-            .padding(.top, isFirst ? 0 : 14)
-            .padding(.bottom, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .listRowInsets(EdgeInsets())
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
     }
 
     private var pills: [PillCardProjection] {

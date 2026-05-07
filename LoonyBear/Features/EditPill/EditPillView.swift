@@ -118,17 +118,17 @@ struct EditPillView: View {
                 focusedField = nil
                 AppDescriptionFieldSupport.dismissKeyboard()
             }
-            .navigationTitle(isReadOnly ? "Pill" : "Edit Pill")
+            .navigationTitle("Pill Details")
             .navigationBarTitleDisplayMode(.inline)
             .scrollDismissesKeyboard(.immediately)
-            .alert("Permanently Delete Pill?", isPresented: $isShowingDeleteConfirmation) {
+            .alert("Permanently delete this Pill?", isPresented: $isShowingDeleteConfirmation) {
                 Button("Delete", role: .destructive) {
                     deletePill()
                 }
 
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This pill will be permanently deleted.")
+                Text("This Pill will be permanently deleted.")
             }
             .alert(archiveConfirmationTitle, isPresented: $isShowingArchiveConfirmation) {
                 Button("Delete", role: .destructive) {
@@ -563,11 +563,11 @@ struct EditPillView: View {
     }
 
     private var archiveConfirmationTitle: String {
-        "Delete Pill?"
+        "Delete this Pill?"
     }
 
     private var archiveConfirmationMessage: String {
-        "This pill will be moved to Recently Deleted."
+        "This Pill will be moved to Recently Deleted."
     }
 
     private func save() {

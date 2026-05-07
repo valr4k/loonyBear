@@ -258,7 +258,7 @@ private struct AppNotificationSettingsAlertModifier: ViewModifier {
 enum AppCopy {
     static let chooseAtLeastOneDay = "Select at least one day."
     static let notificationsRequired = "Turn on notifications in Settings to use reminders."
-    static let endDateRemovedForNeverRepeat = "End date removed. Repeat is Never."
+    static let endDateRemovedForNeverRepeat = "End date removed. Repeat set to Never."
     static let noScheduledDayBeforeEndDate = "End date must be on or after the first scheduled day."
     static let backupFolderHint = "Backups stay in the selected Files folder even if the app is deleted. After reinstalling, choose the same folder again before restoring."
     static let pillHistoryFollowsSchedule = "History follows schedule from start date."
@@ -893,6 +893,7 @@ struct AppReminderTimeRows: View {
                     .fixedSize()
                     .allowsHitTesting(!isPickerPresentationBlocked)
                     .appTouchDownAction {
+                        dismissKeyboardForNonTextControl()
                         onPickerTouchDown?()
                     }
             }
@@ -954,6 +955,10 @@ struct AppDatePickerRow: View {
             .appAccentTint()
             .fixedSize()
             .allowsHitTesting(!isPickerPresentationBlocked)
+            .appTouchDownAction {
+                AppDescriptionFieldSupport.dismissKeyboard()
+                onTap?()
+            }
     }
 }
 
@@ -1346,7 +1351,7 @@ struct AppCreateScheduleSection<RepeatDestination: View>: View {
                         title: endDateTitle,
                         emptyTitle: endDateEmptyTitle,
                         date: $endDate,
-                        fallbackDate: startDate,
+                        fallbackDate: defaultEndDateFallback,
                         isEnabled: isEndDateEnabled,
                         onTap: endDateTap,
                         dismissOptionsSignal: endDateOptionsDismissSignal,
@@ -1362,6 +1367,10 @@ struct AppCreateScheduleSection<RepeatDestination: View>: View {
         .onDisappear {
             presentationGuard.reset()
         }
+    }
+
+    private var defaultEndDateFallback: Date {
+        Calendar.current.startOfDay(for: Date())
     }
 
     private func dismissEndDateOptionsForRepeatNavigation() {
@@ -1926,7 +1935,7 @@ private struct CenteredInputTextField: UIViewRepresentable {
         textField.autocorrectionType = autocorrectionType
         textField.borderStyle = .none
         textField.clearButtonMode = .never
-        textField.returnKeyType = .done
+        textField.returnKeyType = .default
         textField.enablesReturnKeyAutomatically = false
         textField.font = .systemFont(ofSize: 20, weight: .semibold)
         textField.textColor = .label

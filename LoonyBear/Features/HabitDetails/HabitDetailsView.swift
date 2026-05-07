@@ -130,14 +130,14 @@ struct HabitDetailsView: View {
         }
         .navigationTitle(details?.type.sectionTitle ?? "Habit")
         .navigationBarTitleDisplayMode(.inline)
-        .alert("Permanently Delete Habit?", isPresented: $isShowingDeleteConfirmation) {
+        .alert("Permanently delete this Habit?", isPresented: $isShowingDeleteConfirmation) {
             Button("Delete", role: .destructive) {
                 deleteHabit()
             }
 
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This habit will be permanently deleted.")
+            Text("This Habit will be permanently deleted.")
         }
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
