@@ -6,11 +6,11 @@
       "items": [
         {
           "title": "What opens first",
-          "body": "The app opens on the My Pills tab by default. The main navigation has exactly 3 tabs: My Pills, My Habits, and Settings."
+          "body": "The app opens on the My Pills tab by default. The main navigation has exactly 4 tabs: My Pills, My Habits, Events, and Settings."
         },
         {
           "title": "What happens on launch",
-          "body": "On the first app task, the app configures notification categories, loads Habit dashboard data, loads Pill dashboard data, refreshes the app badge, then runs a one-time startup health check in the background."
+          "body": "On the first app task, the app configures notification categories, loads Habit dashboard data, loads Pill dashboard data, loads Event dashboard data, refreshes the app badge, then runs a one-time startup health check in the background."
         },
         {
           "title": "What happens when the app becomes active",
@@ -18,7 +18,7 @@
         },
         {
           "title": "How screens open",
-          "body": "Create screens and item Details screens for Habits and Pills open as sheets. Active cards open editable Details sheets. Recently Deleted cards open the same layout in read-only mode. These sheets do not push deeper into the main tab navigation stack."
+          "body": "Create screens and item Details screens for Habits, Pills, and Events open as sheets. Active Habit and Pill cards open editable Details sheets. Recently Deleted cards open the same layout in read-only mode. Event cards open editable Event Details sheets. These sheets do not push deeper into the main tab navigation stack."
         },
         {
           "title": "Device orientation",
@@ -113,6 +113,35 @@
         {
           "title": "Best streak and completed total",
           "body": "Best streak is the longest streak found by the same streak logic. Completed for is the total count of unique completed days stored in history."
+        }
+      ]
+    },
+    {
+      "title": "Events",
+      "items": [
+        {
+          "title": "Empty state",
+          "body": "If there are no Events, the Events tab shows one empty state: No Events Yet with the message Create your first event to get started. Countdown and Count Up section headers are not shown until matching Events exist."
+        },
+        {
+          "title": "Event sections",
+          "body": "The Events tab can show Countdown and Count Up sections. Countdown appears only when at least one Countdown event exists. Count Up appears only when at least one Count Up event exists."
+        },
+        {
+          "title": "Creating an Event",
+          "body": "Add new Event contains a Name block and a Timing block. Timing has Mode and Date. Mode opens a popover with Countdown and Count Up. Date uses the native compact system date picker. Countdown defaults to today. Count Up defaults to today."
+        },
+        {
+          "title": "Event validation",
+          "body": "Countdown dates can be today or in the future. Past dates disable Save and show Countdown date must be in the future. Count Up dates can be today or in the past. Future dates disable Save and show Count Up date must be in the past."
+        },
+        {
+          "title": "Event cards",
+          "body": "Event cards show the name on the left and duration on the right. Duration uses the same compact style as streak text, such as 2yr 2mo 7d. Duration normally uses the app tint. Countdown events show 0d in red on and after the event date. Count Up events count the selected date as day 1."
+        },
+        {
+          "title": "Event Details and Delete",
+          "body": "Tapping an Event card opens Event Details. Event Details can edit name, mode, and date. Delete is permanent and uses the confirmation Delete this Event? / This Event will be permanently deleted. Events do not use Recently Deleted, Archive, Restore, reminders, overdue, badge count, history review, or auto-delete."
         }
       ]
     },
@@ -501,7 +530,7 @@
         },
         {
           "title": "Backup payload contents",
-          "body": "BackupArchive contains habits with End Date and Recently Deleted/isArchived state, habit schedule versions with schedule kind, weekday mask, and interval days, habit completion records, habit ordering, optional app settings, pills with End Date and Recently Deleted/isArchived state, pill schedule versions with schedule kind, weekday mask, and interval days, and pill intake records. Schedule kind can represent weekly, custom interval days, or one-time Pill rules. BackupHabit and BackupPill both carry stored historyMode values. BackupAppSettings carries appearanceMode and appTint."
+          "body": "BackupArchive contains habits with End Date and Recently Deleted/isArchived state, habit schedule versions with schedule kind, weekday mask, and interval days, habit completion records, habit ordering, optional app settings, pills with End Date and Recently Deleted/isArchived state, pill schedule versions with schedule kind, weekday mask, and interval days, pill intake records, and Events. Schedule kind can represent weekly, custom interval days, or one-time Pill rules. BackupHabit and BackupPill both carry stored historyMode values. BackupEvent carries name, mode, date, sort order, timestamps, and version. BackupAppSettings carries appearanceMode and appTint."
         },
         {
           "title": "Backup file state",

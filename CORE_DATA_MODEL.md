@@ -7,6 +7,7 @@ Core Data stores facts, not UI-specific projections.
 Stored facts include:
 - habits
 - pills
+- events
 - schedule versions
 - completion / intake rows
 - reminder values
@@ -125,6 +126,25 @@ Important fields:
 - `createdAt`
 - `version`
 
+### `Event`
+Purpose:
+- root record for a lightweight Countdown or Count Up event
+
+Important fields:
+- `id`
+- `name`
+- `modeRaw`
+- `eventDate`
+- `sortOrder`
+- `createdAt`
+- `updatedAt`
+- `version`
+
+Meaning:
+- `modeRaw = countdown` means the dashboard counts down from today to `eventDate`
+- `modeRaw = elapsed` is the persisted compatibility value for the user-facing Count Up mode; it means the dashboard counts from `eventDate` through today
+- Events have no relationships, no history rows, no reminder rows, no archive flag, and no schedule versions
+
 ## Stored Model Rules
 
 - `startDate` is stored as a normalized start-of-day date.
@@ -139,6 +159,9 @@ Important fields:
 - Schedule versions store `scheduleKindRaw`, `weekdayMask`, and `intervalDays` so both weekday rules and `Every N days` interval rules can round-trip through persistence and backup.
 - Daily state is stored explicitly through completion / intake rows.
 - Skipped days are stored explicitly, not inferred.
+- Event `eventDate` is stored as a normalized start-of-day date.
+- Event mode is stored in `modeRaw`.
+- Events are permanently deleted; there is no soft-delete or Recently Deleted state for Events.
 
 ## Read-Time Derivation Rules
 
@@ -151,6 +174,7 @@ The app derives these values from stored facts:
 - streaks
 - taken totals
 - completed totals
+- event countdown / count-up duration text
 
 ## Validation Rules Applied While Reading
 
@@ -158,6 +182,7 @@ The code validates:
 - `typeRaw`
 - `historyModeRaw`
 - `sourceRaw`
+- `modeRaw` for Events
 - `weekdayMask`
 - reminder hour/minute ranges
 - required fields on root and child rows
@@ -174,8 +199,10 @@ Backup serializes and restores:
 - Pill
 - PillScheduleVersion
 - PillIntake
+- Event
 
 Both Habit and Pill backup payloads include stored `historyMode`.
 Both Habit and Pill backup payloads include `endDate` and `isArchived`.
 Schedule backup payloads include `scheduleKind` and `intervalDays` for interval and one-time repeat support.
+Event backup payloads include `id`, `name`, `mode`, `date`, `sortOrder`, timestamps, and `version`.
 `BackupAppSettings` stores the selected appearance mode and app tint. Legacy backups without this optional settings payload remain valid and do not overwrite the current appearance settings during restore.

@@ -3,6 +3,7 @@
 LoonyBear is an iOS SwiftUI app built around two tracking domains:
 - habits
 - pills
+- events
 
 ## Core User Capabilities
 
@@ -13,6 +14,7 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
 - tap active cards to open Pill Details / Habit Details
 - open soft-deleted cards from Recently Deleted as read-only item screens
 - soft-delete active items and permanently delete items from Recently Deleted
+- create, edit, and permanently delete Countdown / Count Up events
 - configure reminder notifications
 - use pill remind-later notifications
 - create and restore local backups
@@ -52,8 +54,8 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
 1. `LoonyBearApp` builds `AppEnvironment.live()`.
 2. `AppEnvironment` creates persistence, repositories, services, use cases, and app state.
 3. `ContentView` configures notifications, loads dashboards, and refreshes the badge.
-4. `RootTabView` exposes `My Pills`, `My Habits`, and `Settings`.
-5. Create screens and item Details screens are opened as sheets. Create sheet titles are `Add new Pill` and `Add new Habit`. Active cards open editable `Pill Details` / `Habit Details` sheets; Recently Deleted cards open the same layout read-only.
+4. `RootTabView` exposes `My Pills`, `My Habits`, `Events`, and `Settings`.
+5. Create screens and item Details screens are opened as sheets. Create sheet titles are `Add new Pill`, `Add new Habit`, and `Add new Event`. Active cards open editable `Pill Details` / `Habit Details` sheets; Recently Deleted cards open the same layout read-only. Event cards open editable `Event Details`.
 6. App-active lifecycle refreshes derived overdue/history state and reschedules notifications.
 
 ## Habit Flow Summary
@@ -116,6 +118,35 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
   - description
   - permanent Delete at the bottom
 
+## Event Flow Summary
+
+- Events are shown on their own `Events` tab between Habits and Settings.
+- If there are no Events, the screen shows a single empty state: `No Events Yet` / `Create your first event to get started.`
+- The dashboard shows a `Countdown` section only when at least one Countdown event exists.
+- The dashboard shows a `Count Up` section only when at least one Count Up event exists.
+- Event create supports:
+  - name
+  - mode
+  - date
+- Mode values:
+  - `Countdown`: counts days from today to today or a future event date
+  - `Count Up`: counts days from a past or current event date to today
+- Default dates:
+  - Countdown defaults to today, so a same-day event displays `0d`
+  - Count Up defaults to today, because selected day is day 1
+- Switching mode keeps the form valid:
+  - Countdown to Count Up moves a future date to today
+  - Count Up to Countdown moves past dates to today
+- Event validation:
+  - Countdown date can be today or in the future
+  - Countdown dates in the past disable Save and show `Countdown date must be in the future.`
+  - Count Up date can be today or in the past
+  - invalid dates disable Save and show a dismissible floating warning banner
+- Event cards show the name on the left and duration on the right in the same compact style as streak text, for example `2yr 2mo 7d`.
+- Event duration uses the app tint, except completed Countdown cards show `0d` in red forever.
+- Event Details supports editing name, mode, and date.
+- Event Delete is permanent. There is no Recently Deleted, Archive, Restore, reminder, overdue, badge, history review, or auto-delete behavior for Events.
+
 ## Important Current Rules
 
 - Habit and Pill Create Start Date uses the native compact system date picker with no app-level selectable range.
@@ -134,6 +165,7 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
 - Settings supports System/Light/Dark appearance and Blue/Indigo/Green/Amber app color selection; Blue is the default and first palette option.
 - App tint colors supported accent surfaces, while page backgrounds stay on the system grouped background.
 - Backup includes the selected appearance mode and app tint, while legacy backups without those settings keep the current appearance.
+- Backup includes Events. Legacy backups without Events restore normally with an empty Events list.
 - Custom calendars use arrow-only month navigation, without horizontal swipe paging.
 - Custom calendar blocks keep a stable six-week footprint when changing months.
 - Habit and Pill Details calendars show all stored history. Active Details calendars preserve edit restrictions: only days in the editable 30-day window, not earlier than Start Date, can be changed. Recently Deleted Details calendars are fully read-only.

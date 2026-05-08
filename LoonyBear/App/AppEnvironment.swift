@@ -10,6 +10,7 @@ struct AppEnvironment {
     let persistenceController: PersistenceController
     let appState: HabitAppState
     let pillAppState: PillAppState
+    let eventAppState: EventAppState
     let notificationCoordinator: AppNotificationCoordinator
     let badgeService: AppBadgeService
     let lifecycleRefreshCoordinator: AppLifecycleRefreshCoordinator
@@ -48,6 +49,12 @@ struct AppEnvironment {
             calendar: calendar,
             clock: clock
         )
+        let eventRepository = CoreDataEventRepository(
+            context: persistenceController.container.viewContext,
+            makeWriteContext: persistenceController.makeBackgroundContext,
+            calendar: calendar,
+            clock: clock
+        )
         let loadDashboardUseCase = LoadDashboardUseCase(repository: repository)
         let widgetSyncService = WidgetSyncService(clock: clock)
         let badgeService = AppBadgeService(
@@ -80,6 +87,7 @@ struct AppEnvironment {
             clock: clock,
             rescheduleAllReminderNotifications: rescheduleAllReminderNotifications
         )
+        let eventAppState = EventAppState(repository: eventRepository)
         let notificationCoordinator = AppNotificationCoordinator(
             habitNotificationService: notificationService,
             pillNotificationService: pillNotificationService,
@@ -100,6 +108,7 @@ struct AppEnvironment {
             persistenceController: persistenceController,
             appState: appState,
             pillAppState: pillAppState,
+            eventAppState: eventAppState,
             notificationCoordinator: notificationCoordinator,
             badgeService: badgeService,
             lifecycleRefreshCoordinator: lifecycleRefreshCoordinator,
@@ -136,6 +145,12 @@ struct AppEnvironment {
             calendar: calendar,
             clock: clock
         )
+        let eventRepository = CoreDataEventRepository(
+            context: persistenceController.container.viewContext,
+            makeWriteContext: persistenceController.makeBackgroundContext,
+            calendar: calendar,
+            clock: clock
+        )
         let loadDashboardUseCase = LoadDashboardUseCase(repository: repository)
         let widgetSyncService = WidgetSyncService(clock: clock)
         let badgeService = AppBadgeService(
@@ -168,6 +183,7 @@ struct AppEnvironment {
             clock: clock,
             rescheduleAllReminderNotifications: rescheduleAllReminderNotifications
         )
+        let eventAppState = EventAppState(repository: eventRepository)
         let notificationCoordinator = AppNotificationCoordinator(
             habitNotificationService: notificationService,
             pillNotificationService: pillNotificationService,
@@ -188,6 +204,7 @@ struct AppEnvironment {
             persistenceController: persistenceController,
             appState: appState,
             pillAppState: pillAppState,
+            eventAppState: eventAppState,
             notificationCoordinator: notificationCoordinator,
             badgeService: badgeService,
             lifecycleRefreshCoordinator: lifecycleRefreshCoordinator,

@@ -3,6 +3,7 @@ import SwiftUI
 struct BackupSettingsView: View {
     @EnvironmentObject private var appState: HabitAppState
     @EnvironmentObject private var pillAppState: PillAppState
+    @EnvironmentObject private var eventAppState: EventAppState
     @StateObject private var viewModel: BackupSettingsViewModel
     @State private var isShowingCreateBackupConfirmation = false
     @State private var isShowingRestoreBackupConfirmation = false
@@ -75,6 +76,7 @@ struct BackupSettingsView: View {
                     if await viewModel.confirmRestoreBackup() {
                         appState.refreshDashboard()
                         pillAppState.refreshDashboard()
+                        eventAppState.refreshDashboard()
                         onRestoreComplete()
                     }
                 }
@@ -437,4 +439,5 @@ private extension BackupActionNoticeKind {
     }
     .environmentObject(AppEnvironment.preview.appState)
     .environmentObject(AppEnvironment.preview.pillAppState)
+    .environmentObject(AppEnvironment.preview.eventAppState)
 }

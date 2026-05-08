@@ -5,6 +5,7 @@
 LoonyBear is an iOS SwiftUI app with two tracking domains:
 - Habits
 - Pills
+- Events
 
 The runtime is composed from:
 - `LoonyBearApp`
@@ -13,6 +14,7 @@ The runtime is composed from:
 - `RootTabView`
 - `HabitAppState`
 - `PillAppState`
+- `EventAppState`
 - `NotificationService`
 - `PillNotificationService`
 - `AppBadgeService`
@@ -41,10 +43,12 @@ Responsibilities:
 - streak calculation
 - backup archive models
 - widget snapshot models
+- event models and event duration formatting
 
 Key files:
 - `LoonyBear/Core/Domain/HabitModels.swift`
 - `LoonyBear/Core/Domain/PillModels.swift`
+- `LoonyBear/Core/Domain/EventModels.swift`
 - `LoonyBear/Core/Domain/StreakEngine.swift`
 - `LoonyBear/Core/Domain/BackupModels.swift`
 - `LoonyBear/Core/Domain/WidgetSnapshotModels.swift`
@@ -58,6 +62,7 @@ Responsibilities:
 Key files:
 - `LoonyBear/Core/Application/HabitAppState.swift`
 - `LoonyBear/Core/Application/PillAppState.swift`
+- `LoonyBear/Core/Application/EventAppState.swift`
 - `LoonyBear/Core/Application/CreateHabitUseCase.swift`
 - `LoonyBear/Core/Application/UpdateHabitUseCase.swift`
 - `LoonyBear/Core/Application/LoadDashboardUseCase.swift`
@@ -75,9 +80,11 @@ Responsibilities:
 Key files:
 - `LoonyBear/Core/Data/CoreDataHabitRepository.swift`
 - `LoonyBear/Core/Data/CoreDataPillRepository.swift`
+- `LoonyBear/Core/Data/CoreDataEventRepository.swift`
 - `LoonyBear/Core/Data/CoreDataSupport.swift`
 - `LoonyBear/Core/Data/HabitRepository.swift`
 - `LoonyBear/Core/Data/PillRepository.swift`
+- `LoonyBear/Core/Data/EventRepository.swift`
 - `LoonyBear/Core/Data/DemoDataWriter.swift`
 
 ### `LoonyBear/Core/Services`
@@ -117,7 +124,7 @@ Responsibilities:
 
 ## Data Flow
 
-1. A SwiftUI screen triggers an action on `HabitAppState` or `PillAppState`.
+1. A SwiftUI screen triggers an action on `HabitAppState`, `PillAppState`, or `EventAppState`.
 2. The app state calls a use case or repository.
 3. Repositories read or write Core Data facts.
 4. Domain logic derives projections such as streaks, totals, reminder eligibility, and schedule summaries.
@@ -147,9 +154,9 @@ Derived values include:
 
 ## Navigation Architecture
 
-- The app has exactly 3 tabs: `My Pills`, `My Habits`, `Settings`.
+- The app has exactly 4 tabs: `My Pills`, `My Habits`, `Events`, `Settings`.
 - The default selected tab is `My Pills`.
-- Habit and Pill create/details/edit screens open as sheets.
+- Habit, Pill, and Event create/details screens open as sheets.
 - Settings uses a route-based `NavigationStack` for Backup and Rules & Logic.
 - The selected tab and active Settings route are stored in `@SceneStorage` so app tint or restore-driven root rebuilds preserve the user's place.
 - Settings child screens use the shared custom tinted back button while a UIKit bridge keeps the native left-edge interactive pop gesture enabled.
@@ -197,9 +204,10 @@ On every `.active` scene phase:
 ## Current Technical Boundaries
 
 - Habits and Pills use separate repositories and separate app state.
+- Events use their own repository and app state. They do not participate in reminders, overdue, badges, history review, Recently Deleted, or widget snapshots.
 - Streak logic exists only for Habits.
 - Pills support reordering through `sortOrder`.
-- Backup covers both trackers and app appearance settings in one archive schema.
+- Backup covers Habits, Pills, Events, and app appearance settings in one archive schema.
 - Backup owns create/restore feedback through floating banners; restore success refreshes app state and shows a green banner on the Backup screen.
 - Habit and Pill dashboards expose separate Recently Deleted pages backed by stored `isArchived` facts. The Recently Deleted toolbar entry is conditional and appears only when the corresponding dashboard has soft-deleted items.
 - Schedule editing is shared through a pushed Repeat editor with Days and Interval sections.
@@ -208,3 +216,4 @@ On every `.active` scene phase:
 - Schedule Create/active Details picker safety is centralized in shared UI infrastructure: native compact `DatePicker` controls and Repeat `NavigationLink` stay system-owned, while `AppSchedulePresentationGuard`, the Schedule card exclusive-touch scope, a window-level touch-down observer, and the End Repeat dismiss signal prevent simultaneous picker/popover/navigation presentation races without attaching scroll-stealing SwiftUI gestures to the picker capsules.
 - App tint updates are applied through SwiftUI tint helpers and visible UIKit tab/navigation bar updates.
 - Widget snapshot currently serializes Habit dashboard data only.
+- Event dashboard state is derived from stored `Event` rows. `Countdown` cards show days remaining and clamp to `0d` in red on/after the event date. `Count Up` cards count the selected date as day 1 and continue indefinitely until the user permanently deletes the Event.

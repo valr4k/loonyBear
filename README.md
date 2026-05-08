@@ -1,6 +1,6 @@
 # LoonyBear
 
-LoonyBear is an iOS SwiftUI app for tracking habits and pills with reminders, history modes, streak logic for habits, pill snooze reminders, and local backup/restore.
+LoonyBear is an iOS SwiftUI app for tracking habits, pills, and lightweight Countdown / Count Up events with reminders, history modes, streak logic for habits, pill snooze reminders, and local backup/restore.
 
 ## Developer Docs
 
@@ -32,6 +32,7 @@ Do not run or document test validation on `iPhone 16`, `iPhone 17`, or any other
 The current app supports:
 - Habit tracking
 - Pill tracking
+- Events for Countdown and Count Up day counting
 - local reminder notifications
 - pill remind-later notifications
 - badge count derived from overdue items
@@ -42,6 +43,7 @@ The current app supports:
 - End Repeat / End Date and separate Recently Deleted pages for manually soft-deleted or automatically finished items
 - active Pill Details and Habit Details sheets that replace the older separate Edit/Details split
 - read-only item Details for Recently Deleted items, with permanent delete only
+- Events tab between Habits and Settings, with permanent delete only and no reminder/history/archive behavior
 - scheduled-day dots in Habit and Pill history calendars
 - native compact date/time pickers with shared Schedule presentation safety for simultaneous picker/popover/navigation taps, including a window-level touch-down guard that avoids stealing scroll gestures
 - portrait-only orientation on iPhone

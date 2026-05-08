@@ -21,6 +21,7 @@ struct LoonyBearApp: App {
                     ContentView(
                         appState: environment.appState,
                         pillAppState: environment.pillAppState,
+                        eventAppState: environment.eventAppState,
                         notificationCoordinator: environment.notificationCoordinator,
                         badgeService: environment.badgeService,
                         lifecycleRefreshCoordinator: environment.lifecycleRefreshCoordinator,

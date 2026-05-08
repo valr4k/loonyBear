@@ -654,6 +654,7 @@ Fields:
 - `pills`
 - `pillScheduleVersions`
 - `pillIntakeRecords`
+- `events`
 
 `settings` is optional for backward compatibility and uses `BackupAppSettings`:
 - `appearanceMode`
@@ -706,6 +707,7 @@ Validation includes:
 - valid completion and intake source values
 - foreign key existence for schedules, completions, and intakes
 - duplicate identifier detection across all backup entity arrays
+- valid Event mode values and required Event fields
 
 ### 10.6 Backup Settings Screen
 Defined in `LoonyBear/Features/BackupSettings/BackupSettingsView.swift`.
@@ -868,6 +870,162 @@ Behavior:
 - active Details calendars show the full stored month history, but only days in `EditableHistoryWindow.dates(startDate:)` can receive taps
 - read-only Recently Deleted calendars reuse the same month surface without hit-testing
 - completed/taken/skipped days draw circular markers; editable marked days draw a subtle border, while non-editable/read-only marked days keep a softer historical marker
+
+## 14. Events
+
+### 14.1 Domain Models
+Defined in `LoonyBear/Core/Domain/EventModels.swift`.
+
+Core types:
+- `EventMode`
+  - `.countdown`
+  - `.countUp`
+- `EventCardProjection`
+- `EventDetailsProjection`
+- `EventDashboardProjection`
+- `EventDraft`
+- `EditEventDraft`
+- `EventDateDefaults`
+- `EventValidation`
+- `EventDurationFormatter`
+
+Rules:
+- `Countdown` is valid when `eventDate` is today or after today.
+- `Count Up` is valid when `eventDate` is today or before today.
+- Countdown default date is today.
+- Count Up default date is today.
+- Countdown duration uses calendar-day distance from today to event date and clamps at `0d`.
+- Count Up duration counts the event date as `1d`, so yesterday displays `2d`.
+- Duration text uses the shared compact day formatter logic in `EventDurationFormatter`: years are 365 days and months are 30 days, matching the simple compact app display convention.
+
+### 14.2 Persistence
+Defined in:
+- `LoonyBear/Core/Data/EventRepository.swift`
+- `LoonyBear/Core/Data/CoreDataEventRepository.swift`
+
+Core Data entity:
+- `Event`
+
+Stored fields:
+- `id`
+- `name`
+- `modeRaw`
+- `eventDate`
+- `sortOrder`
+- `createdAt`
+- `updatedAt`
+- `version`
+
+Persistence rules:
+- `eventDate` is normalized to start-of-day on create and update.
+- `modeRaw` stores the raw `EventMode` value.
+- Count Up intentionally persists as raw value `elapsed` for compatibility with existing Core Data and backup payloads.
+- dashboard fetches sort by `sortOrder`, then `createdAt`.
+- create assigns the next `sortOrder` after existing Events.
+- delete is a hard delete.
+- Events do not have schedule versions, history rows, reminder rows, badge state, archive state, or Recently Deleted state.
+
+### 14.3 App State
+Defined in `LoonyBear/Core/Application/EventAppState.swift`.
+
+Responsibilities:
+- load the Events dashboard.
+- refresh dashboard after mutations, restore, and lifecycle refreshes.
+- load Event details for the sheet.
+- create Event from `EventDraft`.
+- update Event from `EditEventDraft`.
+- permanently delete Event.
+- surface unexpected action errors through `actionErrorMessage`.
+
+Store-change notification:
+- repository mutations post `Notification.Name.eventStoreDidChange`.
+- `ContentView` listens for this notification and refreshes `EventAppState`.
+
+### 14.4 Dashboard UI
+Defined in `LoonyBear/Features/MyEvents/MyEventsView.swift`.
+
+Behavior:
+- tab title is `Events`.
+- tab item icon is `calendar.badge`.
+- the tab is positioned between `My Habits` and `Settings`.
+- the toolbar has a `+` button that opens `Add new Event`.
+- if there are no Events, the screen shows one empty state:
+  - `No Events Yet`
+  - `Create your first event to get started.`
+- the `Countdown` section is rendered only when there is at least one Countdown event.
+- the `Count Up` section is rendered only when there is at least one Count Up event.
+- Event cards reuse the app card language used by Pills and Habits.
+- left side shows the Event name.
+- right side shows duration.
+- normal duration uses app tint.
+- Countdown duration becomes red when the Event date is today or in the past and displays `0d`.
+
+### 14.5 Add and Details UI
+Defined in `LoonyBear/Features/MyEvents/EventEditorViews.swift`.
+
+Add new Event:
+- sheet title: `Add new Event`.
+- first block contains `Name`.
+- second block title: `Timing`.
+- Timing rows:
+  - `Mode`
+  - `Date`
+- default draft is Countdown with today's date.
+
+Event Details:
+- sheet title: `Event Details`.
+- opened by tapping an Event card.
+- same fields as Add.
+- fields are editable.
+- bottom action is `Delete`.
+- delete confirmation:
+  - title: `Delete this Event?`
+  - message: `This Event will be permanently deleted.`
+  - destructive action: `Delete`
+  - cancel action: `Cancel`
+
+Validation UI:
+- name must not be empty.
+- Countdown date must be today or in the future.
+- Count Up date must be today or in the past.
+- invalid date disables Save.
+- invalid date shows the same floating warning banner style used by Pill/Habit forms.
+- Countdown invalid text for past dates: `Countdown date must be in the future.`
+- Count Up invalid text: `Count Up date must be in the past.`
+
+Mode switching:
+- switching from Countdown to Count Up moves a future date to today.
+- switching from Count Up to Countdown moves past dates to today.
+- this keeps the draft in a valid state without extra user work.
+
+Presentation safety:
+- Events use a small local `EventTimingPresentationGuard`.
+- It protects only the Event Timing block.
+- Mode uses a native popover.
+- Date uses a native compact `DatePicker`.
+- while the Mode popover is visible, the Date picker blocks hit-testing.
+- Date picker touch-down can briefly block the Mode popover path.
+- this mirrors the Pills/Habits schedule safety idea, but is intentionally smaller because Events have only one popover and one date picker.
+
+### 14.6 Backup
+Events are included in backups through `BackupArchive.events`.
+
+Backup event fields:
+- `id`
+- `name`
+- `mode`
+- `date`
+- `sortOrder`
+- `createdAt`
+- `updatedAt`
+- `version`
+
+Restore behavior:
+- old backups without `events` restore with an empty Events list.
+- restore validates duplicate Event identifiers.
+- restore validates Event mode values.
+- restore recreates Event rows before refreshing `EventAppState`.
+- Events do not affect Habit/Pill restore validation, notifications, badge count, or widget snapshots.
 
 ### 13.3.1 Dashboard List Section Headers
 Defined in the dashboard list views.
@@ -1055,7 +1213,7 @@ Behavior:
 - a dirty project file containing only the auto build-number bump is expected after a build; do not remove or rewrite the script unless the build-number strategy changes
 - the build script should not be changed when working on UI, validation, reminder, Recently Deleted, or backup behavior
 
-## 14. Startup Health Check
+## 15. Startup Health Check
 
 Defined in `LoonyBear/Core/Services/ReliabilitySupport.swift`.
 
@@ -1070,7 +1228,7 @@ The startup health check validates:
 
 It logs success or a `DataIntegrityError`; it does not block the initial dashboard load.
 
-## 15. Demo Data
+## 16. Demo Data
 
 Defined in `LoonyBear/Core/Data/DemoDataWriter.swift`.
 

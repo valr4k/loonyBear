@@ -157,6 +157,41 @@ This file describes the behavioral rules that are currently implemented in code.
 - If the Repeat rule is changed for an active Pill, the app does not show an Apply From field. The new schedule version receives a hidden `effectiveFrom` based on `max(today, startDate)`. The technical maximum is the end of the second next calendar month. The current UI selects the lower bound, so the normal saved value is `max(today, startDate)`. If an out-of-range internal draft value ever appears, the repository falls back to the lower bound. This hidden resolver does not check whether that date matches the new Repeat and does not inspect explicit taken/skipped states; actual scheduled days are derived later by normal schedule applicability.
 - Soft-deleted Pills do not expose Edit or Restore. They can be opened from Recently Deleted into the read-only item screen, where `Delete` is available at the bottom as permanent delete with `Permanently delete this Pill?` / `This Pill will be permanently deleted.`
 
+## Events
+
+- Events live on a separate `Events` tab between `My Habits` and `Settings`.
+- Events are not Habits or Pills and do not participate in reminders, notifications, overdue state, badge count, history review, Recently Deleted, widgets, or streak calculation.
+- The Events dashboard has one global empty state when no Events exist:
+  - `No Events Yet`
+  - `Create your first event to get started.`
+- The `Countdown` section is shown only when at least one Countdown event exists.
+- The `Count Up` section is shown only when at least one Count Up event exists.
+- Event cards use the same card language as Pill/Habit dashboard cards.
+- Event cards show:
+  - name on the left
+  - duration on the right
+- Event duration is formatted with the same compact duration style used by streak/taken totals, such as `2yr 2mo 7d`.
+- Event duration normally uses the selected app tint.
+- Countdown events count full local calendar days from today to the event date.
+- Countdown date can be today or in the future when saving. Past dates are invalid.
+- When a Countdown event reaches or passes its date, it remains on screen and shows `0d` in red forever.
+- Count Up events count the selected date as day 1.
+- Count Up date can be today or in the past when saving. Future dates are invalid.
+- Count Up events continue counting indefinitely until the user deletes them.
+- Add new Event defaults:
+  - mode: Countdown
+  - date: today
+- Switching Event mode keeps the draft valid:
+  - Countdown to Count Up moves a future date to today
+  - Count Up to Countdown moves past dates to today
+- Event validation uses dismissible floating warning banners:
+  - `Countdown date must be in the future.`
+  - `Count Up date must be in the past.`
+- Event Details opens from tapping an Event card.
+- Event Details is editable and has the same fields as Add new Event: name, mode, and date.
+- Event Delete is permanent and uses the confirmation `Delete this Event?` / `This Event will be permanently deleted.`
+- Events are never automatically deleted.
+
 ## Schedule Rules
 
 - Schedules are represented by `ScheduleRule`: weekday rules, `Every N days` interval rules, or `Never repeat` for Pills.

@@ -11,6 +11,7 @@ struct BackupArchive: Codable {
     let pills: [BackupPill]
     let pillScheduleVersions: [BackupPillScheduleVersion]
     let pillIntakeRecords: [BackupPillIntake]
+    let events: [BackupEvent]
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion
@@ -23,6 +24,7 @@ struct BackupArchive: Codable {
         case pills
         case pillScheduleVersions
         case pillIntakeRecords
+        case events
     }
 
     init(
@@ -35,7 +37,8 @@ struct BackupArchive: Codable {
         settings: BackupAppSettings? = nil,
         pills: [BackupPill] = [],
         pillScheduleVersions: [BackupPillScheduleVersion] = [],
-        pillIntakeRecords: [BackupPillIntake] = []
+        pillIntakeRecords: [BackupPillIntake] = [],
+        events: [BackupEvent] = []
     ) {
         self.schemaVersion = schemaVersion
         self.exportedAt = exportedAt
@@ -47,6 +50,7 @@ struct BackupArchive: Codable {
         self.pills = pills
         self.pillScheduleVersions = pillScheduleVersions
         self.pillIntakeRecords = pillIntakeRecords
+        self.events = events
     }
 
     init(from decoder: Decoder) throws {
@@ -61,12 +65,24 @@ struct BackupArchive: Codable {
         pills = try container.decodeIfPresent([BackupPill].self, forKey: .pills) ?? []
         pillScheduleVersions = try container.decodeIfPresent([BackupPillScheduleVersion].self, forKey: .pillScheduleVersions) ?? []
         pillIntakeRecords = try container.decodeIfPresent([BackupPillIntake].self, forKey: .pillIntakeRecords) ?? []
+        events = try container.decodeIfPresent([BackupEvent].self, forKey: .events) ?? []
     }
 }
 
 struct BackupAppSettings: Codable, Equatable {
     let appearanceMode: String
     let appTint: String
+}
+
+struct BackupEvent: Codable {
+    let id: UUID
+    let name: String
+    let mode: String
+    let date: Date
+    let sortOrder: Int
+    let createdAt: Date
+    let updatedAt: Date
+    let version: Int
 }
 
 struct BackupHabit: Codable {

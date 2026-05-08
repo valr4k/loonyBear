@@ -20,11 +20,13 @@ enum HomeQuickActionRouter {
 struct RootTabView: View {
     @EnvironmentObject private var appState: HabitAppState
     @EnvironmentObject private var pillAppState: PillAppState
+    @EnvironmentObject private var eventAppState: EventAppState
     @ObservedObject private var quickActionCenter = HomeQuickActionCenter.shared
     @SceneStorage("selected_tab") private var selectedTabRawValue = AppTab.myPills.rawValue
     @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
     @State private var presentedHabitSheet: HabitSheet?
     @State private var presentedPillSheet: PillSheet?
+    @State private var presentedEventSheet: EventSheet?
     @SceneStorage("settings_route") private var settingsRouteRawValue = ""
     @State private var settingsPath: [SettingsRoute] = []
     @State private var didRestoreSettingsPath = false
@@ -90,6 +92,29 @@ struct RootTabView: View {
                 }
                 .badge(overdueHabitCount)
 
+            NavigationStack {
+                MyEventsView(
+                    currentTime: currentTime,
+                    onCreateEvent: {
+                        presentedEventSheet = .create
+                    },
+                    onEditEvent: { event in
+                        presentedEventSheet = .edit(event.id)
+                    }
+                )
+                .environmentObject(eventAppState)
+                .navigationTitle("Events")
+                .sheet(item: $presentedEventSheet, onDismiss: restoreTabBarVisualState) { sheet in
+                    NavigationStack {
+                        eventSheetContent(for: sheet)
+                    }
+                }
+            }
+                .tag(AppTab.events)
+                .tabItem {
+                    Label("Events", systemImage: "calendar.badge")
+                }
+
             NavigationStack(path: $settingsPath) {
                 SettingsView()
             }
@@ -101,11 +126,13 @@ struct RootTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .openMyHabitsTab)) { _ in
             presentedPillSheet = nil
             presentedHabitSheet = nil
+            presentedEventSheet = nil
             selectedTab.wrappedValue = .myHabits
         }
         .onReceive(NotificationCenter.default.publisher(for: .openMyPillsTab)) { _ in
             presentedHabitSheet = nil
             presentedPillSheet = nil
+            presentedEventSheet = nil
             selectedTab.wrappedValue = .myPills
         }
         .onAppear {
@@ -168,6 +195,9 @@ struct RootTabView: View {
         if presentedPillSheet != nil {
             presentedPillSheet = nil
         }
+        if presentedEventSheet != nil {
+            presentedEventSheet = nil
+        }
         if selectedTab.wrappedValue != route.selectedTab {
             selectedTab.wrappedValue = route.selectedTab
         }
@@ -204,6 +234,18 @@ struct RootTabView: View {
         case .archivedReadOnly(let pillID):
             PillEditSheetLoader(pillID: pillID, isReadOnly: true)
                 .environmentObject(pillAppState)
+        }
+    }
+
+    @ViewBuilder
+    private func eventSheetContent(for sheet: EventSheet) -> some View {
+        switch sheet {
+        case .create:
+            CreateEventView()
+                .environmentObject(eventAppState)
+        case .edit(let eventID):
+            EventEditSheetLoader(eventID: eventID)
+                .environmentObject(eventAppState)
         }
     }
 
@@ -320,15 +362,65 @@ private enum PillEditSheetLoadState {
     case integrityError(String)
 }
 
+private struct EventEditSheetLoader: View {
+    @EnvironmentObject private var eventAppState: EventAppState
+    let eventID: UUID
+    @State private var state: EventEditSheetLoadState = .loading
+
+    var body: some View {
+        Group {
+            switch state {
+            case .loading:
+                ProgressView()
+            case .found(let details):
+                EditEventView(details: details)
+                    .environmentObject(eventAppState)
+            case .notFound:
+                ContentUnavailableView(
+                    "Event not found",
+                    systemImage: "calendar.badge",
+                    description: Text("This event is no longer available.")
+                )
+            case .integrityError(let message):
+                ContentUnavailableView(
+                    "Event data problem",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(message)
+                )
+            }
+        }
+        .task(id: eventID) {
+            state = .loading
+            switch eventAppState.inspectEventDetailsState(id: eventID) {
+            case .found(let details):
+                state = .found(details)
+            case .notFound:
+                state = .notFound
+            case .integrityError(let message):
+                state = .integrityError(message)
+            }
+        }
+    }
+}
+
+private enum EventEditSheetLoadState {
+    case loading
+    case found(EventDetailsProjection)
+    case notFound
+    case integrityError(String)
+}
+
 #Preview {
     RootTabView()
         .environmentObject(AppEnvironment.preview.appState)
         .environmentObject(AppEnvironment.preview.pillAppState)
+        .environmentObject(AppEnvironment.preview.eventAppState)
 }
 
 enum AppTab: String, Hashable {
     case myHabits
     case myPills
+    case events
     case settings
 }
 
@@ -362,6 +454,20 @@ private enum PillSheet: Hashable, Identifiable {
             return "edit_\(id.uuidString)"
         case .archivedReadOnly(let id):
             return "archived_read_only_\(id.uuidString)"
+        }
+    }
+}
+
+private enum EventSheet: Hashable, Identifiable {
+    case create
+    case edit(UUID)
+
+    var id: String {
+        switch self {
+        case .create:
+            return "create"
+        case .edit(let id):
+            return "edit_\(id.uuidString)"
         }
     }
 }

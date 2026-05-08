@@ -13,6 +13,21 @@
             </uniquenessConstraint>
         </uniquenessConstraints>
     </entity>
+    <entity name="Event" representedClassName="NSManagedObject" syncable="YES">
+        <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="eventDate" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="modeRaw" attributeType="String"/>
+        <attribute name="name" attributeType="String"/>
+        <attribute name="sortOrder" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="updatedAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="version" attributeType="Integer 32" defaultValueString="1" usesScalarValueType="YES"/>
+        <uniquenessConstraints>
+            <uniquenessConstraint>
+                <constraint value="id"/>
+            </uniquenessConstraint>
+        </uniquenessConstraints>
+    </entity>
     <entity name="Habit" representedClassName="NSManagedObject" syncable="YES">
         <attribute name="activeFrom" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
@@ -130,6 +145,7 @@
     </entity>
     <elements>
         <element name="AppPreference" positionX="-214" positionY="-16" width="128" height="134"/>
+        <element name="Event" positionX="-214" positionY="151" width="128" height="164"/>
         <element name="Habit" positionX="30" positionY="-16" width="128" height="239"/>
         <element name="HabitCompletion" positionX="270" positionY="-16" width="128" height="149"/>
         <element name="HabitScheduleVersion" positionX="270" positionY="174" width="128" height="179"/>

@@ -260,6 +260,8 @@ enum AppCopy {
     static let notificationsRequired = "Turn on notifications in Settings to use reminders."
     static let endDateRemovedForNeverRepeat = "End date removed. Repeat set to Never."
     static let noScheduledDayBeforeEndDate = "End date must be on or after the first scheduled day."
+    static let countdownDateMustBeFuture = "Countdown date must be in the future."
+    static let countUpDateMustBePast = "Count Up date must be in the past."
     static let backupFolderHint = "Backups stay in the selected Files folder even if the app is deleted. After reinstalling, choose the same folder again before restoring."
     static let pillHistoryFollowsSchedule = "History follows schedule from start date."
     static let pillHistoryCountsEveryDay = "History counts every day from the start date."
@@ -1827,14 +1829,27 @@ struct CenteredInputField: View {
     let autocorrectionType: UITextAutocorrectionType
 
     var body: some View {
-        CenteredInputTextField(
-            text: $text,
-            placeholder: placeholder,
-            capitalization: capitalization,
-            autocorrectionType: autocorrectionType
-        )
+        TextField(placeholder, text: $text)
+            .appAccentTint()
+            .font(.title3.weight(.semibold))
+            .multilineTextAlignment(.center)
+            .textInputAutocapitalization(textInputAutocapitalization)
+            .autocorrectionDisabled(autocorrectionType == .no)
         .frame(maxWidth: .infinity, alignment: .center)
         .frame(height: 28)
+    }
+
+    private var textInputAutocapitalization: TextInputAutocapitalization {
+        switch capitalization {
+        case .allCharacters:
+            return .characters
+        case .words:
+            return .words
+        case .sentences:
+            return .sentences
+        default:
+            return .never
+        }
     }
 }
 
@@ -1913,79 +1928,6 @@ struct AppPillDetailsCard: View {
                 .padding(.vertical, AppLayout.rowVerticalPadding)
             }
         }
-    }
-}
-
-private struct CenteredInputTextField: UIViewRepresentable {
-    @Binding var text: String
-    let placeholder: String
-    let capitalization: UITextAutocapitalizationType
-    let autocorrectionType: UITextAutocorrectionType
-    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text)
-    }
-
-    func makeUIView(context: Context) -> UITextField {
-        let textField = CenteredCaretTextField(frame: .zero)
-        textField.delegate = context.coordinator
-        textField.adjustsFontForContentSizeCategory = true
-        textField.autocapitalizationType = capitalization
-        textField.autocorrectionType = autocorrectionType
-        textField.borderStyle = .none
-        textField.clearButtonMode = .never
-        textField.returnKeyType = .default
-        textField.enablesReturnKeyAutomatically = false
-        textField.font = .systemFont(ofSize: 20, weight: .semibold)
-        textField.textColor = .label
-        textField.tintColor = AppTint.stored(rawValue: appTintRawValue).accentUIColor
-        textField.textAlignment = .center
-        textField.contentHorizontalAlignment = .center
-        textField.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        textField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        textField.attributedPlaceholder = NSAttributedString(
-            string: placeholder,
-            attributes: [
-                .foregroundColor: UIColor.tertiaryLabel,
-                .font: UIFont.systemFont(ofSize: 20, weight: .semibold),
-            ]
-        )
-        textField.addTarget(context.coordinator, action: #selector(Coordinator.editingChanged(_:)), for: .editingChanged)
-        return textField
-    }
-
-    func updateUIView(_ uiView: UITextField, context: Context) {
-        if uiView.text != text {
-            uiView.text = text
-        }
-        uiView.tintColor = AppTint.stored(rawValue: appTintRawValue).accentUIColor
-    }
-
-    final class Coordinator: NSObject, UITextFieldDelegate {
-        @Binding private var text: String
-
-        init(text: Binding<String>) {
-            _text = text
-        }
-
-        @objc func editingChanged(_ textField: UITextField) {
-            text = textField.text ?? ""
-        }
-
-        func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-            textField.resignFirstResponder()
-            return true
-        }
-    }
-}
-
-private final class CenteredCaretTextField: UITextField {
-    override func caretRect(for position: UITextPosition) -> CGRect {
-        var rect = super.caretRect(for: position)
-        guard (text ?? "").isEmpty else { return rect }
-        rect.origin.x = bounds.midX - (rect.width / 2)
-        return rect
     }
 }
 

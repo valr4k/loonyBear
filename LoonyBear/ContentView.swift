@@ -6,6 +6,7 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var appState: HabitAppState
     @StateObject private var pillAppState: PillAppState
+    @StateObject private var eventAppState: EventAppState
     @State private var didStartInitialStateLoad = false
     @State private var didLoadInitialState = false
     @State private var currentTime = Date()
@@ -18,6 +19,7 @@ struct ContentView: View {
     init(
         appState: HabitAppState,
         pillAppState: PillAppState,
+        eventAppState: EventAppState,
         notificationCoordinator: AppNotificationCoordinator,
         badgeService: AppBadgeService,
         lifecycleRefreshCoordinator: AppLifecycleRefreshCoordinator,
@@ -25,6 +27,7 @@ struct ContentView: View {
     ) {
         _appState = StateObject(wrappedValue: appState)
         _pillAppState = StateObject(wrappedValue: pillAppState)
+        _eventAppState = StateObject(wrappedValue: eventAppState)
         self.notificationCoordinator = notificationCoordinator
         self.badgeService = badgeService
         self.lifecycleRefreshCoordinator = lifecycleRefreshCoordinator
@@ -35,6 +38,7 @@ struct ContentView: View {
         RootTabView(currentTime: currentTime)
             .environmentObject(appState)
             .environmentObject(pillAppState)
+            .environmentObject(eventAppState)
             .task {
                 guard !didStartInitialStateLoad else { return }
                 didStartInitialStateLoad = true
@@ -42,6 +46,7 @@ struct ContentView: View {
                     await notificationCoordinator.configure()
                     await appState.handleAppDidBecomeActive()
                     await pillAppState.handleAppDidBecomeActive()
+                    eventAppState.load()
                     refreshBadgeFromDashboards(forceApply: true)
                 }
                 didLoadInitialState = true
@@ -55,6 +60,9 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: .pillStoreDidChange)) { _ in
                 pillAppState.refreshDashboard()
             }
+            .onReceive(NotificationCenter.default.publisher(for: .eventStoreDidChange)) { _ in
+                eventAppState.refreshDashboard()
+            }
             .onReceive(minuteTimer) { now in
                 guard didLoadInitialState, scenePhase == .active else { return }
                 let previousTime = currentTime
@@ -63,6 +71,7 @@ struct ContentView: View {
                 if shouldRefreshDashboardsForTimelineTransition(from: previousTime, to: now) {
                     appState.refreshDashboard()
                     pillAppState.refreshDashboard()
+                    eventAppState.refreshDashboard()
                 }
                 refreshBadgeFromDashboards(now: now)
             }
@@ -79,6 +88,7 @@ struct ContentView: View {
                     await lifecycleRefreshCoordinator.perform {
                         await appState.handleAppDidBecomeActive()
                         await pillAppState.handleAppDidBecomeActive()
+                        eventAppState.refreshDashboard()
                         refreshBadgeFromDashboards(forceApply: true)
                     }
                 }

@@ -588,6 +588,48 @@ final class BackupService {
                 )
             }
 
+            var backupEvents: [BackupEvent] = []
+            for event in try fetchObjects(entityName: "Event", in: context) {
+                guard
+                    let id = event.value(forKey: "id") as? UUID,
+                    let name = event.value(forKey: "name") as? String,
+                    let modeRaw = event.value(forKey: "modeRaw") as? String,
+                    let date = event.value(forKey: "eventDate") as? Date,
+                    let createdAt = event.value(forKey: "createdAt") as? Date,
+                    let updatedAt = event.value(forKey: "updatedAt") as? Date
+                else {
+                    report.append(
+                        area: "backup",
+                        entityName: event.entityName,
+                        object: event,
+                        message: "Event row is missing required fields."
+                    )
+                    continue
+                }
+                guard EventMode(rawValue: modeRaw) != nil else {
+                    report.append(
+                        area: "backup",
+                        entityName: event.entityName,
+                        object: event,
+                        message: "Event row contains invalid modeRaw."
+                    )
+                    continue
+                }
+
+                backupEvents.append(
+                    BackupEvent(
+                        id: id,
+                        name: name,
+                        mode: modeRaw,
+                        date: date,
+                        sortOrder: Int(event.value(forKey: "sortOrder") as? Int32 ?? 0),
+                        createdAt: createdAt,
+                        updatedAt: updatedAt,
+                        version: Int(event.value(forKey: "version") as? Int32 ?? 1)
+                    )
+                )
+            }
+
             if report.hasIssues {
                 throw report.makeError(operation: "createBackup")
             }
@@ -602,7 +644,8 @@ final class BackupService {
                 settings: makeAppSettings(),
                 pills: backupPills,
                 pillScheduleVersions: pillScheduleVersions,
-                pillIntakeRecords: pillIntakeRecords
+                pillIntakeRecords: pillIntakeRecords,
+                events: backupEvents
             )
         }
     }
@@ -618,6 +661,7 @@ final class BackupService {
                 try deleteManagedObjects(entityName: "PillIntake", in: context)
                 try deleteManagedObjects(entityName: "PillScheduleVersion", in: context)
                 try deleteManagedObjects(entityName: "Pill", in: context)
+                try deleteManagedObjects(entityName: "Event", in: context)
 
                 for habit in archive.habits {
                     let object = NSEntityDescription.insertNewObject(forEntityName: "Habit", into: context)
@@ -724,6 +768,18 @@ final class BackupService {
                     object.setValue(pillLookup[intake.pillId], forKey: "pill")
                 }
 
+                for event in archive.events {
+                    let object = NSEntityDescription.insertNewObject(forEntityName: "Event", into: context)
+                    object.setValue(event.id, forKey: "id")
+                    object.setValue(event.name, forKey: "name")
+                    object.setValue(event.mode, forKey: "modeRaw")
+                    object.setValue(event.date, forKey: "eventDate")
+                    object.setValue(Int32(event.sortOrder), forKey: "sortOrder")
+                    object.setValue(event.createdAt, forKey: "createdAt")
+                    object.setValue(event.updatedAt, forKey: "updatedAt")
+                    object.setValue(Int32(event.version), forKey: "version")
+                }
+
                 try context.save()
             } catch {
                 context.rollback()
@@ -788,6 +844,12 @@ final class BackupService {
         appendDuplicateIdentifierIssues(
             archive.pillIntakeRecords.map(\.id),
             entityName: "BackupPillIntake",
+            area: "backup.restore",
+            report: &report
+        )
+        appendDuplicateIdentifierIssues(
+            archive.events.map(\.id),
+            entityName: "BackupEvent",
             area: "backup.restore",
             report: &report
         )
@@ -999,6 +1061,18 @@ final class BackupService {
                     entityName: "BackupPillIntake",
                     objectIdentifier: objectIdentifier,
                     message: "Pill intake payload contains invalid source."
+                )
+                continue
+            }
+        }
+
+        for event in archive.events {
+            guard EventMode(rawValue: event.mode) != nil else {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupEvent",
+                    objectIdentifier: "event:\(event.id.uuidString)",
+                    message: "Event backup payload contains invalid mode."
                 )
                 continue
             }
