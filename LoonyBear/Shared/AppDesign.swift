@@ -259,7 +259,8 @@ enum AppCopy {
     static let chooseAtLeastOneDay = "Select at least one day."
     static let notificationsRequired = "Turn on notifications in Settings to use reminders."
     static let endDateRemovedForNeverRepeat = "End date removed. Repeat set to Never."
-    static let noScheduledDayBeforeEndDate = "End date must be on or after the first scheduled day."
+    static let endDateCannotBeInPast = "End date can’t be in the past."
+    static let endDateMustIncludeScheduledDay = "End date must include at least one scheduled day."
     static let countdownDateMustBeFuture = "Countdown date must be in the future."
     static let countUpDateMustBePast = "Count Up date must be in the past."
     static let backupFolderHint = "Backups stay in the selected Files folder even if the app is deleted. After reinstalling, choose the same folder again before restoring."
@@ -274,11 +275,20 @@ enum AppCopy {
     }
 
     static func overdueScheduledDayDetailsMessage(actionLabel _: String) -> String {
-        "Finish updating overdue days on the Edit screen."
+        "Finish updating overdue days."
     }
 
     static func missingScheduledDaysDetailsMessage(actionLabel _: String) -> String {
-        "Finish updating past days on the Edit screen."
+        "Finish updating past days."
+    }
+
+    static func endDateValidationMessage(for reason: EndDateValidationFailureReason) -> String {
+        switch reason {
+        case .dateInPast:
+            return endDateCannotBeInPast
+        case .noScheduledDay:
+            return endDateMustIncludeScheduledDay
+        }
     }
 }
 

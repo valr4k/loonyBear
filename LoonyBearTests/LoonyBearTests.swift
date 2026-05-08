@@ -174,6 +174,80 @@ struct LoonyBearTests {
     }
 
     @Test
+    func endDateValidationReportsPastEndDateReason() {
+        let calendar = Calendar(identifier: .gregorian)
+        let startDate = TestSupport.makeDate(2026, 5, 1, calendar: calendar)
+        let today = TestSupport.makeDate(2026, 5, 9, calendar: calendar)
+        let schedules = [
+            SchedulePreviewVersion(
+                rule: .weekly(.daily),
+                effectiveFrom: startDate,
+                createdAt: startDate,
+                version: 1
+            ),
+        ]
+
+        #expect(EndDateValidationSupport.failureReason(
+            endDate: TestSupport.makeDate(2026, 5, 8, calendar: calendar),
+            startDate: startDate,
+            lowerBound: today,
+            schedules: schedules,
+            today: today,
+            calendar: calendar
+        ) == .dateInPast)
+    }
+
+    @Test
+    func endDateValidationReportsMissingScheduledDayReason() {
+        let calendar = Calendar(identifier: .gregorian)
+        let startDate = TestSupport.makeDate(2026, 5, 4, calendar: calendar)
+        let today = TestSupport.makeDate(2026, 5, 4, calendar: calendar)
+        let tuesdayBeforeFirstScheduledDay = TestSupport.makeDate(2026, 5, 5, calendar: calendar)
+        let schedules = [
+            SchedulePreviewVersion(
+                rule: .weekly(.wednesday),
+                effectiveFrom: startDate,
+                createdAt: startDate,
+                version: 1
+            ),
+        ]
+
+        #expect(EndDateValidationSupport.failureReason(
+            endDate: tuesdayBeforeFirstScheduledDay,
+            startDate: startDate,
+            lowerBound: today,
+            schedules: schedules,
+            today: today,
+            calendar: calendar
+        ) == .noScheduledDay)
+    }
+
+    @Test
+    func endDateValidationReportsNoFailureForValidEndDate() {
+        let calendar = Calendar(identifier: .gregorian)
+        let startDate = TestSupport.makeDate(2026, 5, 4, calendar: calendar)
+        let today = TestSupport.makeDate(2026, 5, 4, calendar: calendar)
+        let firstScheduledDay = TestSupport.makeDate(2026, 5, 6, calendar: calendar)
+        let schedules = [
+            SchedulePreviewVersion(
+                rule: .weekly(.wednesday),
+                effectiveFrom: startDate,
+                createdAt: startDate,
+                version: 1
+            ),
+        ]
+
+        #expect(EndDateValidationSupport.failureReason(
+            endDate: firstScheduledDay,
+            startDate: startDate,
+            lowerBound: today,
+            schedules: schedules,
+            today: today,
+            calendar: calendar
+        ) == nil)
+    }
+
+    @Test
     func endDateValidationRejectsDatesBeforeLowerBound() {
         let calendar = Calendar(identifier: .gregorian)
         let startDate = TestSupport.makeDate(2026, 5, 1, calendar: calendar)

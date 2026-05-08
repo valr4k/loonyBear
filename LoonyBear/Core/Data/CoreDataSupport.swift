@@ -423,6 +423,11 @@ enum SchedulePreviewSupport {
     }
 }
 
+enum EndDateValidationFailureReason: Equatable {
+    case dateInPast
+    case noScheduledDay
+}
+
 enum EndDateValidationSupport {
     private static let searchWindowDays = 31
 
@@ -454,6 +459,42 @@ enum EndDateValidationSupport {
             schedules: schedules,
             calendar: calendar
         )
+    }
+
+    static func failureReason<Schedule: HistoryScheduleVersionLike>(
+        endDate: Date?,
+        startDate: Date,
+        lowerBound: Date,
+        schedules: [Schedule],
+        ignoresEndDate: Bool = false,
+        today: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> EndDateValidationFailureReason? {
+        guard !ignoresEndDate else {
+            return nil
+        }
+        guard let endDate else {
+            return nil
+        }
+
+        let normalizedEndDate = calendar.startOfDay(for: endDate)
+        let normalizedToday = calendar.startOfDay(for: today)
+        if normalizedEndDate < normalizedToday {
+            return .dateInPast
+        }
+
+        let normalizedLowerBound = calendar.startOfDay(for: lowerBound)
+        guard normalizedEndDate >= normalizedLowerBound else {
+            return .noScheduledDay
+        }
+
+        return hasScheduledDay(
+            from: normalizedLowerBound,
+            through: normalizedEndDate,
+            startDate: startDate,
+            schedules: schedules,
+            calendar: calendar
+        ) ? nil : .noScheduledDay
     }
 
     static func hasScheduledDay<Schedule: HistoryScheduleVersionLike>(

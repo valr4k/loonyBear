@@ -68,7 +68,10 @@ This file describes the behavioral rules that are currently implemented in code.
 - Habit cards do not expose trailing swipe actions. Delete is not available from card swipe actions.
 - Habit card clear-state swipe uses the `arrow.uturn.backward` system symbol.
 - Future and soft-deleted Habit cards do not expose day-state leading swipe actions.
-- Active Habit Details shows the same dismissible floating warning banner while any past scheduled day is missing. If the only missing day is the active overdue day, the warning uses the short `Finish updating overdue days on the Edit screen.` copy; otherwise it uses `Finish updating past days on the Edit screen.`
+- Active Habit Details is the current editable sheet opened from an active Habit card. It shows the same dismissible floating warning banner while any past scheduled day is missing.
+- If the only missing Habit day is the active overdue day, the current editable sheet uses `Mark each overdue day as Completed or Skipped.`
+- If any other past scheduled Habit day is missing, the current editable sheet uses `Mark all past days as Completed or Skipped.`
+- The shorter `Finish updating overdue days.` and `Finish updating past days.` strings are retained only for the older `HabitDetailsView` calendar-review helper and are not the current dashboard card tap flow.
 - Saving active Habit Details does not auto-fill missing past days; the user must choose the state.
 - Active Habit Details exposes one `Delete` action. It is a soft delete, uses the confirmation `Delete this Habit?` / `This Habit will be moved to Recently Deleted.`, and moves the Habit to Recently Deleted.
 - Habit Details shows `Start Date` as read-only; Start Date is not editable after create.
@@ -150,7 +153,10 @@ This file describes the behavioral rules that are currently implemented in code.
 - Pill cards do not expose trailing swipe actions. Delete is not available from card swipe actions.
 - Pill card clear-state swipe uses the `arrow.uturn.backward` system symbol.
 - Future and soft-deleted Pill cards do not expose day-state leading swipe actions.
-- Active Pill Details shows the same dismissible floating warning banner while any past scheduled day is missing. If the only missing day is the active overdue day, the warning uses the short `Finish updating overdue days on the Edit screen.` copy; otherwise it uses `Finish updating past days on the Edit screen.`
+- Active Pill Details is the current editable sheet opened from an active Pill card. It shows the same dismissible floating warning banner while any past scheduled day is missing.
+- If the only missing Pill day is the active overdue day, the current editable sheet uses `Mark each overdue day as Taken or Skipped.`
+- If any other past scheduled Pill day is missing, the current editable sheet uses `Mark all past days as Taken or Skipped.`
+- The shorter `Finish updating overdue days.` and `Finish updating past days.` strings are retained only for the older `PillDetailsView` calendar-review helper and are not the current dashboard card tap flow.
 - Saving active Pill Details does not auto-fill missing past days; the user must choose the state.
 - Active Pill Details exposes one `Delete` action. It is a soft delete, uses the confirmation `Delete this Pill?` / `This Pill will be moved to Recently Deleted.`, and moves the Pill to Recently Deleted.
 - Pill Details shows `Start Date` as read-only; Start Date is not editable after create.
@@ -217,7 +223,7 @@ This file describes the behavioral rules that are currently implemented in code.
 - When `On Date` is selected for the first time on Create, the default End Date value is today, not the selected Start Date.
 - If a date is selected, the final active scheduled day is the last scheduled day on or before that date.
 - The End Date row uses the native compact system date picker with no app-level selectable range. Save does not silently raise End Date during `normalizedDraft()`.
-- A selected End Date is valid only when at least one scheduled day exists between the active lower bound and the selected date. If no scheduled day exists in that range, Save stays disabled and a dismissible floating warning says `End date must be on or after the first scheduled day.`
+- A selected End Date is valid only when it is not in the past and at least one scheduled day exists between the active lower bound and the selected date. If the selected date is earlier than local today, Save stays disabled and a dismissible floating warning says `End date can’t be in the past.` If the selected date is not in the past but the range contains no scheduled day, Save stays disabled and the warning says `End date must include at least one scheduled day.`
 - End Date validation is run on Create and active Details for both domains. Pill `Repeat = Never` ignores End Date validation because the End Date is cleared and disabled for one-time Pills.
 - Once the final scheduled day has a completed/taken or skipped state, the item moves to Recently Deleted automatically without confirmation.
 - If the final scheduled day is still empty, the item remains active and can become overdue with the same `Today`, `Yesterday`, or date labels as other overdue items.

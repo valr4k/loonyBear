@@ -392,7 +392,14 @@ struct EditHabitView: View {
     }
 
     private var endDateValidationMessage: String? {
-        isEndDateValid ? nil : AppCopy.noScheduledDayBeforeEndDate
+        EndDateValidationSupport.failureReason(
+            endDate: draft.endDate,
+            startDate: draft.startDate,
+            lowerBound: endDateValidationLowerBound,
+            schedules: validationScheduleVersions,
+            today: Date(),
+            calendar: Calendar.current
+        ).map(AppCopy.endDateValidationMessage)
     }
 
     private var validationScheduleVersions: [SchedulePreviewVersion] {

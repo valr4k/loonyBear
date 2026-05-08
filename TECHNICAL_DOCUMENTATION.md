@@ -289,8 +289,10 @@ Tapping an active Habit card opens the editable `Habit Details` sheet. Habit car
 - validates that every past editable scheduled day is either `manual edit`/completed or `skipped`
 - throws `EditableHistoryValidationError.missingHabitPastDays` if a past editable scheduled day is empty
 - active Habit Details includes a past active overdue day in save validation and disables Save until it is resolved
-- active Habit Details surfaces missing past-day review through the dismissible `AppFloatingWarningBanner`; if only the active overdue day is missing, the banner uses overdue-specific copy
-- Habit Details computes missing past days from `requiredPastScheduledDays`; it shows `Finish updating overdue days on the Edit screen.` when the only missing day is the active overdue day, otherwise it shows `Finish updating past days on the Edit screen.`
+- current active Habit Details is backed by `EditHabitView`, not the older `HabitDetailsView` card-detail route. `EditHabitView.currentMissingPastDays` runs `EditableHistoryValidation.missingPastDays(...)` against `details.requiredPastScheduledDays`, the normalized completed days, and skipped days.
+- active Habit Details surfaces missing past-day review through the dismissible `AppFloatingWarningBanner`; if only the active overdue day is missing, `historyReviewMessage(for:)` uses `AppCopy.overdueScheduledDayEditMessage(actionLabel: "Completed")`, producing `Mark each overdue day as Completed or Skipped.`
+- if any other past scheduled Habit day is missing, `historyReviewMessage(for:)` uses `EditableHistoryValidationError.missingHabitPastDays(...).localizedDescription`, producing `Mark all past days as Completed or Skipped.`
+- the shorter `AppCopy.overdueScheduledDayDetailsMessage` / `AppCopy.missingScheduledDaysDetailsMessage` strings (`Finish updating overdue days.` / `Finish updating past days.`) are still present for the older `HabitDetailsView.calendarReviewMessage(for:)` helper, but that helper is not the current dashboard card tap path.
 - active Habit Details exposes one `Delete` action; it is a soft delete that calls the existing archive path and confirms with `Delete this Habit?` / `This Habit will be moved to Recently Deleted.`
 - soft-deleted Habits open the same item screen in read-only mode, suppress missing-history review, hide Save and Repeat navigation, and expose permanent `Delete` at the bottom with `Permanently delete this Habit?` / `This Habit will be permanently deleted.`
 - missing past-day warning copy intentionally omits the date list; the validation error still carries the missing dates for logic/tests
@@ -406,8 +408,10 @@ Tapping an active Pill card opens the editable `Pill Details` sheet. Pill cards 
 - validates that every past editable scheduled day is either `manual edit`/taken or `skipped`
 - throws `EditableHistoryValidationError.missingPillPastDays` if a past editable scheduled day is empty
 - active Pill Details includes a past active overdue day in save validation and disables Save until it is resolved
-- active Pill Details surfaces missing past-day review through the dismissible `AppFloatingWarningBanner`; if only the active overdue day is missing, the banner uses overdue-specific copy
-- Pill Details computes missing past days from `requiredPastScheduledDays`; it shows `Finish updating overdue days on the Edit screen.` when the only missing day is the active overdue day, otherwise it shows `Finish updating past days on the Edit screen.`
+- current active Pill Details is backed by `EditPillView`, not the older `PillDetailsView` card-detail route. `EditPillView.currentMissingPastDays` runs `EditableHistoryValidation.missingPastDays(...)` against `details.requiredPastScheduledDays`, the normalized taken days, and skipped days.
+- active Pill Details surfaces missing past-day review through the dismissible `AppFloatingWarningBanner`; if only the active overdue day is missing, `historyReviewMessage(for:)` uses `AppCopy.overdueScheduledDayEditMessage(actionLabel: "Taken")`, producing `Mark each overdue day as Taken or Skipped.`
+- if any other past scheduled Pill day is missing, `historyReviewMessage(for:)` uses `EditableHistoryValidationError.missingPillPastDays(...).localizedDescription`, producing `Mark all past days as Taken or Skipped.`
+- the shorter `AppCopy.overdueScheduledDayDetailsMessage` / `AppCopy.missingScheduledDaysDetailsMessage` strings (`Finish updating overdue days.` / `Finish updating past days.`) are still present for the older `PillDetailsView.calendarReviewMessage(for:)` helper, but that helper is not the current dashboard card tap path.
 - active Pill Details exposes one `Delete` action; it is a soft delete that calls the existing archive path and confirms with `Delete this Pill?` / `This Pill will be moved to Recently Deleted.`
 - soft-deleted Pills open the same item screen in read-only mode, suppress missing-history review, hide Save and Repeat navigation, and expose permanent `Delete` at the bottom with `Permanently delete this Pill?` / `This Pill will be permanently deleted.`
 - missing past-day warning copy intentionally omits the date list; the validation error still carries the missing dates for logic/tests
@@ -488,7 +492,7 @@ Rules:
 - the End Date validation lower bound is `max(today, startDate)` on Create; Edit can further raise it to the hidden schedule-change `effectiveFrom` when Repeat changed
 - a selected End Date is valid only if at least one scheduled day exists from the active lower bound through the selected End Date
 - validation scans forward from the lower bound for up to `EndDateValidationSupport.searchWindowDays` (`31`) days or until the selected End Date, whichever comes first
-- invalid End Date disables Save and shows the floating warning `End date must be on or after the first scheduled day.`
+- invalid End Date disables Save and shows a reason-specific floating warning: `End date can’t be in the past.` when the selected date is before local today, or `End date must include at least one scheduled day.` when the selected date is today/later but the active schedule range contains no scheduled day
 - `normalizedDraft()` must not silently raise End Date to the lower bound during Save; it only stores the selected date at start-of-day and clears End Date for one-time Pill repeat
 - after the final active scheduled day is completed/taken or skipped, the item moves to Recently Deleted automatically without confirmation
 - if the final active scheduled day remains empty, the item remains active and can become overdue
@@ -836,7 +840,10 @@ Appearance behavior:
 
 Shared warning overlay behavior:
 - `AppFloatingWarningBanner` is defined in `LoonyBear/Shared/AppDesign.swift`.
-- active Habit Details and Pill Details use it for missing past-day review.
+- active Habit Details and Pill Details use it for missing past-day review through the current editable sheets (`EditHabitView` and `EditPillView`).
+- current Habit missing-history copy is `Mark each overdue day as Completed or Skipped.` when the only missing day is the active overdue day, otherwise `Mark all past days as Completed or Skipped.`
+- current Pill missing-history copy is `Mark each overdue day as Taken or Skipped.` when the only missing day is the active overdue day, otherwise `Mark all past days as Taken or Skipped.`
+- `Finish updating overdue days.` and `Finish updating past days.` are legacy details-helper strings used by `HabitDetailsView` / `PillDetailsView`, not by the current card tap sheets.
 - The banner is an overlay pinned near the bottom of the visible screen, uses `ultraThinMaterial` with a fixed system-red warning tint, can be dismissed, and disappears automatically when the missing-day condition is resolved.
 - Because the banner is not part of the scroll content, resolving the final missing day does not shift the calendar upward.
 
@@ -1107,7 +1114,7 @@ Behavior:
 - the date row uses the native compact system date picker
 - the date row uses the native compact system date picker without an app-level selectable range
 - End Date validity is centralized in `EndDateValidationSupport`: `nil` is valid, one-time Pill repeat can opt out of End Date validation, selected dates before the lower bound are invalid, and selected dates at or after the lower bound must contain at least one scheduled day in the active schedule preview window
-- invalid End Date state disables Save and shows the dismissible floating warning `End date must be on or after the first scheduled day.`; closing the warning does not make disabled Save re-show it, but changing form inputs that produce a new invalid state can show it again
+- invalid End Date state disables Save and shows a dismissible, reason-specific floating warning: `End date can’t be in the past.` when the selected date is before local today, or `End date must include at least one scheduled day.` when the selected date is today/later but contains no scheduled day in the active schedule preview window; closing the warning does not make disabled Save re-show it, but changing form inputs that produce a new invalid state can show it again
 - `normalizedDraft()` only normalizes selected End Date to start-of-day and clears End Date for one-time Pill repeat; it must not silently raise End Date to the picker lower bound during Save
 - the End Repeat trigger uses `appTouchDownAction` to call `AppSchedulePresentationGuard.blockPickersForEndDateOptionsTouch()` as soon as the user touches the options value
 - the End Repeat button action also calls `blockPickersForEndDateOptionsTouch()` immediately before presenting the popover, so the protection still runs if the touch-down observer is missed
