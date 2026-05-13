@@ -331,6 +331,11 @@ struct CoreDataPillRepository: PillRepository {
             pill.setValue(draft.reminderEnabled ? Int16(draft.reminderTime.minute) : nil, forKey: "reminderMinute")
             let now = clock.now()
             let normalizedToday = calendar.startOfDay(for: now)
+            let activeStartDate = ActiveCycleStartDate.value(
+                startDate: draft.startDate,
+                activeFrom: draft.activeFrom,
+                calendar: calendar
+            )
             let normalizedSelection = EditableHistoryContract.normalizedSelection(
                 positiveDays: draft.takenDays,
                 skippedDays: draft.skippedDays,
@@ -386,13 +391,13 @@ struct CoreDataPillRepository: PillRepository {
             }
 
             let editableSet = EditableHistoryWindow.dates(
-                startDate: draft.startDate,
+                startDate: activeStartDate,
                 today: normalizedToday,
                 calendar: calendar
             )
             let scheduledEditableSet = HistoryScheduleApplicability.pastScheduledEditableDays(
                 in: editableSet,
-                startDate: draft.startDate,
+                startDate: activeStartDate,
                 endDate: draft.endDate,
                 schedules: loadSchedules(for: pill, pillID: draft.id),
                 today: normalizedToday,
@@ -450,7 +455,7 @@ struct CoreDataPillRepository: PillRepository {
             if !wasArchived {
                 syncTodayOverdueAnchorAfterEdit(
                     pillID: draft.id,
-                    startDate: draft.startDate,
+                    startDate: activeStartDate,
                     endDate: draft.endDate,
                     schedules: loadSchedules(for: pill, pillID: draft.id),
                     reminderTime: draft.reminderEnabled ? draft.reminderTime : nil,
@@ -504,6 +509,13 @@ struct CoreDataPillRepository: PillRepository {
             schedule.setValue(now, forKey: "createdAt")
             schedule.setValue(nextVersion, forKey: "version")
             schedule.setValue(pill, forKey: "pill")
+
+            try clearArchivedHistoryOnOrAfter(
+                for: pill,
+                pillID: draft.id,
+                activeFrom: activeFrom,
+                in: context
+            )
 
             try writeArchivedGap(
                 for: pill,
@@ -855,6 +867,26 @@ struct CoreDataPillRepository: PillRepository {
         )
     }
 
+    private func clearArchivedHistoryOnOrAfter(
+        for pill: NSManagedObject,
+        pillID: UUID,
+        activeFrom: Date,
+        in context: NSManagedObjectContext
+    ) throws {
+        try CoreDataHistoryRangeSupport.removeStateOnOrAfter(
+            owner: pill,
+            ownerID: pillID,
+            startDate: activeFrom,
+            state: .archived,
+            rangeEntityName: "PillHistoryRange",
+            ownerKey: "pillID",
+            ownerRelationshipKey: "pill",
+            in: context,
+            calendar: calendar,
+            now: clock.now()
+        )
+    }
+
     private func writeArchivedGap(
         for pill: NSManagedObject,
         pillID: UUID,
@@ -1120,7 +1152,12 @@ struct CoreDataPillRepository: PillRepository {
         now: Date
     ) -> Date {
         let normalizedToday = calendar.startOfDay(for: now)
-        let minimumDate = max(normalizedToday, calendar.startOfDay(for: draft.startDate))
+        let activeStartDate = ActiveCycleStartDate.value(
+            startDate: draft.startDate,
+            activeFrom: draft.activeFrom,
+            calendar: calendar
+        )
+        let minimumDate = max(normalizedToday, activeStartDate)
         let maximumDate = max(minimumDate, HistoryMonthWindow.endOfSecondNextMonth(from: normalizedToday, calendar: calendar))
         let selectedDate = draft.scheduleEffectiveFrom.map { calendar.startOfDay(for: $0) } ?? minimumDate
         let explicitDays = normalizedSelection.positiveDays.union(normalizedSelection.skippedDays)

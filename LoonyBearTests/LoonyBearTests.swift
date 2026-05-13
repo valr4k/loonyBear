@@ -497,6 +497,31 @@ struct LoonyBearTests {
     }
 
     @Test
+    func restoreSchedulePreviewStartsFromActiveFrom() {
+        let calendar = Calendar(identifier: .gregorian)
+        let activeFrom = TestSupport.makeDate(2026, 5, 20, calendar: calendar)
+        let monthRange = TestSupport.makeDate(2026, 5, 1, calendar: calendar) ...
+            TestSupport.makeDate(2026, 5, 31, calendar: calendar)
+        let scheduledDays = HistoryScheduleApplicability.scheduledDays(
+            in: monthRange,
+            startDate: activeFrom,
+            schedules: SchedulePreviewSupport.newCycleSchedules(
+                rule: .intervalDays(2),
+                activeFrom: activeFrom,
+                calendar: calendar
+            ),
+            calendar: calendar
+        )
+
+        #expect(!scheduledDays.contains(TestSupport.makeDate(2026, 5, 18, calendar: calendar)))
+        #expect(!scheduledDays.contains(TestSupport.makeDate(2026, 5, 19, calendar: calendar)))
+        #expect(scheduledDays.contains(TestSupport.makeDate(2026, 5, 20, calendar: calendar)))
+        #expect(!scheduledDays.contains(TestSupport.makeDate(2026, 5, 21, calendar: calendar)))
+        #expect(scheduledDays.contains(TestSupport.makeDate(2026, 5, 22, calendar: calendar)))
+        #expect(scheduledDays.contains(TestSupport.makeDate(2026, 5, 24, calendar: calendar)))
+    }
+
+    @Test
     func overdueAndStreakUseEditedIntervalAnchor() {
         let calendar = Calendar(identifier: .gregorian)
         let habitID = UUID()

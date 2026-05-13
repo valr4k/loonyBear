@@ -125,6 +125,98 @@ struct CoreDataHabitRepositoryTests {
         #expect(restoredDetails.skippedDays.contains(skippedInArchivedGap))
         #expect(restoredDetails.completedDays.contains(completedInArchivedGap))
         #expect(try TestSupport.habitHistoryRangeCount(habitID: habitID, state: .archived, context: persistence.container.viewContext) == 2)
+
+        var editDraft = EditHabitDraft(
+            id: habitID,
+            type: restoredDetails.type,
+            startDate: restoredDetails.startDate,
+            activeFrom: restoredDetails.activeFrom,
+            endDate: restoredDetails.endDate,
+            name: "Restored habit updated",
+            scheduleRule: restoredDetails.scheduleRule,
+            reminderEnabled: restoredDetails.reminderEnabled,
+            reminderTime: restoredDetails.reminderTime ?? ReminderTime.default(),
+            completedDays: restoredDetails.completedDays,
+            skippedDays: restoredDetails.skippedDays
+        )
+        editDraft.scheduleEffectiveFrom = restoredDetails.activeFrom
+
+        try repository.updateHabit(from: editDraft)
+
+        let updatedDetails = try #require(try repository.fetchHabitDetails(id: habitID))
+        #expect(updatedDetails.name == "Restored habit updated")
+    }
+
+    @Test
+    func restoreHabitClearsStaleFutureArchivedDaysWhenActiveFromMovesEarlier() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        var now = TestSupport.makeDate(2026, 5, 1, calendar: calendar).addingTimeInterval(10 * 60 * 60)
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+
+        var draft = CreateHabitDraft()
+        draft.type = .build
+        draft.name = "Restore habit"
+        draft.startDate = TestSupport.makeDate(2026, 5, 1, calendar: calendar)
+        draft.scheduleRule = .weekly(.daily)
+
+        let habitID = try repository.createHabit(from: draft)
+
+        now = TestSupport.makeDate(2026, 5, 10, calendar: calendar).addingTimeInterval(10 * 60 * 60)
+        try repository.setHabitArchived(id: habitID, isArchived: true)
+
+        now = TestSupport.makeDate(2026, 5, 13, calendar: calendar).addingTimeInterval(10 * 60 * 60)
+        let firstArchivedDetails = try #require(try repository.fetchHabitDetails(id: habitID))
+        var firstRestoreDraft = EditHabitDraft(
+            id: habitID,
+            type: firstArchivedDetails.type,
+            startDate: firstArchivedDetails.startDate,
+            activeFrom: firstArchivedDetails.activeFrom,
+            endDate: nil,
+            name: firstArchivedDetails.name,
+            scheduleRule: firstArchivedDetails.scheduleRule,
+            reminderEnabled: firstArchivedDetails.reminderEnabled,
+            reminderTime: firstArchivedDetails.reminderTime ?? ReminderTime.default(),
+            completedDays: firstArchivedDetails.completedDays,
+            skippedDays: firstArchivedDetails.skippedDays
+        )
+        firstRestoreDraft.restoreActiveFrom = TestSupport.makeDate(2026, 5, 25, calendar: calendar)
+
+        try repository.restoreHabit(from: firstRestoreDraft)
+        let firstRestoredDetails = try #require(try repository.fetchHabitDetails(id: habitID))
+        #expect(firstRestoredDetails.archivedDays.contains(TestSupport.makeDate(2026, 5, 24, calendar: calendar)))
+
+        try repository.setHabitArchived(id: habitID, isArchived: true)
+        let secondArchivedDetails = try #require(try repository.fetchHabitDetails(id: habitID))
+        var secondRestoreDraft = EditHabitDraft(
+            id: habitID,
+            type: secondArchivedDetails.type,
+            startDate: secondArchivedDetails.startDate,
+            activeFrom: secondArchivedDetails.activeFrom,
+            endDate: nil,
+            name: secondArchivedDetails.name,
+            scheduleRule: secondArchivedDetails.scheduleRule,
+            reminderEnabled: secondArchivedDetails.reminderEnabled,
+            reminderTime: secondArchivedDetails.reminderTime ?? ReminderTime.default(),
+            completedDays: secondArchivedDetails.completedDays,
+            skippedDays: secondArchivedDetails.skippedDays
+        )
+        secondRestoreDraft.restoreActiveFrom = TestSupport.makeDate(2026, 5, 13, calendar: calendar)
+
+        try repository.restoreHabit(from: secondRestoreDraft)
+
+        let restoredDetails = try #require(try repository.fetchHabitDetails(id: habitID))
+        #expect(restoredDetails.activeFrom == TestSupport.makeDate(2026, 5, 13, calendar: calendar))
+        #expect(restoredDetails.archivedDays.contains(TestSupport.makeDate(2026, 5, 10, calendar: calendar)))
+        #expect(restoredDetails.archivedDays.contains(TestSupport.makeDate(2026, 5, 12, calendar: calendar)))
+        #expect(!restoredDetails.archivedDays.contains(TestSupport.makeDate(2026, 5, 13, calendar: calendar)))
+        #expect(!restoredDetails.archivedDays.contains(TestSupport.makeDate(2026, 5, 14, calendar: calendar)))
+        #expect(!restoredDetails.archivedDays.contains(TestSupport.makeDate(2026, 5, 24, calendar: calendar)))
     }
 
     @Test

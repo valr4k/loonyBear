@@ -122,6 +122,101 @@ struct CoreDataPillRepositoryTests {
         #expect(restoredDetails.skippedDays.contains(skippedInArchivedGap))
         #expect(restoredDetails.takenDays.contains(takenInArchivedGap))
         #expect(try TestSupport.pillHistoryRangeCount(pillID: pillID, state: .archived, context: persistence.container.viewContext) == 2)
+
+        var editDraft = EditPillDraft(
+            id: pillID,
+            name: "Restored pill updated",
+            dosage: restoredDetails.dosage,
+            details: restoredDetails.details ?? "",
+            startDate: restoredDetails.startDate,
+            activeFrom: restoredDetails.activeFrom,
+            endDate: restoredDetails.endDate,
+            scheduleRule: restoredDetails.scheduleRule,
+            reminderEnabled: restoredDetails.reminderEnabled,
+            reminderTime: restoredDetails.reminderTime ?? ReminderTime.default(),
+            takenDays: restoredDetails.takenDays,
+            skippedDays: restoredDetails.skippedDays
+        )
+        editDraft.scheduleEffectiveFrom = restoredDetails.activeFrom
+
+        try repository.updatePill(from: editDraft)
+
+        let updatedDetails = try #require(try repository.fetchPillDetails(id: pillID))
+        #expect(updatedDetails.name == "Restored pill updated")
+    }
+
+    @Test
+    func restorePillClearsStaleFutureArchivedDaysWhenActiveFromMovesEarlier() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        var now = TestSupport.makeDate(2026, 5, 1, calendar: calendar).addingTimeInterval(10 * 60 * 60)
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+
+        var draft = PillDraft()
+        draft.name = "Restore pill"
+        draft.dosage = "1 tablet"
+        draft.startDate = TestSupport.makeDate(2026, 5, 1, calendar: calendar)
+        draft.scheduleRule = .weekly(.daily)
+
+        let pillID = try repository.createPill(from: draft)
+
+        now = TestSupport.makeDate(2026, 5, 10, calendar: calendar).addingTimeInterval(10 * 60 * 60)
+        try repository.setPillArchived(id: pillID, isArchived: true)
+
+        now = TestSupport.makeDate(2026, 5, 13, calendar: calendar).addingTimeInterval(10 * 60 * 60)
+        let firstArchivedDetails = try #require(try repository.fetchPillDetails(id: pillID))
+        var firstRestoreDraft = EditPillDraft(
+            id: pillID,
+            name: firstArchivedDetails.name,
+            dosage: firstArchivedDetails.dosage,
+            details: firstArchivedDetails.details ?? "",
+            startDate: firstArchivedDetails.startDate,
+            activeFrom: firstArchivedDetails.activeFrom,
+            endDate: nil,
+            scheduleRule: firstArchivedDetails.scheduleRule,
+            reminderEnabled: firstArchivedDetails.reminderEnabled,
+            reminderTime: firstArchivedDetails.reminderTime ?? ReminderTime.default(),
+            takenDays: firstArchivedDetails.takenDays,
+            skippedDays: firstArchivedDetails.skippedDays
+        )
+        firstRestoreDraft.restoreActiveFrom = TestSupport.makeDate(2026, 5, 25, calendar: calendar)
+
+        try repository.restorePill(from: firstRestoreDraft)
+        let firstRestoredDetails = try #require(try repository.fetchPillDetails(id: pillID))
+        #expect(firstRestoredDetails.archivedDays.contains(TestSupport.makeDate(2026, 5, 24, calendar: calendar)))
+
+        try repository.setPillArchived(id: pillID, isArchived: true)
+        let secondArchivedDetails = try #require(try repository.fetchPillDetails(id: pillID))
+        var secondRestoreDraft = EditPillDraft(
+            id: pillID,
+            name: secondArchivedDetails.name,
+            dosage: secondArchivedDetails.dosage,
+            details: secondArchivedDetails.details ?? "",
+            startDate: secondArchivedDetails.startDate,
+            activeFrom: secondArchivedDetails.activeFrom,
+            endDate: nil,
+            scheduleRule: secondArchivedDetails.scheduleRule,
+            reminderEnabled: secondArchivedDetails.reminderEnabled,
+            reminderTime: secondArchivedDetails.reminderTime ?? ReminderTime.default(),
+            takenDays: secondArchivedDetails.takenDays,
+            skippedDays: secondArchivedDetails.skippedDays
+        )
+        secondRestoreDraft.restoreActiveFrom = TestSupport.makeDate(2026, 5, 13, calendar: calendar)
+
+        try repository.restorePill(from: secondRestoreDraft)
+
+        let restoredDetails = try #require(try repository.fetchPillDetails(id: pillID))
+        #expect(restoredDetails.activeFrom == TestSupport.makeDate(2026, 5, 13, calendar: calendar))
+        #expect(restoredDetails.archivedDays.contains(TestSupport.makeDate(2026, 5, 10, calendar: calendar)))
+        #expect(restoredDetails.archivedDays.contains(TestSupport.makeDate(2026, 5, 12, calendar: calendar)))
+        #expect(!restoredDetails.archivedDays.contains(TestSupport.makeDate(2026, 5, 13, calendar: calendar)))
+        #expect(!restoredDetails.archivedDays.contains(TestSupport.makeDate(2026, 5, 14, calendar: calendar)))
+        #expect(!restoredDetails.archivedDays.contains(TestSupport.makeDate(2026, 5, 24, calendar: calendar)))
     }
 
     @Test

@@ -102,15 +102,27 @@ enum EditableHistoryWindow {
 
 enum ActiveCycleStartDate {
     static func value(
+        startDate: Date,
+        activeFrom: Date?,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Date {
+        let normalizedStartDate = calendar.startOfDay(for: startDate)
+        guard let activeFrom else {
+            return normalizedStartDate
+        }
+        return max(normalizedStartDate, calendar.startOfDay(for: activeFrom))
+    }
+
+    static func value(
         for object: NSManagedObject,
         fallbackStartDate: Date,
         calendar: Calendar = .autoupdatingCurrent
     ) -> Date {
-        let normalizedStartDate = calendar.startOfDay(for: fallbackStartDate)
-        guard let activeFrom = object.dateValue(forKey: "activeFrom") else {
-            return normalizedStartDate
-        }
-        return max(normalizedStartDate, calendar.startOfDay(for: activeFrom))
+        value(
+            startDate: fallbackStartDate,
+            activeFrom: object.dateValue(forKey: "activeFrom"),
+            calendar: calendar
+        )
     }
 }
 
@@ -372,6 +384,22 @@ struct SchedulePreviewVersion: HistoryScheduleVersionLike {
 }
 
 enum SchedulePreviewSupport {
+    static func newCycleSchedules(
+        rule: ScheduleRule,
+        activeFrom: Date,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> [SchedulePreviewVersion] {
+        let normalizedActiveFrom = calendar.startOfDay(for: activeFrom)
+        return [
+            SchedulePreviewVersion(
+                rule: rule,
+                effectiveFrom: normalizedActiveFrom,
+                createdAt: .distantFuture,
+                version: Int.max
+            ),
+        ]
+    }
+
     static func scheduledDays<Schedule: HistoryScheduleVersionLike>(
         in range: ClosedRange<Date>,
         startDate: Date,
@@ -2287,6 +2315,78 @@ enum CoreDataHistoryRangeSupport {
                     updatedAt: now
                 )
             }
+        }
+
+        return didChange
+    }
+
+    @discardableResult
+    static func removeStateOnOrAfter(
+        owner: NSManagedObject,
+        ownerID: UUID,
+        startDate: Date,
+        state: CoreDataHistoryBucketState,
+        rangeEntityName: String,
+        ownerKey: String,
+        ownerRelationshipKey: String,
+        in context: NSManagedObjectContext,
+        calendar: Calendar = .autoupdatingCurrent,
+        now: Date = Date()
+    ) throws -> Bool {
+        let normalizedStart = calendar.startOfDay(for: startDate)
+        let rows = (owner.mutableSetValue(forKey: "historyRanges").allObjects as? [NSManagedObject]) ?? []
+        var didChange = false
+
+        for row in rows {
+            guard
+                let record = record(from: row, ownerKey: ownerKey, ownerID: ownerID, calendar: calendar),
+                record.state == state,
+                record.endDate >= normalizedStart
+            else {
+                continue
+            }
+
+            context.delete(row)
+            didChange = true
+
+            guard
+                record.startDate < normalizedStart,
+                let leftEnd = calendar.date(byAdding: .day, value: -1, to: normalizedStart)
+            else {
+                continue
+            }
+
+            let normalizedLeftEnd = calendar.startOfDay(for: leftEnd)
+            let count = CoreDataHistoryRangeCalculator.count(
+                from: record.startDate,
+                through: normalizedLeftEnd,
+                scheduleRule: record.scheduleRule,
+                useScheduleForHistory: record.useScheduleForHistory,
+                anchorDate: record.anchorDate,
+                calendar: calendar
+            )
+            guard count > 0 else { continue }
+
+            let draft = CoreDataHistoryRangeDraft(
+                startDate: record.startDate,
+                endDate: normalizedLeftEnd,
+                state: record.state,
+                useScheduleForHistory: record.useScheduleForHistory,
+                scheduleRule: record.scheduleRule,
+                anchorDate: record.anchorDate,
+                count: count
+            )
+            insertRangeRow(
+                owner: owner,
+                ownerID: ownerID,
+                draft: draft,
+                rangeEntityName: rangeEntityName,
+                ownerKey: ownerKey,
+                ownerRelationshipKey: ownerRelationshipKey,
+                in: context,
+                createdAt: record.createdAt,
+                updatedAt: now
+            )
         }
 
         return didChange

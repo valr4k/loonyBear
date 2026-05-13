@@ -437,13 +437,15 @@ struct EditHabitView: View {
 
     private var previewScheduledDates: Set<Date> {
         if isRestoreMode, let activeFrom = normalizedRestoreActiveFrom {
-            return SchedulePreviewSupport.scheduledDays(
+            return HistoryScheduleApplicability.scheduledDays(
                 in: displayedMonthRange,
-                startDate: draft.startDate,
+                startDate: activeFrom,
                 limitingTo: previewScheduleEndDate,
-                schedules: scheduleHistory,
-                replacementRule: draft.scheduleRule,
-                effectiveFrom: activeFrom,
+                schedules: SchedulePreviewSupport.newCycleSchedules(
+                    rule: draft.scheduleRule,
+                    activeFrom: activeFrom,
+                    calendar: Calendar.current
+                ),
                 calendar: Calendar.current
             )
         }

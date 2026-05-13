@@ -455,6 +455,11 @@ struct CoreDataHabitRepository: HabitRepository {
             habit.setValue(draft.reminderEnabled ? Int16(draft.reminderTime.minute) : nil, forKey: "reminderMinute")
             let now = clock.now()
             let normalizedToday = calendar.startOfDay(for: now)
+            let activeStartDate = ActiveCycleStartDate.value(
+                startDate: draft.startDate,
+                activeFrom: draft.activeFrom,
+                calendar: calendar
+            )
             let normalizedSelection = EditableHistoryContract.normalizedSelection(
                 positiveDays: draft.completedDays,
                 skippedDays: draft.skippedDays,
@@ -510,13 +515,13 @@ struct CoreDataHabitRepository: HabitRepository {
             }
 
             let editableSet = EditableHistoryWindow.dates(
-                startDate: draft.startDate,
+                startDate: activeStartDate,
                 today: normalizedToday,
                 calendar: calendar
             )
             let scheduledEditableSet = HistoryScheduleApplicability.pastScheduledEditableDays(
                 in: editableSet,
-                startDate: draft.startDate,
+                startDate: activeStartDate,
                 endDate: draft.endDate,
                 schedules: loadSchedules(for: habit, habitID: draft.id),
                 today: normalizedToday,
@@ -574,7 +579,7 @@ struct CoreDataHabitRepository: HabitRepository {
             if !wasArchived {
                 syncTodayOverdueAnchorAfterEdit(
                     habitID: draft.id,
-                    startDate: draft.startDate,
+                    startDate: activeStartDate,
                     endDate: draft.endDate,
                     schedules: loadSchedules(for: habit, habitID: draft.id),
                     reminderTime: draft.reminderEnabled ? draft.reminderTime : nil,
@@ -626,6 +631,13 @@ struct CoreDataHabitRepository: HabitRepository {
             schedule.setValue(now, forKey: "createdAt")
             schedule.setValue(nextVersion, forKey: "version")
             schedule.setValue(habit, forKey: "habit")
+
+            try clearArchivedHistoryOnOrAfter(
+                for: habit,
+                habitID: draft.id,
+                activeFrom: activeFrom,
+                in: context
+            )
 
             try writeArchivedGap(
                 for: habit,
@@ -855,6 +867,26 @@ struct CoreDataHabitRepository: HabitRepository {
             ownerRelationshipKey: "habit",
             legacyEntityName: "HabitCompletion",
             rangeEntityName: "HabitHistoryRange",
+            in: context,
+            calendar: calendar,
+            now: clock.now()
+        )
+    }
+
+    private func clearArchivedHistoryOnOrAfter(
+        for habit: NSManagedObject,
+        habitID: UUID,
+        activeFrom: Date,
+        in context: NSManagedObjectContext
+    ) throws {
+        try CoreDataHistoryRangeSupport.removeStateOnOrAfter(
+            owner: habit,
+            ownerID: habitID,
+            startDate: activeFrom,
+            state: .archived,
+            rangeEntityName: "HabitHistoryRange",
+            ownerKey: "habitID",
+            ownerRelationshipKey: "habit",
             in: context,
             calendar: calendar,
             now: clock.now()
@@ -1126,7 +1158,12 @@ struct CoreDataHabitRepository: HabitRepository {
         now: Date
     ) -> Date {
         let normalizedToday = calendar.startOfDay(for: now)
-        let minimumDate = max(normalizedToday, calendar.startOfDay(for: draft.startDate))
+        let activeStartDate = ActiveCycleStartDate.value(
+            startDate: draft.startDate,
+            activeFrom: draft.activeFrom,
+            calendar: calendar
+        )
+        let minimumDate = max(normalizedToday, activeStartDate)
         let maximumDate = max(minimumDate, HistoryMonthWindow.endOfSecondNextMonth(from: normalizedToday, calendar: calendar))
         let selectedDate = draft.scheduleEffectiveFrom.map { calendar.startOfDay(for: $0) } ?? minimumDate
         let explicitDays = normalizedSelection.positiveDays.union(normalizedSelection.skippedDays)
