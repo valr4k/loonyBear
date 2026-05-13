@@ -1442,7 +1442,7 @@ struct CoreDataHistoryBucketDaySets: Equatable {
 }
 
 enum CoreDataHistoryRangeCalculator {
-    static func count(
+    nonisolated static func count(
         from startDate: Date,
         through endDate: Date,
         scheduleRule: ScheduleRule,
@@ -1480,7 +1480,7 @@ enum CoreDataHistoryRangeCalculator {
         }
     }
 
-    static func firstScheduledDate(
+    nonisolated static func firstScheduledDate(
         from startDate: Date,
         through endDate: Date,
         scheduleRule: ScheduleRule,
@@ -1507,7 +1507,7 @@ enum CoreDataHistoryRangeCalculator {
         }
     }
 
-    static func lastScheduledDate(
+    nonisolated static func lastScheduledDate(
         from startDate: Date,
         through endDate: Date,
         scheduleRule: ScheduleRule,
@@ -1534,7 +1534,7 @@ enum CoreDataHistoryRangeCalculator {
         }
     }
 
-    private static func firstDateMatchingWeekday(
+    private nonisolated static func firstDateMatchingWeekday(
         _ weekday: WeekdaySet,
         from startDate: Date,
         through endDate: Date,
@@ -1555,7 +1555,7 @@ enum CoreDataHistoryRangeCalculator {
         return nil
     }
 
-    private static func lastDateMatchingWeekday(
+    private nonisolated static func lastDateMatchingWeekday(
         _ weekday: WeekdaySet,
         from startDate: Date,
         through endDate: Date,
@@ -1576,7 +1576,7 @@ enum CoreDataHistoryRangeCalculator {
         return nil
     }
 
-    private static func firstIntervalDate(
+    private nonisolated static func firstIntervalDate(
         days: Int,
         from startDate: Date,
         through endDate: Date,
@@ -1600,7 +1600,7 @@ enum CoreDataHistoryRangeCalculator {
         return first
     }
 
-    private static func lastIntervalDate(
+    private nonisolated static func lastIntervalDate(
         days: Int,
         from startDate: Date,
         through endDate: Date,
@@ -2445,7 +2445,7 @@ enum CoreDataHistoryRangeSupport {
             .first
     }
 
-    static func isValidPayload(
+    nonisolated static func isValidPayload(
         startDate: Date,
         endDate: Date,
         stateRaw: String,

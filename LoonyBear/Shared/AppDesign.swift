@@ -1906,8 +1906,8 @@ struct HabitNameInputField: View {
     var body: some View {
         CenteredInputField(
             text: $text,
-            placeholder: "Enter habit name",
-            capitalization: .sentences,
+            placeholder: "Name",
+            capitalization: .words,
             autocorrectionType: .default
         )
     }
@@ -1956,8 +1956,8 @@ struct AppPillDetailsCard: View {
             VStack(alignment: .leading, spacing: 0) {
                 CenteredInputField(
                     text: $name,
-                    placeholder: "Pill name",
-                    capitalization: .sentences,
+                    placeholder: "Name",
+                    capitalization: .words,
                     autocorrectionType: .default
                 )
                 .padding(.horizontal, AppLayout.rowHorizontalPadding)

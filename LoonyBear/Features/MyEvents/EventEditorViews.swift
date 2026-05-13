@@ -312,6 +312,7 @@ private struct EventNameSection: View {
                 .appAccentTint()
                 .font(.title3.weight(.semibold))
                 .multilineTextAlignment(.center)
+                .textInputAutocapitalization(.words)
                 .padding(.horizontal, 18)
                 .padding(.vertical, 24)
         }
