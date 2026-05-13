@@ -40,9 +40,9 @@ The current app supports:
 - appearance mode and adaptive app tint settings, included in new backups
 - Blue/Indigo/Green/Amber app color palette with Blue as the default
 - pushed Repeat editor with Days and Interval selection
-- End Repeat / End Date and separate Recently Deleted pages for manually soft-deleted or automatically finished items
+- End Repeat / End Date and separate Archive pages for manually archived or automatically finished items
 - active Pill Details and Habit Details sheets that replace the older separate Edit/Details split
-- read-only item Details for Recently Deleted items, with permanent delete only
+- read-only item Details for archived items, plus Restore Draft flows and permanent delete
 - Events tab between Habits and Settings, with permanent delete only and no reminder/history/archive behavior
 - scheduled-day dots in Habit and Pill history calendars
 - native compact date/time pickers with shared Schedule presentation safety for simultaneous picker/popover/navigation taps, including a window-level touch-down guard that avoids stealing scroll gestures

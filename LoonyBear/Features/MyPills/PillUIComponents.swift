@@ -129,9 +129,11 @@ struct PillHistoryCalendarView: View {
     let month: Date
     let editableDays: Set<Date>
     let scheduledDates: Set<Date>
+    let archivedDays: Set<Date>
+    let historySnapshot: CoreDataHistoryBucketSnapshot
     @Binding var takenDays: Set<Date>
     @Binding var skippedDays: Set<Date>
-    let availableMonths: [Date]
+    let availableMonthRange: ClosedRange<Date>
     var isReadOnly = false
     let onMonthChange: (Date) -> Void
 
@@ -142,7 +144,7 @@ struct PillHistoryCalendarView: View {
     var body: some View {
         MonthCalendarView(
             month: month,
-            availableMonths: availableMonths,
+            availableMonthRange: availableMonthRange,
             calendar: calendar,
             headerSpacing: 12,
             onMonthChange: onMonthChange
@@ -150,12 +152,12 @@ struct PillHistoryCalendarView: View {
             PillCalendarDayView(
                 dayNumber: calendar.component(.day, from: date),
                 style: dayStyle(for: date),
-                isEditable: !isReadOnly && editableDays.contains(date),
+                isEditable: !isReadOnly && editableDays.contains(date) && !isArchived(date),
                 isScheduled: isScheduled(date),
                 cellSize: cellSize
             )
             .contentShape(Circle())
-            .allowsHitTesting(!isReadOnly && editableDays.contains(date))
+            .allowsHitTesting(!isReadOnly && editableDays.contains(date) && !isArchived(date))
             .onTapGesture {
                 toggle(date)
             }
@@ -166,6 +168,7 @@ struct PillHistoryCalendarView: View {
         guard !isReadOnly else { return }
         let normalizedDate = calendar.startOfDay(for: date)
         guard editableDays.contains(normalizedDate) else { return }
+        guard !archivedDays.contains(normalizedDate) else { return }
 
         let currentSelection: EditableHistorySelection
         switch dayStyle(for: normalizedDate) {
@@ -175,7 +178,7 @@ struct PillHistoryCalendarView: View {
             currentSelection = .positive
         case .skipped:
             currentSelection = .skipped
-        case .disabled:
+        case .archived, .disabled:
             return
         }
 
@@ -200,14 +203,27 @@ struct PillHistoryCalendarView: View {
     }
 
     private func dayStyle(for date: Date) -> PillCalendarDayStyle {
-        if takenDays.contains(date) {
+        let normalizedDate = calendar.startOfDay(for: date)
+
+        if takenDays.contains(normalizedDate) {
             return .taken
-        } else if skippedDays.contains(date) {
+        } else if skippedDays.contains(normalizedDate) {
             return .skipped
+        } else if archivedDays.contains(normalizedDate) {
+            return .archived
+        } else if editableDays.contains(normalizedDate) && !isReadOnly {
+            return .available
+        } else if let state = historySnapshot.state(on: normalizedDate, calendar: calendar) {
+            switch state {
+            case .positive:
+                return .taken
+            case .skipped:
+                return .skipped
+            case .archived:
+                return .archived
+            }
         } else if isReadOnly {
             return .disabled
-        } else if editableDays.contains(date) {
-            return .available
         } else {
             return .disabled
         }
@@ -216,14 +232,22 @@ struct PillHistoryCalendarView: View {
     private func isScheduled(_ date: Date) -> Bool {
         scheduledDates.contains(calendar.startOfDay(for: date))
     }
+
+    private func isArchived(_ date: Date) -> Bool {
+        let normalizedDate = calendar.startOfDay(for: date)
+        return archivedDays.contains(normalizedDate) ||
+            historySnapshot.state(on: normalizedDate, calendar: calendar) == .archived
+    }
 }
 
 struct PillReadOnlyMonthCalendarView: View {
     let month: Date
     let takenDays: Set<Date>
     let skippedDays: Set<Date>
+    let archivedDays: Set<Date>
+    let historySnapshot: CoreDataHistoryBucketSnapshot
     let scheduledDates: Set<Date>
-    let availableMonths: [Date]
+    let availableMonthRange: ClosedRange<Date>
     let onMonthChange: (Date) -> Void
 
     private var calendar: Calendar {
@@ -233,7 +257,7 @@ struct PillReadOnlyMonthCalendarView: View {
     var body: some View {
         MonthCalendarView(
             month: month,
-            availableMonths: availableMonths,
+            availableMonthRange: availableMonthRange,
             calendar: calendar,
             headerSpacing: 10,
             onMonthChange: onMonthChange
@@ -256,6 +280,19 @@ struct PillReadOnlyMonthCalendarView: View {
         if skippedDays.contains(normalizedDate) {
             return .skipped
         }
+        if archivedDays.contains(normalizedDate) {
+            return .archived
+        }
+        if let state = historySnapshot.state(on: normalizedDate, calendar: calendar) {
+            switch state {
+            case .positive:
+                return .taken
+            case .skipped:
+                return .skipped
+            case .archived:
+                return .archived
+            }
+        }
         return .disabled
     }
 
@@ -268,6 +305,7 @@ private enum PillCalendarDayStyle {
     case available
     case taken
     case skipped
+    case archived
     case disabled
 }
 
@@ -281,7 +319,7 @@ private struct PillCalendarDayView: View {
 
     var body: some View {
         ZStack {
-            if style == .taken || style == .skipped {
+            if style == .taken || style == .skipped || style == .archived {
                 Circle()
                     .fill(backgroundColor)
                     .overlay {
@@ -312,6 +350,8 @@ private struct PillCalendarDayView: View {
             return appTint.accentColor
         case .skipped:
             return .red
+        case .archived:
+            return Color(uiColor: .tertiaryLabel)
         case .available:
             return .primary
         case .disabled:
@@ -325,6 +365,8 @@ private struct PillCalendarDayView: View {
             return appTint.accentColor.opacity(markedBackgroundOpacity)
         case .skipped:
             return Color(uiColor: .systemRed).opacity(markedBackgroundOpacity)
+        case .archived:
+            return Color(uiColor: .systemGray).opacity(0.14)
         case .available, .disabled:
             return .clear
         }
@@ -338,7 +380,7 @@ private struct PillCalendarDayView: View {
             return appTint.accentColor.opacity(0.45)
         case .skipped:
             return Color(uiColor: .systemRed).opacity(0.45)
-        case .available, .disabled:
+        case .archived, .available, .disabled:
             return .clear
         }
     }
@@ -375,6 +417,7 @@ private struct PillCalendarDayView: View {
 private enum PillReadOnlyDayStyle {
     case taken
     case skipped
+    case archived
     case disabled
 }
 
@@ -387,7 +430,7 @@ private struct PillReadOnlyCalendarDayView: View {
 
     var body: some View {
         ZStack {
-            if style == .taken || style == .skipped {
+            if style == .taken || style == .skipped || style == .archived {
                 Circle()
                     .fill(backgroundColor)
                     .frame(width: markerSize, height: markerSize)
@@ -414,6 +457,8 @@ private struct PillReadOnlyCalendarDayView: View {
             return appTint.accentColor
         case .skipped:
             return .red
+        case .archived:
+            return Color(uiColor: .tertiaryLabel)
         case .disabled:
             return Color(uiColor: .tertiaryLabel)
         }
@@ -425,6 +470,8 @@ private struct PillReadOnlyCalendarDayView: View {
             return appTint.accentColor.opacity(0.18)
         case .skipped:
             return Color(uiColor: .systemRed).opacity(0.18)
+        case .archived:
+            return Color(uiColor: .systemGray).opacity(0.14)
         case .disabled:
             return .clear
         }

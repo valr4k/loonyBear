@@ -98,8 +98,10 @@ struct PillDetailsView: View {
                             month: displayedMonth,
                             takenDays: details.takenDays,
                             skippedDays: details.skippedDays,
-                            scheduledDates: details.scheduledDates,
-                            availableMonths: availableMonths(for: details.startDate),
+                            archivedDays: details.archivedDays,
+                            historySnapshot: details.historySnapshot,
+                            scheduledDates: visibleScheduledDates(for: details),
+                            availableMonthRange: availableMonthRange(for: details.startDate),
                             onMonthChange: { displayedMonth = $0 }
                         )
                         .padding(.horizontal, 18)
@@ -300,12 +302,33 @@ struct PillDetailsView: View {
         isLoadingDetails = false
     }
 
-    private func availableMonths(for startDate: Date) -> [Date] {
-        HistoryMonthWindow.months(
-            from: startDate,
-            through: HistoryMonthWindow.detailsCalendarEndDate(startDate: startDate),
+    private func availableMonthRange(for startDate: Date) -> ClosedRange<Date> {
+        let firstMonth = HistoryMonthWindow.monthStart(containing: startDate, calendar: Calendar.current)
+        let lastMonth = HistoryMonthWindow.monthStart(
+            containing: HistoryMonthWindow.detailsCalendarEndDate(startDate: startDate),
             calendar: Calendar.current
         )
+        return firstMonth ... max(firstMonth, lastMonth)
+    }
+
+    private func visibleScheduledDates(for details: PillDetailsProjection) -> Set<Date> {
+        HistoryScheduleApplicability.scheduledDays(
+            in: displayedMonthRange,
+            startDate: details.startDate,
+            limitingTo: details.endDate,
+            schedules: details.scheduleHistory,
+            calendar: Calendar.current
+        )
+    }
+
+    private var displayedMonthRange: ClosedRange<Date> {
+        let calendar = Calendar.current
+        let monthStart = calendar.date(
+            from: calendar.dateComponents([.year, .month], from: displayedMonth)
+        ) ?? calendar.startOfDay(for: displayedMonth)
+        let nextMonth = calendar.date(byAdding: .month, value: 1, to: monthStart) ?? monthStart
+        let monthEnd = calendar.date(byAdding: .day, value: -1, to: nextMonth) ?? monthStart
+        return monthStart ... monthEnd
     }
 
     private func scheduleDisplayText(for details: PillDetailsProjection) -> String {

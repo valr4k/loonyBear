@@ -1065,8 +1065,12 @@ struct BackupServiceTests {
 
         try service.restoreArchive(archive)
 
-        let restoredHabit = try #require(try repository.fetchHabitDetails(id: archive.habits[0].id))
-        #expect(restoredHabit.completedDays.contains(archive.completionRecords[0].localDate))
+        let restoredState = try TestSupport.habitBucketState(
+            habitID: archive.habits[0].id,
+            localDate: archive.completionRecords[0].localDate,
+            context: context
+        )
+        #expect(restoredState == .positive)
     }
 
     @Test
@@ -1102,9 +1106,12 @@ struct BackupServiceTests {
 
         try service.restoreArchive(archive)
 
-        let restoredHabit = try #require(try repository.fetchHabitDetails(id: archive.habits[0].id))
-        #expect(restoredHabit.skippedDays.contains(archive.completionRecords[0].localDate))
-        #expect(!restoredHabit.completedDays.contains(archive.completionRecords[0].localDate))
+        let restoredState = try TestSupport.habitBucketState(
+            habitID: archive.habits[0].id,
+            localDate: archive.completionRecords[0].localDate,
+            context: context
+        )
+        #expect(restoredState == .skipped)
     }
 
     @Test

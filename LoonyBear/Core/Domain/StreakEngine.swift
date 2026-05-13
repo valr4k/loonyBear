@@ -1,6 +1,12 @@
 import Foundation
 
 enum StreakEngine {
+    struct Seed: Equatable {
+        let resumeDate: Date
+        let running: Int
+        let longest: Int
+    }
+
     static func currentStreak(
         completions: [HabitCompletion],
         skippedCompletions: [HabitCompletion] = [],
@@ -9,12 +15,17 @@ enum StreakEngine {
         today: Date,
         calendar: Calendar = .current
     ) -> Int {
+        let completionDays = Set(completions.map { calendar.startOfDay(for: $0.localDate) })
+        let skippedDays = Set(skippedCompletions.map { calendar.startOfDay(for: $0.localDate) })
+
         return metrics(
-            completions: completions,
-            skippedCompletions: skippedCompletions,
+            earliestCompletionDate: completionDays.min(),
+            containsCompletion: { completionDays.contains(calendar.startOfDay(for: $0)) },
+            containsSkippedCompletion: { skippedDays.contains(calendar.startOfDay(for: $0)) },
             schedules: schedules,
             startDate: startDate,
             today: today,
+            seed: nil,
             calendar: calendar
         ).current
     }
@@ -25,31 +36,75 @@ enum StreakEngine {
         startDate: Date? = nil,
         calendar: Calendar = .current
     ) -> Int {
-        let latestCompletion = completions
-            .map { calendar.startOfDay(for: $0.localDate) }
-            .max() ?? calendar.startOfDay(for: Date())
+        let completionDays = Set(completions.map { calendar.startOfDay(for: $0.localDate) })
+        let latestCompletion = completionDays.max() ?? calendar.startOfDay(for: Date())
 
         return metrics(
-            completions: completions,
-            skippedCompletions: [],
+            earliestCompletionDate: completionDays.min(),
+            containsCompletion: { completionDays.contains(calendar.startOfDay(for: $0)) },
+            containsSkippedCompletion: { _ in false },
             schedules: schedules,
             startDate: startDate,
             today: latestCompletion,
+            seed: nil,
             calendar: calendar
         ).longest
     }
 
-    private static func metrics(
-        completions: [HabitCompletion],
-        skippedCompletions: [HabitCompletion],
-        schedules: [HabitScheduleVersion],
+    static func currentStreak<Schedule: HistoryScheduleVersionLike>(
+        earliestCompletionDate: Date?,
+        containsCompletion: (Date) -> Bool,
+        containsSkippedCompletion: (Date) -> Bool = { _ in false },
+        schedules: [Schedule],
+        startDate: Date? = nil,
+        today: Date,
+        seed: Seed? = nil,
+        calendar: Calendar = .current
+    ) -> Int {
+        metrics(
+            earliestCompletionDate: earliestCompletionDate,
+            containsCompletion: containsCompletion,
+            containsSkippedCompletion: containsSkippedCompletion,
+            schedules: schedules,
+            startDate: startDate,
+            today: today,
+            seed: seed,
+            calendar: calendar
+        ).current
+    }
+
+    static func longestStreak<Schedule: HistoryScheduleVersionLike>(
+        earliestCompletionDate: Date?,
+        latestCompletionDate: Date?,
+        containsCompletion: (Date) -> Bool,
+        schedules: [Schedule],
+        startDate: Date? = nil,
+        seed: Seed? = nil,
+        calendar: Calendar = .current
+    ) -> Int {
+        metrics(
+            earliestCompletionDate: earliestCompletionDate,
+            containsCompletion: containsCompletion,
+            containsSkippedCompletion: { _ in false },
+            schedules: schedules,
+            startDate: startDate,
+            today: latestCompletionDate ?? calendar.startOfDay(for: Date()),
+            seed: seed,
+            calendar: calendar
+        ).longest
+    }
+
+    private static func metrics<Schedule: HistoryScheduleVersionLike>(
+        earliestCompletionDate: Date?,
+        containsCompletion: (Date) -> Bool,
+        containsSkippedCompletion: (Date) -> Bool,
+        schedules: [Schedule],
         startDate: Date?,
         today: Date,
+        seed: Seed?,
         calendar: Calendar
     ) -> (current: Int, longest: Int) {
-        let completionDays = Set(completions.map { calendar.startOfDay(for: $0.localDate) })
-        let skippedDays = Set(skippedCompletions.map { calendar.startOfDay(for: $0.localDate) })
-        guard let earliestCompletion = completionDays.min() else {
+        guard let earliestCompletion = earliestCompletionDate.map({ calendar.startOfDay(for: $0) }) else {
             return (0, 0)
         }
 
@@ -74,9 +129,22 @@ enum StreakEngine {
         var longest = 0
         var current = 0
 
+        if let seed {
+            let seedResumeDate = calendar.startOfDay(for: seed.resumeDate)
+            if seedResumeDate > cursor {
+                cursor = seedResumeDate
+                running = seed.running
+                longest = max(longest, seed.longest)
+            }
+        }
+
+        if cursor > normalizedToday {
+            return (running, longest)
+        }
+
         while cursor <= normalizedToday {
-            let hasCompletion = completionDays.contains(cursor)
-            let hasSkip = skippedDays.contains(cursor)
+            let hasCompletion = containsCompletion(cursor)
+            let hasSkip = containsSkippedCompletion(cursor)
             let activeSchedule = schedule(on: cursor, from: normalizedSchedules, calendar: calendar)
             let isScheduled = activeSchedule.map {
                 $0.rule.isScheduled(on: cursor, anchorDate: $0.effectiveFrom, calendar: calendar)
@@ -123,11 +191,11 @@ enum StreakEngine {
         )
     }
 
-    private static func schedule(
+    private static func schedule<Schedule: HistoryScheduleVersionLike>(
         on day: Date,
-        from schedules: [HabitScheduleVersion],
+        from schedules: [Schedule],
         calendar: Calendar
-    ) -> HabitScheduleVersion? {
+    ) -> Schedule? {
         let normalizedDay = calendar.startOfDay(for: day)
 
         return schedules.last {

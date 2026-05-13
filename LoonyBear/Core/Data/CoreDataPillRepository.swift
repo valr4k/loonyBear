@@ -81,7 +81,21 @@ struct CoreDataPillRepository: PillRepository {
 
         guard
             let schedules = loadSchedules(for: pillObject, pillID: id, report: &report),
-            let intakes = loadIntakes(for: pillObject, pillID: id, report: &report)
+            let historySnapshot = CoreDataHistoryBucketSupport.validatedSnapshot(
+                from: pillObject,
+                bucketRelationshipKey: "historyBuckets",
+                rangeRelationshipKey: "historyRanges",
+                rangeOwnerKey: "pillID",
+                ownerID: id,
+                legacyRelationshipKey: "intakes",
+                area: "details",
+                invalidBucketMessage: "Pill history bucket row is missing required fields or has overlapping masks.",
+                invalidRangeMessage: "Pill history range row is missing required fields or has invalid schedule/count.",
+                invalidLegacyMessage: "Pill intake row is missing required fields or has invalid sourceRaw.",
+                report: &report,
+                legacySourceToState: bucketState(from:),
+                calendar: calendar
+            )
         else {
             report.append(
                 area: "details",
@@ -95,13 +109,6 @@ struct CoreDataPillRepository: PillRepository {
         }
 
         let latestSchedule = schedules.sorted(by: CoreDataScheduleSupport.isNewerSchedule).first
-        let successfulIntakes = intakes.filter { $0.source.countsAsIntake }
-        let takenDays = Set(successfulIntakes.map { calendar.startOfDay(for: $0.localDate) })
-        let skippedDays = Set(
-            intakes
-                .filter { !$0.source.countsAsIntake }
-                .map { calendar.startOfDay(for: $0.localDate) }
-        )
         let reminderEnabled = pillObject.boolValue(forKey: "reminderEnabled")
         let reminderTime = ReminderValidation.validatedReminderTime(
             from: pillObject,
@@ -130,19 +137,28 @@ struct CoreDataPillRepository: PillRepository {
             fallbackStartDate: startDate,
             calendar: calendar
         )
+        let displayRange = initialDetailsHistoryRange(startDate: activeStartDate, today: today)
+        let historySets = historySnapshot.daySets(
+            from: displayRange.lowerBound,
+            through: displayRange.upperBound,
+            calendar: calendar
+        )
+        let takenDays = historySets.positiveDays
+        let skippedDays = historySets.skippedDays
+        let archivedDays = historySets.archivedDays
         let activeOverdueDay = isArchived ? nil : ScheduledOverdueState.activeOverdueDay(
             startDate: activeStartDate,
             endDate: endDate,
             schedules: schedules,
             reminderTime: reminderTime,
-            positiveDays: takenDays,
-            skippedDays: skippedDays,
+            hasPositiveState: { historySnapshot.state(on: $0, calendar: calendar) == .positive },
+            hasSkippedState: { historySnapshot.state(on: $0, calendar: calendar) == .skipped },
             now: now,
             calendar: calendar
         )
         let scheduledDates = HistoryScheduleApplicability.scheduledDays(
+            in: initialCalendarMonthRange(startDate: activeStartDate, today: today),
             startDate: activeStartDate,
-            through: HistoryMonthWindow.detailsCalendarEndDate(startDate: startDate, today: today, calendar: calendar),
             limitingTo: endDate,
             schedules: schedules,
             calendar: calendar
@@ -154,6 +170,7 @@ struct CoreDataPillRepository: PillRepository {
             dosage: dosage,
             details: pillObject.stringValue(forKey: "detailsText"),
             startDate: startDate,
+            activeFrom: pillObject.dateValue(forKey: "activeFrom"),
             endDate: endDate,
             historyMode: historyMode,
             scheduleSummary: latestSchedule?.rule.summary ?? "No days selected",
@@ -161,9 +178,11 @@ struct CoreDataPillRepository: PillRepository {
             scheduleRule: latestSchedule?.rule ?? .weekly(.daily),
             reminderEnabled: reminderEnabled,
             reminderTime: reminderTime,
-            totalTakenDays: takenDays.count,
+            totalTakenDays: historySnapshot.positiveCount,
             takenDays: takenDays,
             skippedDays: skippedDays,
+            archivedDays: archivedDays,
+            historySnapshot: historySnapshot,
             scheduleHistory: schedules,
             scheduledDates: scheduledDates,
             needsHistoryReview: !isArchived && needsHistoryReview(
@@ -182,7 +201,8 @@ struct CoreDataPillRepository: PillRepository {
                 today: today
             ),
             activeOverdueDay: activeOverdueDay,
-            isArchived: isArchived
+            isArchived: isArchived,
+            archivedAt: pillObject.dateValue(forKey: "archivedAt")
         )
     }
 
@@ -215,6 +235,7 @@ struct CoreDataPillRepository: PillRepository {
             pill.setValue(calendar.startOfDay(for: draft.startDate), forKey: "startDate")
             pill.setValue(draft.endDate.map { calendar.startOfDay(for: $0) }, forKey: "endDate")
             pill.setValue(false, forKey: "isArchived")
+            pill.setValue(nil, forKey: "archivedAt")
             pill.setValue(
                 draft.useScheduleForHistory ? PillHistoryMode.scheduleBased.rawValue : PillHistoryMode.everyDay.rawValue,
                 forKey: "historyModeRaw"
@@ -236,19 +257,7 @@ struct CoreDataPillRepository: PillRepository {
             schedule.setValue(pill, forKey: "pill")
 
             for takenDay in draft.takenDays {
-                let intake = NSEntityDescription.insertNewObject(forEntityName: "PillIntake", into: context)
-                intake.setValue(UUID(), forKey: "id")
-                intake.setValue(pillID, forKey: "pillID")
-                intake.setValue(calendar.startOfDay(for: takenDay), forKey: "localDate")
-                intake.setValue(PillCompletionSource.manualEdit.rawValue, forKey: "sourceRaw")
-                intake.setValue(now, forKey: "createdAt")
-                intake.setValue(pill, forKey: "pill")
-            }
-
-            let existingTakenDays = Set(draft.takenDays.map { calendar.startOfDay(for: $0) })
-            let initialTakenDays = generatedInitialTakenDays(from: draft, today: now)
-            for takenDay in initialTakenDays where !existingTakenDays.contains(takenDay) {
-                insertIntake(
+                try insertIntake(
                     for: pill,
                     pillID: pillID,
                     on: takenDay,
@@ -257,14 +266,50 @@ struct CoreDataPillRepository: PillRepository {
                 )
             }
 
+            let existingTakenDays = Set(draft.takenDays.map { calendar.startOfDay(for: $0) })
+            let initialTakenPlan = CoreDataInitialHistoryPlanner.positiveHistoryPlan(
+                startDate: draft.startDate,
+                endDate: draft.endDate,
+                scheduleRule: draft.scheduleRule,
+                useScheduleForHistory: draft.useScheduleForHistory,
+                today: now,
+                calendar: calendar
+            )
+            try CoreDataHistoryRangeSupport.insertRange(
+                owner: pill,
+                ownerID: pillID,
+                draft: initialTakenPlan.coldRange,
+                rangeEntityName: "PillHistoryRange",
+                ownerKey: "pillID",
+                ownerRelationshipKey: "pill",
+                in: context,
+                now: now
+            )
+            try CoreDataHistoryBucketSupport.setStates(
+                owner: pill,
+                ownerID: pillID,
+                plan: initialTakenPlan.editableBucketPlan,
+                state: .positive,
+                bucketEntityName: "PillHistoryBucket",
+                ownerKey: "pillID",
+                ownerRelationshipKey: "pill",
+                legacyEntityName: "PillIntake",
+                rangeEntityName: "PillHistoryRange",
+                in: context,
+                calendar: calendar,
+                now: now,
+                shouldDeleteLegacyRows: false
+            )
+
             applyAutomaticArchiveIfNeeded(
                 for: pill,
                 pillID: pillID,
                 startDate: calendar.startOfDay(for: draft.startDate),
                 endDate: draft.endDate,
                 schedules: loadSchedules(for: pill, pillID: pillID),
-                positiveDays: existingTakenDays.union(initialTakenDays),
-                skippedDays: []
+                isFinalized: { day in
+                    existingTakenDays.contains(day) || initialTakenPlan.contains(day, calendar: calendar)
+                }
             )
 
             try context.save()
@@ -364,18 +409,12 @@ struct CoreDataPillRepository: PillRepository {
                 throw EditableHistoryValidationError.missingPillPastDays(missingPastDays)
             }
 
-            let existingIntakeObjects = try fetchIntakes(for: draft.id, on: editableSet, in: context)
-            let existingByDay = CoreDataHistorySupport.groupedHistoryObjectsByDay(existingIntakeObjects)
+            let existingByDay = try historySources(pillID: draft.id, on: editableSet, in: context)
 
             for day in editableSet {
                 let shouldBeTaken = normalizedSelection.positiveDays.contains(day)
                 let shouldBeSkipped = normalizedSelection.skippedDays.contains(day)
-                let existingObjects = existingByDay[day] ?? []
-                let existing = primaryHistoryObject(in: existingObjects)
-
-                for duplicate in existingObjects where duplicate != existing {
-                    context.delete(duplicate)
-                }
+                let existing = existingByDay[day]
 
                 if shouldBeTaken {
                     _ = try upsertIntake(
@@ -395,8 +434,8 @@ struct CoreDataPillRepository: PillRepository {
                         in: context,
                         updateWhen: { $0 != .skipped }
                     )
-                } else if let existing {
-                    context.delete(existing)
+                } else if existing != nil {
+                    _ = try clearIntake(for: pill, pillID: draft.id, on: day, in: context)
                 }
             }
 
@@ -423,6 +462,103 @@ struct CoreDataPillRepository: PillRepository {
         }
     }
 
+    func restorePill(from draft: EditPillDraft) throws {
+        try repositoryContext.performWrite { context in
+            guard let pill = try fetchPill(id: draft.id, in: context) else { return }
+            guard pill.boolValue(forKey: "isArchived") else { return }
+
+            let now = clock.now()
+            let today = calendar.startOfDay(for: now)
+            let archivedAt = pill.dateValue(forKey: "archivedAt").map { calendar.startOfDay(for: $0) } ?? today
+            let activeFrom = calendar.startOfDay(for: draft.restoreActiveFrom ?? today)
+            let minimumActiveFrom = restoreMinimumActiveFrom(archivedAt: archivedAt, today: today)
+            guard activeFrom >= minimumActiveFrom else {
+                throw PillRepositoryError.internalFailure
+            }
+
+            pill.setValue(draft.trimmedName, forKey: "name")
+            pill.setValue(draft.trimmedDosage, forKey: "dosage")
+            pill.setValue(draft.normalizedDetails, forKey: "detailsText")
+            pill.setValue(draft.endDate.map { calendar.startOfDay(for: $0) }, forKey: "endDate")
+            pill.setValue(false, forKey: "isArchived")
+            pill.setValue(nil, forKey: "archivedAt")
+            pill.setValue(activeFrom, forKey: "activeFrom")
+            pill.setValue(draft.reminderEnabled, forKey: "reminderEnabled")
+            pill.setValue(draft.reminderEnabled ? Int16(draft.reminderTime.hour) : nil, forKey: "reminderHour")
+            pill.setValue(draft.reminderEnabled ? Int16(draft.reminderTime.minute) : nil, forKey: "reminderMinute")
+            pill.setValue(now, forKey: "updatedAt")
+
+            let scheduleRelationship = pill.mutableSetValue(forKey: "scheduleVersions")
+            let nextVersion = CoreDataScheduleSupport.nextVersion(in: scheduleRelationship)
+            CoreDataScheduleSupport.deleteScheduleObjects(
+                in: scheduleRelationship,
+                onOrAfter: activeFrom,
+                calendar: calendar,
+                context: context
+            )
+            let schedule = NSEntityDescription.insertNewObject(forEntityName: "PillScheduleVersion", into: context)
+            schedule.setValue(UUID(), forKey: "id")
+            schedule.setValue(draft.id, forKey: "pillID")
+            CoreDataScheduleSupport.apply(draft.scheduleRule, to: schedule)
+            schedule.setValue(activeFrom, forKey: "effectiveFrom")
+            schedule.setValue(now, forKey: "createdAt")
+            schedule.setValue(nextVersion, forKey: "version")
+            schedule.setValue(pill, forKey: "pill")
+
+            try writeArchivedGap(
+                for: pill,
+                pillID: draft.id,
+                archivedAt: archivedAt,
+                activeFrom: activeFrom,
+                in: context
+            )
+
+            try applyRestoreDraftHistorySelection(
+                for: pill,
+                pillID: draft.id,
+                draft: draft,
+                activeFrom: activeFrom,
+                today: today,
+                in: context
+            )
+
+            let schedules = loadSchedules(for: pill, pillID: draft.id)
+            let restoredDays = try autoFillRestoredTakenDays(
+                for: pill,
+                pillID: draft.id,
+                activeFrom: activeFrom,
+                endDate: draft.endDate,
+                schedules: schedules,
+                today: today,
+                in: context
+            )
+
+            try context.save()
+
+            let allIntakes = loadIntakes(for: pill, pillID: draft.id)
+            let positiveDays = Set(
+                allIntakes
+                    .filter { $0.source.countsAsIntake }
+                    .map { calendar.startOfDay(for: $0.localDate) }
+            ).union(restoredDays)
+            let skippedDays = Set(
+                allIntakes
+                    .filter { $0.source.countsAsSkipped }
+                    .map { calendar.startOfDay(for: $0.localDate) }
+            )
+            syncTodayOverdueAnchorAfterEdit(
+                pillID: draft.id,
+                startDate: activeFrom,
+                endDate: draft.endDate,
+                schedules: schedules,
+                reminderTime: draft.reminderEnabled ? draft.reminderTime : nil,
+                positiveDays: positiveDays,
+                skippedDays: skippedDays,
+                now: now
+            )
+        }
+    }
+
     func deletePill(id: UUID) throws {
         try repositoryContext.performWrite { context in
             guard let pill = try fetchPill(id: id, in: context) else { return }
@@ -437,6 +573,7 @@ struct CoreDataPillRepository: PillRepository {
             guard pill.boolValue(forKey: "isArchived") != isArchived else { return }
 
             pill.setValue(isArchived, forKey: "isArchived")
+            pill.setValue(isArchived ? clock.now() : nil, forKey: "archivedAt")
             pill.setValue(clock.now(), forKey: "updatedAt")
             try context.save()
 
@@ -517,12 +654,8 @@ struct CoreDataPillRepository: PillRepository {
             guard let pill = try fetchPill(id: id, in: context) else { return }
             guard !pill.boolValue(forKey: "isArchived") else { return }
             let today = calendar.startOfDay(for: day)
-            let intakes = try fetchIntakes(for: id, on: today, in: context)
-            guard !intakes.isEmpty else { return }
-
-            for intake in intakes {
-                context.delete(intake)
-            }
+            let didChange = try clearIntake(for: pill, pillID: id, on: today, in: context)
+            guard didChange else { return }
             try context.save()
             syncTodayOverdueAnchorAfterClearingDay(for: pill, pillID: id, clearedDay: today)
         }
@@ -578,6 +711,94 @@ struct CoreDataPillRepository: PillRepository {
         CoreDataHistorySupport.primaryHistoryObject(in: objects)
     }
 
+    private func bucketState(for source: PillCompletionSource) -> CoreDataHistoryBucketState {
+        if source.countsAsSkipped {
+            return .skipped
+        }
+        if source == .archived {
+            return .archived
+        }
+        return .positive
+    }
+
+    private func bucketState(from sourceRaw: String) -> CoreDataHistoryBucketState? {
+        PillCompletionSource(rawValue: sourceRaw).map(bucketState(for:))
+    }
+
+    private func pillSource(for state: CoreDataHistoryBucketState) -> PillCompletionSource {
+        switch state {
+        case .positive: return .manualEdit
+        case .skipped: return .skipped
+        case .archived: return .archived
+        }
+    }
+
+    private func historySource(for pillID: UUID, on localDate: Date, in context: NSManagedObjectContext) throws -> PillCompletionSource? {
+        try CoreDataHistoryBucketSupport.state(
+            ownerID: pillID,
+            localDate: localDate,
+            bucketEntityName: "PillHistoryBucket",
+            ownerKey: "pillID",
+            legacyEntityName: "PillIntake",
+            rangeEntityName: "PillHistoryRange",
+            legacySourceToState: bucketState(from:),
+            in: context,
+            calendar: calendar
+        ).map(pillSource(for:))
+    }
+
+    private func explicitHistorySource(for pillID: UUID, on localDate: Date, in context: NSManagedObjectContext) throws -> PillCompletionSource? {
+        try CoreDataHistoryBucketSupport.state(
+            ownerID: pillID,
+            localDate: localDate,
+            bucketEntityName: "PillHistoryBucket",
+            ownerKey: "pillID",
+            legacyEntityName: "PillIntake",
+            legacySourceToState: bucketState(from:),
+            in: context,
+            calendar: calendar
+        ).map(pillSource(for:))
+    }
+
+    private func historySources(
+        pillID: UUID,
+        on localDates: Set<Date>,
+        in context: NSManagedObjectContext
+    ) throws -> [Date: PillCompletionSource] {
+        guard !localDates.isEmpty else { return [:] }
+
+        let normalizedDates = Set(localDates.map { calendar.startOfDay(for: $0) })
+        var sources: [Date: PillCompletionSource] = [:]
+        for day in normalizedDates {
+            if let source = try historySource(for: pillID, on: day, in: context) {
+                sources[day] = source
+            }
+        }
+
+        return sources
+    }
+
+    private func clearIntake(
+        for pill: NSManagedObject,
+        pillID: UUID,
+        on localDate: Date,
+        in context: NSManagedObjectContext
+    ) throws -> Bool {
+        try CoreDataHistoryBucketSupport.clearState(
+            owner: pill,
+            ownerID: pillID,
+            localDate: localDate,
+            bucketEntityName: "PillHistoryBucket",
+            ownerKey: "pillID",
+            ownerRelationshipKey: "pill",
+            legacyEntityName: "PillIntake",
+            rangeEntityName: "PillHistoryRange",
+            in: context,
+            calendar: calendar,
+            now: clock.now()
+        )
+    }
+
     private func upsertIntake(
         for pill: NSManagedObject,
         pillID: UUID,
@@ -587,79 +808,238 @@ struct CoreDataPillRepository: PillRepository {
         updateWhen shouldUpdate: (PillCompletionSource) -> Bool
     ) throws -> Bool {
         let normalizedDate = calendar.startOfDay(for: localDate)
-        let existingObjects = try fetchIntakes(for: pillID, on: normalizedDate, in: context)
-        let existing = primaryHistoryObject(in: existingObjects)
-        let duplicateObjects = existingObjects.filter { $0 != existing }
-
-        for duplicate in duplicateObjects {
-            context.delete(duplicate)
-        }
-
-        guard let existing else {
-            insertIntake(
+        guard let existingSource = try explicitHistorySource(for: pillID, on: normalizedDate, in: context) else {
+            return try insertIntake(
                 for: pill,
                 pillID: pillID,
                 on: normalizedDate,
                 source: desiredSource,
                 in: context
             )
-            return true
-        }
-
-        guard
-            let sourceRaw = existing.stringValue(forKey: "sourceRaw"),
-            let existingSource = PillCompletionSource(rawValue: sourceRaw)
-        else {
-            return !duplicateObjects.isEmpty
         }
 
         guard shouldUpdate(existingSource), existingSource != desiredSource else {
-            return !duplicateObjects.isEmpty
+            return false
         }
 
-        existing.setValue(desiredSource.rawValue, forKey: "sourceRaw")
-        existing.setValue(clock.now(), forKey: "createdAt")
-        existing.setValue(pill, forKey: "pill")
-        return true
+        return try insertIntake(
+            for: pill,
+            pillID: pillID,
+            on: normalizedDate,
+            source: desiredSource,
+            in: context
+        )
     }
 
+    @discardableResult
     private func insertIntake(
         for pill: NSManagedObject,
         pillID: UUID,
         on localDate: Date,
         source: PillCompletionSource,
         in context: NSManagedObjectContext
-    ) {
-        let intake = NSEntityDescription.insertNewObject(forEntityName: "PillIntake", into: context)
-        intake.setValue(UUID(), forKey: "id")
-        intake.setValue(pillID, forKey: "pillID")
-        intake.setValue(localDate, forKey: "localDate")
-        intake.setValue(source.rawValue, forKey: "sourceRaw")
-        intake.setValue(clock.now(), forKey: "createdAt")
-        intake.setValue(pill, forKey: "pill")
+    ) throws -> Bool {
+        try CoreDataHistoryBucketSupport.setState(
+            owner: pill,
+            ownerID: pillID,
+            localDate: localDate,
+            state: bucketState(for: source),
+            bucketEntityName: "PillHistoryBucket",
+            ownerKey: "pillID",
+            ownerRelationshipKey: "pill",
+            legacyEntityName: "PillIntake",
+            rangeEntityName: "PillHistoryRange",
+            in: context,
+            calendar: calendar,
+            now: clock.now()
+        )
+    }
+
+    private func writeArchivedGap(
+        for pill: NSManagedObject,
+        pillID: UUID,
+        archivedAt: Date,
+        activeFrom: Date,
+        in context: NSManagedObjectContext
+    ) throws {
+        let normalizedArchivedAt = calendar.startOfDay(for: archivedAt)
+        let normalizedActiveFrom = calendar.startOfDay(for: activeFrom)
+        guard let end = calendar.date(byAdding: .day, value: -1, to: normalizedActiveFrom), normalizedArchivedAt <= end else {
+            return
+        }
+
+        try CoreDataHistoryRangeSupport.insertCalendarDayRanges(
+            owner: pill,
+            ownerID: pillID,
+            startDate: normalizedArchivedAt,
+            endDate: end,
+            state: .archived,
+            excludedDays: explicitHistoryDates(
+                for: pill,
+                pillID: pillID,
+                from: normalizedArchivedAt,
+                through: end
+            ),
+            rangeEntityName: "PillHistoryRange",
+            ownerKey: "pillID",
+            ownerRelationshipKey: "pill",
+            in: context,
+            calendar: calendar,
+            now: clock.now()
+        )
+    }
+
+    private func applyRestoreDraftHistorySelection(
+        for pill: NSManagedObject,
+        pillID: UUID,
+        draft: EditPillDraft,
+        activeFrom: Date,
+        today: Date,
+        in context: NSManagedObjectContext
+    ) throws {
+        let editableSet = EditableHistoryWindow.dates(
+            startDate: activeFrom,
+            today: today,
+            calendar: calendar
+        )
+        let normalizedSelection = EditableHistoryContract.normalizedSelection(
+            positiveDays: draft.takenDays,
+            skippedDays: draft.skippedDays,
+            requiredFinalizedDays: [],
+            pastDefaultSelection: .none,
+            today: today,
+            calendar: calendar
+        )
+        let existingByDay = try historySources(pillID: pillID, on: editableSet, in: context)
+
+        for day in editableSet {
+            let shouldBeTaken = normalizedSelection.positiveDays.contains(day)
+            let shouldBeSkipped = normalizedSelection.skippedDays.contains(day)
+            let existing = existingByDay[day]
+
+            if shouldBeTaken {
+                _ = try upsertIntake(
+                    for: pill,
+                    pillID: pillID,
+                    on: day,
+                    source: .manualEdit,
+                    in: context,
+                    updateWhen: { !$0.countsAsIntake }
+                )
+            } else if shouldBeSkipped {
+                _ = try upsertIntake(
+                    for: pill,
+                    pillID: pillID,
+                    on: day,
+                    source: .skipped,
+                    in: context,
+                    updateWhen: { $0 != .skipped }
+                )
+            } else if existing != nil {
+                _ = try clearIntake(for: pill, pillID: pillID, on: day, in: context)
+            }
+        }
+    }
+
+    private func autoFillRestoredTakenDays(
+        for pill: NSManagedObject,
+        pillID: UUID,
+        activeFrom: Date,
+        endDate: Date?,
+        schedules: [PillScheduleVersion],
+        today: Date,
+        in context: NSManagedObjectContext
+    ) throws -> Set<Date> {
+        guard let yesterday = calendar.date(byAdding: .day, value: -1, to: today), activeFrom <= yesterday else {
+            return []
+        }
+
+        var restoredDays = Set<Date>()
+        for day in calendarDays(from: activeFrom, through: yesterday) where HistoryScheduleApplicability.isScheduled(
+            on: day,
+            startDate: activeFrom,
+            endDate: endDate,
+            from: schedules,
+            calendar: calendar
+        ) {
+            let didChange = try upsertIntake(
+                for: pill,
+                pillID: pillID,
+                on: day,
+                source: .restore,
+                in: context,
+                updateWhen: { !$0.countsAsIntake && !$0.countsAsSkipped }
+            )
+            if didChange {
+                restoredDays.insert(day)
+            }
+        }
+        return restoredDays
+    }
+
+    private func restoreMinimumActiveFrom(archivedAt: Date, today: Date) -> Date {
+        let editableStart = calendar.date(byAdding: .day, value: -29, to: today) ?? today
+        return max(calendar.startOfDay(for: archivedAt), calendar.startOfDay(for: editableStart))
+    }
+
+    private func calendarDays(from start: Date, through end: Date) -> [Date] {
+        var days: [Date] = []
+        var cursor = calendar.startOfDay(for: start)
+        let normalizedEnd = calendar.startOfDay(for: end)
+        while cursor <= normalizedEnd {
+            days.append(cursor)
+            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else { break }
+            cursor = calendar.startOfDay(for: next)
+        }
+        return days
+    }
+
+    private func explicitHistoryDates(
+        for pill: NSManagedObject,
+        pillID: UUID,
+        from startDate: Date,
+        through endDate: Date
+    ) -> Set<Date> {
+        let normalizedStart = calendar.startOfDay(for: startDate)
+        let normalizedEnd = calendar.startOfDay(for: endDate)
+        let bucketDates = CoreDataHistoryBucketSupport.entries(
+            from: pill,
+            relationshipKey: "historyBuckets",
+            ownerID: pillID,
+            calendar: calendar
+        ).map { calendar.startOfDay(for: $0.localDate) }
+        let legacyDates = ((pill.mutableSetValue(forKey: "intakes").allObjects as? [NSManagedObject]) ?? [])
+            .compactMap { $0.dateValue(forKey: "localDate") }
+            .map { calendar.startOfDay(for: $0) }
+
+        return Set((bucketDates + legacyDates).filter { $0 >= normalizedStart && $0 <= normalizedEnd })
     }
 
     private func applyAutomaticArchiveIfNeeded(
         for pill: NSManagedObject,
         pillID: UUID
     ) {
-        let intakes = loadIntakes(for: pill, pillID: pillID)
-        let positiveDays = Set(
-            intakes
-                .filter { $0.source.countsAsIntake }
-                .map { calendar.startOfDay(for: $0.localDate) }
+        guard let startDate = pill.dateValue(forKey: "startDate") else { return }
+        let activeStartDate = ActiveCycleStartDate.value(
+            for: pill,
+            fallbackStartDate: startDate,
+            calendar: calendar
         )
-        let skippedDays = Set(
-            intakes
-                .filter { !$0.source.countsAsIntake }
-                .map { calendar.startOfDay(for: $0.localDate) }
-        )
-
         applyAutomaticArchiveIfNeeded(
             for: pill,
             pillID: pillID,
-            positiveDays: positiveDays,
-            skippedDays: skippedDays
+            startDate: activeStartDate,
+            endDate: pill.dateValue(forKey: "endDate"),
+            schedules: loadSchedules(for: pill, pillID: pillID),
+            isFinalized: { day in
+                guard
+                    let context = pill.managedObjectContext,
+                    let source = try? historySource(for: pillID, on: day, in: context)
+                else {
+                    return false
+                }
+                return source.countsAsIntake || source.countsAsSkipped
+            }
         )
     }
 
@@ -696,18 +1076,40 @@ struct CoreDataPillRepository: PillRepository {
         skippedDays: Set<Date>
     ) {
         guard !pill.boolValue(forKey: "isArchived") else { return }
+        let normalizedPositiveDays = Set(positiveDays.map { calendar.startOfDay(for: $0) })
+        let normalizedSkippedDays = Set(skippedDays.map { calendar.startOfDay(for: $0) })
+        let finalizedDays = normalizedPositiveDays.union(normalizedSkippedDays)
+        applyAutomaticArchiveIfNeeded(
+            for: pill,
+            pillID: pillID,
+            startDate: startDate,
+            endDate: endDate,
+            schedules: schedules,
+            isFinalized: { finalizedDays.contains($0) }
+        )
+    }
+
+    private func applyAutomaticArchiveIfNeeded(
+        for pill: NSManagedObject,
+        pillID: UUID,
+        startDate: Date,
+        endDate: Date?,
+        schedules: [PillScheduleVersion],
+        isFinalized: (Date) -> Bool
+    ) {
+        guard !pill.boolValue(forKey: "isArchived") else { return }
         guard ScheduleLifecycleSupport.shouldAutoArchive(
             startDate: startDate,
             endDate: endDate,
             schedules: schedules,
-            positiveDays: positiveDays,
-            skippedDays: skippedDays,
+            isFinalized: isFinalized,
             calendar: calendar
         ) else {
             return
         }
 
         pill.setValue(true, forKey: "isArchived")
+        pill.setValue(clock.now(), forKey: "archivedAt")
         pill.setValue(clock.now(), forKey: "updatedAt")
         overdueAnchorStore.clearAnchorDay(for: .pill, id: pillID)
     }
@@ -733,41 +1135,22 @@ struct CoreDataPillRepository: PillRepository {
         )?.resolvedDate ?? minimumDate
     }
 
-    private func generatedInitialTakenDays(from draft: PillDraft, today: Date) -> [Date] {
-        let startDate = calendar.startOfDay(for: draft.startDate)
-        let normalizedToday = calendar.startOfDay(for: today)
-        guard let yesterday = calendar.date(byAdding: .day, value: -1, to: normalizedToday) else {
-            return []
-        }
-        let endDate = draft.endDate
-            .map { min(calendar.startOfDay(for: yesterday), calendar.startOfDay(for: $0)) }
-            ?? calendar.startOfDay(for: yesterday)
-        guard startDate <= endDate else { return [] }
-
-        var takenDays: [Date] = []
-        var cursor = startDate
-
-        while cursor <= endDate {
-            if shouldGenerateInitialIntake(on: cursor, for: draft) {
-                takenDays.append(cursor)
-            }
-
-            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else {
-                break
-            }
-            cursor = calendar.startOfDay(for: next)
-        }
-
-        return takenDays
-    }
-
-    private func shouldGenerateInitialIntake(on day: Date, for draft: PillDraft) -> Bool {
-        guard draft.useScheduleForHistory else { return true }
-        return draft.scheduleRule.isScheduled(on: day, anchorDate: draft.startDate, calendar: calendar)
-    }
-
     private func loadIntakes(for pillObject: NSManagedObject, pillID: UUID) -> [PillIntake] {
-        CoreDataRelationshipLoadingSupport.compactHistoryModels(
+        let bucketIntakes = CoreDataHistoryBucketSupport.entries(
+            from: pillObject,
+            relationshipKey: "historyBuckets",
+            ownerID: pillID,
+            calendar: calendar
+        ).map { entry in
+            PillIntake(
+                id: UUID(),
+                pillID: pillID,
+                localDate: entry.localDate,
+                source: pillSource(for: entry.state),
+                createdAt: entry.createdAt
+            )
+        }
+        let legacyIntakes = CoreDataRelationshipLoadingSupport.compactHistoryModels(
             from: pillObject,
             relationshipKey: "intakes"
         ) { intakeID, localDate, source, createdAt in
@@ -779,6 +1162,7 @@ struct CoreDataPillRepository: PillRepository {
                 createdAt: createdAt
             )
         }
+        return mergedIntakes(bucketIntakes: bucketIntakes, legacyIntakes: legacyIntakes)
     }
 
     private func loadIntakes(
@@ -786,7 +1170,27 @@ struct CoreDataPillRepository: PillRepository {
         pillID: UUID,
         report: inout IntegrityReportBuilder
     ) -> [PillIntake]? {
-        CoreDataRelationshipLoadingSupport.validatedHistoryModels(
+        guard let bucketEntries = CoreDataHistoryBucketSupport.validatedEntries(
+            from: pillObject,
+            relationshipKey: "historyBuckets",
+            area: "dashboard",
+            invalidMessage: "Pill history bucket row is missing required fields or has overlapping masks.",
+            report: &report,
+            ownerID: pillID,
+            calendar: calendar
+        ) else {
+            return nil
+        }
+        let bucketIntakes = bucketEntries.map { entry in
+            PillIntake(
+                id: UUID(),
+                pillID: pillID,
+                localDate: entry.localDate,
+                source: pillSource(for: entry.state),
+                createdAt: entry.createdAt
+            )
+        }
+        let legacyIntakes = CoreDataRelationshipLoadingSupport.validatedHistoryModels(
             from: pillObject,
             relationshipKey: "intakes",
             area: "dashboard",
@@ -801,6 +1205,54 @@ struct CoreDataPillRepository: PillRepository {
                 createdAt: createdAt
             )
         }
+        guard let legacyIntakes else {
+            return nil
+        }
+        return mergedIntakes(bucketIntakes: bucketIntakes, legacyIntakes: legacyIntakes)
+    }
+
+    private func mergedIntakes(
+        bucketIntakes: [PillIntake],
+        legacyIntakes: [PillIntake]
+    ) -> [PillIntake] {
+        var byDay = Dictionary(uniqueKeysWithValues: bucketIntakes.map {
+            (calendar.startOfDay(for: $0.localDate), $0)
+        })
+        for intake in legacyIntakes {
+            let day = calendar.startOfDay(for: intake.localDate)
+            guard byDay[day] == nil else { continue }
+            byDay[day] = intake
+        }
+        return byDay.values.sorted { $0.localDate < $1.localDate }
+    }
+
+    private func initialCalendarMonthRange(startDate: Date, today: Date) -> ClosedRange<Date> {
+        let displayMonth = HistoryMonthWindow.displayMonth(
+            startDate: startDate,
+            today: today,
+            calendar: calendar
+        )
+        let displayMonthEnd = HistoryMonthWindow.endOfMonth(containing: displayMonth, calendar: calendar)
+        return displayMonth ... displayMonthEnd
+    }
+
+    private func initialDetailsHistoryRange(startDate: Date, today: Date) -> ClosedRange<Date> {
+        var lowerBound = initialCalendarMonthRange(startDate: startDate, today: today).lowerBound
+        var upperBound = initialCalendarMonthRange(startDate: startDate, today: today).upperBound
+        let editableDays = EditableHistoryWindow.dates(
+            startDate: startDate,
+            today: today,
+            calendar: calendar
+        )
+
+        if let firstEditableDay = editableDays.min() {
+            lowerBound = min(lowerBound, firstEditableDay)
+        }
+        if let lastEditableDay = editableDays.max() {
+            upperBound = max(upperBound, lastEditableDay)
+        }
+
+        return lowerBound ... upperBound
     }
 
     private func loadSchedules(for pillObject: NSManagedObject, pillID: UUID) -> [PillScheduleVersion] {
@@ -867,7 +1319,21 @@ struct CoreDataPillRepository: PillRepository {
 
         guard
             let schedules = loadSchedules(for: pillObject, pillID: id, report: &report),
-            let intakes = loadIntakes(for: pillObject, pillID: id, report: &report)
+            let historySnapshot = CoreDataHistoryBucketSupport.validatedSnapshot(
+                from: pillObject,
+                bucketRelationshipKey: "historyBuckets",
+                rangeRelationshipKey: "historyRanges",
+                rangeOwnerKey: "pillID",
+                ownerID: id,
+                legacyRelationshipKey: "intakes",
+                area: "dashboard",
+                invalidBucketMessage: "Pill history bucket row is missing required fields or has overlapping masks.",
+                invalidRangeMessage: "Pill history range row is missing required fields or has invalid schedule/count.",
+                invalidLegacyMessage: "Pill intake row is missing required fields or has invalid sourceRaw.",
+                report: &report,
+                legacySourceToState: bucketState(from:),
+                calendar: calendar
+            )
         else {
             report.append(
                 area: "dashboard",
@@ -881,23 +1347,15 @@ struct CoreDataPillRepository: PillRepository {
         let latestSchedule = schedules.sorted(by: CoreDataScheduleSupport.isNewerSchedule).first
         let endDate = pillObject.dateValue(forKey: "endDate")
         let isArchived = pillObject.boolValue(forKey: "isArchived")
-        let successfulIntakes = intakes.filter { $0.source.countsAsIntake }
-        let takenDays = Set(successfulIntakes.map { calendar.startOfDay(for: $0.localDate) })
-        let skippedDays = Set(
-            intakes
-                .filter { !$0.source.countsAsIntake }
-                .map { calendar.startOfDay(for: $0.localDate) }
-        )
         let activeStartDate = ActiveCycleStartDate.value(
             for: pillObject,
             fallbackStartDate: startDate,
             calendar: calendar
         )
         let hasStarted = activeStartDate <= today
-        let isTakenToday = !isArchived && hasStarted && successfulIntakes.contains { calendar.isDate($0.localDate, inSameDayAs: today) }
-        let isSkippedToday = !isArchived && hasStarted && intakes.contains {
-            !$0.source.countsAsIntake && calendar.isDate($0.localDate, inSameDayAs: today)
-        }
+        let todayState = historySnapshot.state(on: today, calendar: calendar)
+        let isTakenToday = !isArchived && hasStarted && todayState == .positive
+        let isSkippedToday = !isArchived && hasStarted && todayState == .skipped
         let reminderEnabled = pillObject.boolValue(forKey: "reminderEnabled")
         let validatedReminderTime = ReminderValidation.validatedReminderTime(
             from: pillObject,
@@ -927,9 +1385,15 @@ struct CoreDataPillRepository: PillRepository {
             endDate: endDate,
             schedules: schedules,
             reminderTime: validatedReminderTime,
-            positiveDays: takenDays,
-            skippedDays: skippedDays,
+            hasPositiveState: { historySnapshot.state(on: $0, calendar: calendar) == .positive },
+            hasSkippedState: { historySnapshot.state(on: $0, calendar: calendar) == .skipped },
             now: now,
+            calendar: calendar
+        )
+        let editableDays = EditableHistoryWindow.dates(startDate: activeStartDate, today: today, calendar: calendar)
+        let editableSets = historySnapshot.daySets(
+            from: editableDays.min() ?? today,
+            through: editableDays.max() ?? today,
             calendar: calendar
         )
 
@@ -945,7 +1409,7 @@ struct CoreDataPillRepository: PillRepository {
                 today: today,
                 calendar: calendar
             ),
-            totalTakenDays: takenDays.count,
+            totalTakenDays: historySnapshot.positiveCount,
             reminderText: reminderText,
             reminderHour: validatedReminderTime?.hour,
             reminderMinute: validatedReminderTime?.minute,
@@ -957,8 +1421,8 @@ struct CoreDataPillRepository: PillRepository {
                 startDate: activeStartDate,
                 endDate: endDate,
                 schedules: schedules,
-                positiveDays: takenDays,
-                skippedDays: skippedDays,
+                positiveDays: editableSets.positiveDays,
+                skippedDays: editableSets.skippedDays,
                 today: today,
                 activeOverdueDay: activeOverdueDay
             ),
@@ -1064,7 +1528,8 @@ struct CoreDataPillRepository: PillRepository {
         now: Date
     ) {
         let today = calendar.startOfDay(for: now)
-        let dueDays = ScheduledOverdueState.dueScheduledDays(
+        let isTodayDue = ScheduledOverdueState.isDueScheduledDay(
+            today,
             startDate: startDate,
             endDate: endDate,
             schedules: schedules,
@@ -1075,7 +1540,7 @@ struct CoreDataPillRepository: PillRepository {
             calendar: calendar
         )
 
-        if dueDays.contains(today) {
+        if isTodayDue {
             overdueAnchorStore.setAnchorDay(today, for: .pill, id: pillID, calendar: calendar)
         } else if overdueAnchorStore.anchorDay(for: .pill, id: pillID, calendar: calendar) == today {
             overdueAnchorStore.clearAnchorDay(for: .pill, id: pillID)

@@ -41,13 +41,19 @@ enum DemoDataWriter {
             schedule.setValue(Int32(1), forKey: "version")
             schedule.setValue(habit, forKey: "habit")
 
-            let completion = NSEntityDescription.insertNewObject(forEntityName: "HabitCompletion", into: context)
-            completion.setValue(UUID(), forKey: "id")
-            completion.setValue(habitID, forKey: "habitID")
-            completion.setValue(calendar.startOfDay(for: now), forKey: "localDate")
-            completion.setValue(CompletionSource.manualEdit.rawValue, forKey: "sourceRaw")
-            completion.setValue(now, forKey: "createdAt")
-            completion.setValue(habit, forKey: "habit")
+            _ = try? CoreDataHistoryBucketSupport.setState(
+                owner: habit,
+                ownerID: habitID,
+                localDate: calendar.startOfDay(for: now),
+                state: .positive,
+                bucketEntityName: "HabitHistoryBucket",
+                ownerKey: "habitID",
+                ownerRelationshipKey: "habit",
+                legacyEntityName: "HabitCompletion",
+                in: context,
+                calendar: calendar,
+                now: now
+            )
         }
 
         try? context.save()

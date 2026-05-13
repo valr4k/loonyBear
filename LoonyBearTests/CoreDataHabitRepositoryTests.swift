@@ -61,7 +61,7 @@ struct CoreDataHabitRepositoryTests {
         let archivedHabit = try #require(archivedSection.habits.first)
 
         #expect(archivedDashboard.sections.map(\.id) == [.archived])
-        #expect(archivedSection.title == "Recently Deleted")
+        #expect(archivedSection.title == "Archive")
         #expect(archivedHabit.id == habitID)
         #expect(archivedHabit.isArchived)
         #expect(!archivedHabit.isReminderScheduledToday)
@@ -71,6 +71,60 @@ struct CoreDataHabitRepositoryTests {
         #expect(archivedDetails.reminderTime == ReminderTime(hour: 9, minute: 0))
         #expect(archivedDetails.endDate == TestSupport.makeDate(2026, 5, 20, calendar: calendar))
         #expect(archivedDetails.scheduleRule == .weekly(.daily))
+    }
+
+    @Test
+    func restoreHabitWritesArchivedGapWithoutOverwritingExplicitHistory() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        var now = TestSupport.makeDate(2026, 5, 3, calendar: calendar).addingTimeInterval(10 * 60 * 60)
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+
+        var draft = CreateHabitDraft()
+        draft.type = .build
+        draft.name = "Restore habit"
+        draft.startDate = TestSupport.makeDate(2026, 5, 1, calendar: calendar)
+        draft.scheduleRule = .weekly(.daily)
+
+        let habitID = try repository.createHabit(from: draft)
+        let skippedInArchivedGap = TestSupport.makeDate(2026, 5, 4, calendar: calendar)
+        let completedInArchivedGap = TestSupport.makeDate(2026, 5, 5, calendar: calendar)
+        try repository.skipHabitDay(id: habitID, on: skippedInArchivedGap)
+        try repository.completeHabitDay(id: habitID, on: completedInArchivedGap)
+        try repository.setHabitArchived(id: habitID, isArchived: true)
+
+        now = TestSupport.makeDate(2026, 5, 10, calendar: calendar).addingTimeInterval(10 * 60 * 60)
+        let archivedDetails = try #require(try repository.fetchHabitDetails(id: habitID))
+        var restoreDraft = EditHabitDraft(
+            id: habitID,
+            type: archivedDetails.type,
+            startDate: archivedDetails.startDate,
+            activeFrom: archivedDetails.activeFrom,
+            endDate: nil,
+            name: archivedDetails.name,
+            scheduleRule: archivedDetails.scheduleRule,
+            reminderEnabled: archivedDetails.reminderEnabled,
+            reminderTime: archivedDetails.reminderTime ?? ReminderTime.default(),
+            completedDays: archivedDetails.completedDays,
+            skippedDays: archivedDetails.skippedDays
+        )
+        restoreDraft.restoreActiveFrom = TestSupport.makeDate(2026, 5, 7, calendar: calendar)
+
+        try repository.restoreHabit(from: restoreDraft)
+
+        let restoredDetails = try #require(try repository.fetchHabitDetails(id: habitID))
+        #expect(restoredDetails.archivedDays.contains(TestSupport.makeDate(2026, 5, 3, calendar: calendar)))
+        #expect(restoredDetails.archivedDays.contains(TestSupport.makeDate(2026, 5, 6, calendar: calendar)))
+        #expect(!restoredDetails.archivedDays.contains(skippedInArchivedGap))
+        #expect(!restoredDetails.archivedDays.contains(completedInArchivedGap))
+        #expect(restoredDetails.skippedDays.contains(skippedInArchivedGap))
+        #expect(restoredDetails.completedDays.contains(completedInArchivedGap))
+        #expect(try TestSupport.habitHistoryRangeCount(habitID: habitID, state: .archived, context: persistence.container.viewContext) == 2)
     }
 
     @Test
@@ -526,12 +580,8 @@ struct CoreDataHabitRepositoryTests {
         #expect(completedDetails.completedDays.count == 1)
         #expect(completedDetails.skippedDays.isEmpty)
 
-        let request = NSFetchRequest<NSManagedObject>(entityName: "HabitCompletion")
-        request.predicate = NSPredicate(format: "habitID == %@", habitID as CVarArg)
-        let completions = try context.fetch(request)
-
-        #expect(completions.count == 1)
-        #expect(completions.first?.value(forKey: "sourceRaw") as? String == CompletionSource.swipe.rawValue)
+        #expect(try TestSupport.habitBucketState(habitID: habitID, localDate: Date(), context: context) == .positive)
+        #expect(try TestSupport.legacyHabitCompletionCount(habitID: habitID, context: context) == 0)
     }
 
     @Test
@@ -568,15 +618,8 @@ struct CoreDataHabitRepositoryTests {
 
         try repository.completeHabitToday(id: habitID)
 
-        let request = NSFetchRequest<NSManagedObject>(entityName: "HabitCompletion")
-        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
-            NSPredicate(format: "habitID == %@", habitID as CVarArg),
-            NSPredicate(format: "localDate == %@", today as CVarArg),
-        ])
-        let completions = try context.fetch(request)
-
-        #expect(completions.count == 1)
-        #expect(completions.first?.value(forKey: "sourceRaw") as? String == CompletionSource.swipe.rawValue)
+        #expect(try TestSupport.habitBucketState(habitID: habitID, localDate: today, context: context) == .positive)
+        #expect(try TestSupport.legacyHabitCompletionCount(habitID: habitID, localDate: today, context: context) == 0)
     }
 
     @Test
@@ -770,14 +813,12 @@ struct CoreDataHabitRepositoryTests {
         draft.reminderTime = ReminderTime(hour: 9, minute: 0)
         let habitID = try repository.createHabit(from: draft)
 
-        let request = NSFetchRequest<NSManagedObject>(entityName: "HabitCompletion")
-        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
-            NSPredicate(format: "habitID == %@", habitID as CVarArg),
-            NSPredicate(format: "localDate == %@", yesterday as CVarArg),
-        ])
-        for completion in try context.fetch(request) {
-            context.delete(completion)
-        }
+        try TestSupport.clearHabitHistoryState(
+            habitID: habitID,
+            localDate: yesterday,
+            context: context,
+            calendar: calendar
+        )
         try context.save()
 
         let finalized = try repository.reconcilePastDays(today: now)
@@ -837,11 +878,24 @@ struct CoreDataHabitRepositoryTests {
         draft.reminderTime = ReminderTime(hour: 9, minute: 0)
         let habitID = try repository.createHabit(from: draft)
 
-        let request = NSFetchRequest<NSManagedObject>(entityName: "HabitCompletion")
-        request.predicate = NSPredicate(format: "habitID == %@", habitID as CVarArg)
-        for completion in try context.fetch(request) {
-            context.delete(completion)
-        }
+        try TestSupport.clearHabitHistoryState(
+            habitID: habitID,
+            localDate: monday,
+            context: context,
+            calendar: calendar
+        )
+        try TestSupport.clearHabitHistoryState(
+            habitID: habitID,
+            localDate: wednesday,
+            context: context,
+            calendar: calendar
+        )
+        try TestSupport.clearHabitHistoryState(
+            habitID: habitID,
+            localDate: friday,
+            context: context,
+            calendar: calendar
+        )
         try context.save()
 
         let finalized = try repository.reconcilePastDays(today: now)
@@ -947,6 +1001,155 @@ struct CoreDataHabitRepositoryTests {
     }
 
     @Test
+    func createHabitWritesInitialHistoryAsColdRangeAndEditableBuckets() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = calendar.date(from: DateComponents(year: 2026, month: 5, day: 12, hour: 10, minute: 0))!
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataHabitRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Long history"
+        draft.startDate = TestSupport.makeDate(2021, 1, 1, calendar: calendar)
+        draft.scheduleRule = .weekly(.daily)
+
+        let habitID = try repository.createHabit(from: draft)
+        let details = try #require(try repository.fetchHabitDetails(id: habitID))
+        let coldRangeEnd = TestSupport.makeDate(2026, 4, 12, calendar: calendar)
+        let coldDayDelta = try #require(calendar.dateComponents([.day], from: draft.startDate, to: coldRangeEnd).day)
+        let expectedColdCount = coldDayDelta + 1
+
+        #expect(try TestSupport.legacyHabitCompletionCount(habitID: habitID, context: context) == 0)
+        #expect(try TestSupport.habitHistoryRangeCount(habitID: habitID, context: context) == 1)
+        #expect(try TestSupport.habitHistoryBucketCount(habitID: habitID, context: context) == 2)
+        #expect(details.historySnapshot.positiveCount == expectedColdCount + 29)
+        #expect(details.historySnapshot.state(on: TestSupport.makeDate(2021, 1, 1, calendar: calendar), calendar: calendar) == .positive)
+        #expect(details.historySnapshot.state(on: TestSupport.makeDate(2026, 4, 15, calendar: calendar), calendar: calendar) == .positive)
+        #expect(details.historySnapshot.state(on: TestSupport.makeDate(2026, 5, 11, calendar: calendar), calendar: calendar) == .positive)
+        #expect(details.historySnapshot.state(on: TestSupport.makeDate(2026, 5, 12, calendar: calendar), calendar: calendar) == nil)
+    }
+
+    @Test
+    func updateHabitWithAncientStartDateKeepsAggregatedHistory() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = calendar.date(from: DateComponents(year: 2026, month: 5, day: 12, hour: 10, minute: 0))!
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataHabitRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+
+        var draft = CreateHabitDraft()
+        draft.type = .build
+        draft.name = "Ancient habit"
+        draft.startDate = TestSupport.makeDate(1200, 1, 1, calendar: calendar)
+        draft.scheduleRule = .weekly(.daily)
+
+        let habitID = try repository.createHabit(from: draft)
+        let details = try #require(try repository.fetchHabitDetails(id: habitID))
+        var editDraft = EditHabitDraft(
+            id: habitID,
+            type: details.type,
+            startDate: details.startDate,
+            activeFrom: details.activeFrom,
+            endDate: TestSupport.makeDate(2026, 6, 1, calendar: calendar),
+            name: "Ancient habit updated",
+            scheduleRule: details.scheduleRule,
+            reminderEnabled: true,
+            reminderTime: ReminderTime(hour: 9, minute: 0),
+            completedDays: details.completedDays,
+            skippedDays: details.skippedDays
+        )
+        editDraft.scheduleEffectiveFrom = details.activeFrom
+
+        try repository.updateHabit(from: editDraft)
+
+        let updatedDetails = try #require(try repository.fetchHabitDetails(id: habitID))
+        #expect(updatedDetails.name == "Ancient habit updated")
+        #expect(updatedDetails.reminderEnabled)
+        #expect(try TestSupport.legacyHabitCompletionCount(habitID: habitID, context: context) == 0)
+        #expect(try TestSupport.habitHistoryRangeCount(habitID: habitID, context: context) == 1)
+        #expect(try TestSupport.habitHistoryBucketCount(habitID: habitID, context: context) == 2)
+        #expect(updatedDetails.historySnapshot.state(on: TestSupport.makeDate(1200, 1, 1, calendar: calendar), calendar: calendar) == .positive)
+        #expect(updatedDetails.historySnapshot.state(on: TestSupport.makeDate(2026, 5, 11, calendar: calendar), calendar: calendar) == .positive)
+    }
+
+    @Test
+    func createHabitColdRangeCountsOnlyScheduledIntervalDays() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = calendar.date(from: DateComponents(year: 2026, month: 5, day: 12, hour: 10, minute: 0))!
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataHabitRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Interval history"
+        draft.startDate = TestSupport.makeDate(2021, 1, 1, calendar: calendar)
+        draft.scheduleRule = .intervalDays(3)
+
+        let habitID = try repository.createHabit(from: draft)
+        let details = try #require(try repository.fetchHabitDetails(id: habitID))
+        let expectedPlan = CoreDataInitialHistoryPlanner.positiveHistoryPlan(
+            startDate: draft.startDate,
+            endDate: draft.endDate,
+            scheduleRule: draft.scheduleRule,
+            useScheduleForHistory: draft.useScheduleForHistory,
+            today: now,
+            calendar: calendar
+        )
+
+        #expect(try TestSupport.habitHistoryRangeCount(habitID: habitID, state: .positive, context: context) == 1)
+        #expect(details.historySnapshot.positiveCount == (expectedPlan.coldRange?.count ?? 0) + expectedPlan.editableBucketPlan.dayCount)
+        #expect(details.historySnapshot.state(on: TestSupport.makeDate(2021, 1, 1, calendar: calendar), calendar: calendar) == .positive)
+        #expect(details.historySnapshot.state(on: TestSupport.makeDate(2021, 1, 2, calendar: calendar), calendar: calendar) == nil)
+        #expect(details.historySnapshot.state(on: TestSupport.makeDate(2021, 1, 4, calendar: calendar), calendar: calendar) == .positive)
+    }
+
+    @Test
+    func habitBucketOverrideSplitsOverlappingColdRange() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = calendar.date(from: DateComponents(year: 2026, month: 5, day: 12, hour: 10, minute: 0))!
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataHabitRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+
+        var draft = CreateHabitDraft()
+        draft.name = "Range split"
+        draft.startDate = TestSupport.makeDate(2021, 1, 1, calendar: calendar)
+        draft.scheduleRule = .weekly(.daily)
+
+        let habitID = try repository.createHabit(from: draft)
+        let initialDetails = try #require(try repository.fetchHabitDetails(id: habitID))
+        let skippedDay = TestSupport.makeDate(2021, 1, 10, calendar: calendar)
+
+        try repository.skipHabitDay(id: habitID, on: skippedDay)
+
+        let details = try #require(try repository.fetchHabitDetails(id: habitID))
+        #expect(details.historySnapshot.state(on: skippedDay, calendar: calendar) == .skipped)
+        #expect(details.historySnapshot.positiveCount == initialDetails.historySnapshot.positiveCount - 1)
+        #expect(details.historySnapshot.skippedCount == 1)
+        #expect(try TestSupport.habitHistoryRangeCount(habitID: habitID, state: .positive, context: context) == 2)
+    }
+
+    @Test
     func updateHabitSaveBlocksPastEditableGap() throws {
         let persistence = PersistenceController(inMemory: true)
         let context = persistence.container.viewContext
@@ -964,13 +1167,12 @@ struct CoreDataHabitRepositoryTests {
         draft.scheduleDays = .daily
 
         let habitID = try repository.createHabit(from: draft)
-        let request = NSFetchRequest<NSManagedObject>(entityName: "HabitCompletion")
-        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
-            NSPredicate(format: "habitID == %@", habitID as CVarArg),
-            NSPredicate(format: "localDate == %@", yesterday as CVarArg),
-        ])
-        let completion = try #require(context.fetch(request).first)
-        context.delete(completion)
+        try TestSupport.clearHabitHistoryState(
+            habitID: habitID,
+            localDate: yesterday,
+            context: context,
+            calendar: calendar
+        )
         try context.save()
 
         let details = try #require(try repository.fetchHabitDetails(id: habitID))

@@ -30,7 +30,7 @@ struct MyPillsView: View {
                 ContentUnavailableView(
                     pills.isEmpty ? "No pills yet" : "No active pills",
                     systemImage: "pills",
-                    description: Text(pills.isEmpty ? "Create your first pill to track dosage, reminders, and taken days." : "Deleted pills live in Recently Deleted.")
+                    description: Text(pills.isEmpty ? "Create your first pill to track dosage, reminders, and taken days." : "Archived pills live in Archive.")
                 )
             } else {
                 List {
@@ -132,7 +132,7 @@ struct MyPillsView: View {
                     Button {
                         isShowingArchive = true
                     } label: {
-                        AppToolbarIconLabel("Recently Deleted", systemName: "tray.badge")
+                        AppToolbarIconLabel("Archive", systemName: "tray.badge")
                     }
                     .appAccentTint()
                 }
@@ -216,9 +216,9 @@ private struct ArchivedPillsView: View {
         Group {
             if archivedPills.isEmpty {
                 ContentUnavailableView(
-                    "No recently deleted pills",
-                    systemImage: "trash",
-                    description: Text("Deleted pills will appear here.")
+                    "No archived pills",
+                    systemImage: "tray.badge",
+                    description: Text("Archived pills will appear here.")
                 )
             } else {
                 List {
@@ -243,7 +243,7 @@ private struct ArchivedPillsView: View {
                 .scrollContentBackground(.hidden)
             }
         }
-        .navigationTitle("Recently Deleted")
+        .navigationTitle("Archive")
         .navigationBarTitleDisplayMode(.inline)
         .background(AppBackground(style: .pills))
         .appTintedBackButton()

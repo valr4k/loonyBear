@@ -48,7 +48,7 @@ final class BackupService {
     private let lastCreatedBackupFingerprintKey = "backup_last_created_fingerprint"
     private let lastRestoredBackupFingerprintKey = "backup_last_restored_fingerprint"
     private let appName = "LoonyBear"
-    private let schemaVersion = 1
+    private let schemaVersion = 3
 
     init(
         context: NSManagedObjectContext,
@@ -200,7 +200,7 @@ final class BackupService {
     }
 
     func restoreArchive(_ archive: BackupArchive) throws {
-        guard archive.schemaVersion == schemaVersion else {
+        guard (1...schemaVersion).contains(archive.schemaVersion) else {
             throw BackupServiceError.unsupportedSchemaVersion(archive.schemaVersion)
         }
 
@@ -352,6 +352,7 @@ final class BackupService {
                         endDate: habit.value(forKey: "endDate") as? Date,
                         historyMode: historyModeRaw,
                         isArchived: habit.boolValue(forKey: "isArchived"),
+                        archivedAt: habit.value(forKey: "archivedAt") as? Date,
                         reminderEnabled: reminderEnabled,
                         reminderTime: reminderTime.map { BackupReminderTime(hour: $0.hour, minute: $0.minute) },
                         createdAt: createdAt,
@@ -439,6 +440,130 @@ final class BackupService {
                 )
             }
 
+            var habitHistoryBuckets: [BackupHabitHistoryBucket] = []
+            for object in try fetchObjects(entityName: "HabitHistoryBucket", in: context) {
+                guard
+                    let id = object.value(forKey: "id") as? UUID,
+                    let habitId = object.value(forKey: "habitID") as? UUID,
+                    let createdAt = object.value(forKey: "createdAt") as? Date,
+                    let updatedAt = object.value(forKey: "updatedAt") as? Date
+                else {
+                    report.append(
+                        area: "backup",
+                        entityName: object.entityName,
+                        object: object,
+                        message: "Habit history bucket row is missing required fields."
+                    )
+                    continue
+                }
+
+                let yearMonthKey = Int(object.int32Value(forKey: "yearMonthKey"))
+                let positiveMask = object.int64Value(forKey: "positiveMask")
+                let skippedMask = object.int64Value(forKey: "skippedMask")
+                let archivedMask = object.int64Value(forKey: "archivedMask")
+                let positiveCount = Int(object.int32Value(forKey: "positiveCount"))
+                let skippedCount = Int(object.int32Value(forKey: "skippedCount"))
+                let archivedCount = Int(object.int32Value(forKey: "archivedCount"))
+                guard isValidHistoryBucket(
+                    yearMonthKey: yearMonthKey,
+                    positiveMask: positiveMask,
+                    skippedMask: skippedMask,
+                    archivedMask: archivedMask,
+                    positiveCount: positiveCount,
+                    skippedCount: skippedCount,
+                    archivedCount: archivedCount
+                ) else {
+                    report.append(
+                        area: "backup",
+                        entityName: object.entityName,
+                        object: object,
+                        message: "Habit history bucket row contains invalid masks or counts."
+                    )
+                    continue
+                }
+
+                habitHistoryBuckets.append(
+                    BackupHabitHistoryBucket(
+                        id: id,
+                        habitId: habitId,
+                        yearMonthKey: yearMonthKey,
+                        positiveMask: positiveMask,
+                        skippedMask: skippedMask,
+                        archivedMask: archivedMask,
+                        positiveCount: positiveCount,
+                        skippedCount: skippedCount,
+                        archivedCount: archivedCount,
+                        createdAt: createdAt,
+                        updatedAt: updatedAt
+                    )
+                )
+            }
+
+            var habitHistoryRanges: [BackupHabitHistoryRange] = []
+            for object in try fetchObjects(entityName: "HabitHistoryRange", in: context) {
+                guard
+                    let id = object.value(forKey: "id") as? UUID,
+                    let habitId = object.value(forKey: "habitID") as? UUID,
+                    let startDate = object.value(forKey: "startDate") as? Date,
+                    let endDate = object.value(forKey: "endDate") as? Date,
+                    let state = object.value(forKey: "stateRaw") as? String,
+                    let scheduleKind = object.value(forKey: "scheduleKindRaw") as? String,
+                    let anchorDate = object.value(forKey: "anchorDate") as? Date,
+                    let createdAt = object.value(forKey: "createdAt") as? Date,
+                    let updatedAt = object.value(forKey: "updatedAt") as? Date
+                else {
+                    report.append(
+                        area: "backup",
+                        entityName: object.entityName,
+                        object: object,
+                        message: "Habit history range row is missing required fields."
+                    )
+                    continue
+                }
+
+                let useScheduleForHistory = object.boolValue(forKey: "useScheduleForHistory")
+                let weekdayMask = Int(object.int16Value(forKey: "weekdayMask"))
+                let intervalDays = Int(object.int16Value(forKey: "intervalDays", default: Int16(ScheduleRule.defaultIntervalDays)))
+                let count = Int(object.int32Value(forKey: "count"))
+                guard isValidHistoryRange(
+                    startDate: startDate,
+                    endDate: endDate,
+                    state: state,
+                    useScheduleForHistory: useScheduleForHistory,
+                    scheduleKind: scheduleKind,
+                    weekdayMask: weekdayMask,
+                    intervalDays: intervalDays,
+                    anchorDate: anchorDate,
+                    count: count
+                ) else {
+                    report.append(
+                        area: "backup",
+                        entityName: object.entityName,
+                        object: object,
+                        message: "Habit history range row contains invalid schedule or count."
+                    )
+                    continue
+                }
+
+                habitHistoryRanges.append(
+                    BackupHabitHistoryRange(
+                        id: id,
+                        habitId: habitId,
+                        startDate: startDate,
+                        endDate: endDate,
+                        state: state,
+                        useScheduleForHistory: useScheduleForHistory,
+                        scheduleKind: scheduleKind,
+                        weekdayMask: weekdayMask,
+                        intervalDays: intervalDays,
+                        anchorDate: anchorDate,
+                        count: count,
+                        createdAt: createdAt,
+                        updatedAt: updatedAt
+                    )
+                )
+            }
+
             let ordering = backupHabits.map {
                 BackupOrdering(habitId: $0.id, type: $0.type, sortOrder: $0.sortOrder)
             }
@@ -501,6 +626,7 @@ final class BackupService {
                         endDate: pill.value(forKey: "endDate") as? Date,
                         historyMode: historyModeRaw,
                         isArchived: pill.boolValue(forKey: "isArchived"),
+                        archivedAt: pill.value(forKey: "archivedAt") as? Date,
                         reminderEnabled: reminderEnabled,
                         reminderTime: reminderTime.map { BackupReminderTime(hour: $0.hour, minute: $0.minute) },
                         createdAt: createdAt,
@@ -588,6 +714,130 @@ final class BackupService {
                 )
             }
 
+            var pillHistoryBuckets: [BackupPillHistoryBucket] = []
+            for object in try fetchObjects(entityName: "PillHistoryBucket", in: context) {
+                guard
+                    let id = object.value(forKey: "id") as? UUID,
+                    let pillId = object.value(forKey: "pillID") as? UUID,
+                    let createdAt = object.value(forKey: "createdAt") as? Date,
+                    let updatedAt = object.value(forKey: "updatedAt") as? Date
+                else {
+                    report.append(
+                        area: "backup",
+                        entityName: object.entityName,
+                        object: object,
+                        message: "Pill history bucket row is missing required fields."
+                    )
+                    continue
+                }
+
+                let yearMonthKey = Int(object.int32Value(forKey: "yearMonthKey"))
+                let positiveMask = object.int64Value(forKey: "positiveMask")
+                let skippedMask = object.int64Value(forKey: "skippedMask")
+                let archivedMask = object.int64Value(forKey: "archivedMask")
+                let positiveCount = Int(object.int32Value(forKey: "positiveCount"))
+                let skippedCount = Int(object.int32Value(forKey: "skippedCount"))
+                let archivedCount = Int(object.int32Value(forKey: "archivedCount"))
+                guard isValidHistoryBucket(
+                    yearMonthKey: yearMonthKey,
+                    positiveMask: positiveMask,
+                    skippedMask: skippedMask,
+                    archivedMask: archivedMask,
+                    positiveCount: positiveCount,
+                    skippedCount: skippedCount,
+                    archivedCount: archivedCount
+                ) else {
+                    report.append(
+                        area: "backup",
+                        entityName: object.entityName,
+                        object: object,
+                        message: "Pill history bucket row contains invalid masks or counts."
+                    )
+                    continue
+                }
+
+                pillHistoryBuckets.append(
+                    BackupPillHistoryBucket(
+                        id: id,
+                        pillId: pillId,
+                        yearMonthKey: yearMonthKey,
+                        positiveMask: positiveMask,
+                        skippedMask: skippedMask,
+                        archivedMask: archivedMask,
+                        positiveCount: positiveCount,
+                        skippedCount: skippedCount,
+                        archivedCount: archivedCount,
+                        createdAt: createdAt,
+                        updatedAt: updatedAt
+                    )
+                )
+            }
+
+            var pillHistoryRanges: [BackupPillHistoryRange] = []
+            for object in try fetchObjects(entityName: "PillHistoryRange", in: context) {
+                guard
+                    let id = object.value(forKey: "id") as? UUID,
+                    let pillId = object.value(forKey: "pillID") as? UUID,
+                    let startDate = object.value(forKey: "startDate") as? Date,
+                    let endDate = object.value(forKey: "endDate") as? Date,
+                    let state = object.value(forKey: "stateRaw") as? String,
+                    let scheduleKind = object.value(forKey: "scheduleKindRaw") as? String,
+                    let anchorDate = object.value(forKey: "anchorDate") as? Date,
+                    let createdAt = object.value(forKey: "createdAt") as? Date,
+                    let updatedAt = object.value(forKey: "updatedAt") as? Date
+                else {
+                    report.append(
+                        area: "backup",
+                        entityName: object.entityName,
+                        object: object,
+                        message: "Pill history range row is missing required fields."
+                    )
+                    continue
+                }
+
+                let useScheduleForHistory = object.boolValue(forKey: "useScheduleForHistory")
+                let weekdayMask = Int(object.int16Value(forKey: "weekdayMask"))
+                let intervalDays = Int(object.int16Value(forKey: "intervalDays", default: Int16(ScheduleRule.defaultIntervalDays)))
+                let count = Int(object.int32Value(forKey: "count"))
+                guard isValidHistoryRange(
+                    startDate: startDate,
+                    endDate: endDate,
+                    state: state,
+                    useScheduleForHistory: useScheduleForHistory,
+                    scheduleKind: scheduleKind,
+                    weekdayMask: weekdayMask,
+                    intervalDays: intervalDays,
+                    anchorDate: anchorDate,
+                    count: count
+                ) else {
+                    report.append(
+                        area: "backup",
+                        entityName: object.entityName,
+                        object: object,
+                        message: "Pill history range row contains invalid schedule or count."
+                    )
+                    continue
+                }
+
+                pillHistoryRanges.append(
+                    BackupPillHistoryRange(
+                        id: id,
+                        pillId: pillId,
+                        startDate: startDate,
+                        endDate: endDate,
+                        state: state,
+                        useScheduleForHistory: useScheduleForHistory,
+                        scheduleKind: scheduleKind,
+                        weekdayMask: weekdayMask,
+                        intervalDays: intervalDays,
+                        anchorDate: anchorDate,
+                        count: count,
+                        createdAt: createdAt,
+                        updatedAt: updatedAt
+                    )
+                )
+            }
+
             var backupEvents: [BackupEvent] = []
             for event in try fetchObjects(entityName: "Event", in: context) {
                 guard
@@ -640,11 +890,15 @@ final class BackupService {
                 habits: backupHabits,
                 scheduleVersions: scheduleVersions,
                 completionRecords: completionRecords,
+                habitHistoryBuckets: habitHistoryBuckets,
+                habitHistoryRanges: habitHistoryRanges,
                 ordering: ordering,
                 settings: makeAppSettings(),
                 pills: backupPills,
                 pillScheduleVersions: pillScheduleVersions,
                 pillIntakeRecords: pillIntakeRecords,
+                pillHistoryBuckets: pillHistoryBuckets,
+                pillHistoryRanges: pillHistoryRanges,
                 events: backupEvents
             )
         }
@@ -655,9 +909,13 @@ final class BackupService {
             context.rollback()
 
             do {
+                try deleteManagedObjects(entityName: "HabitHistoryRange", in: context)
+                try deleteManagedObjects(entityName: "HabitHistoryBucket", in: context)
                 try deleteManagedObjects(entityName: "HabitCompletion", in: context)
                 try deleteManagedObjects(entityName: "HabitScheduleVersion", in: context)
                 try deleteManagedObjects(entityName: "Habit", in: context)
+                try deleteManagedObjects(entityName: "PillHistoryRange", in: context)
+                try deleteManagedObjects(entityName: "PillHistoryBucket", in: context)
                 try deleteManagedObjects(entityName: "PillIntake", in: context)
                 try deleteManagedObjects(entityName: "PillScheduleVersion", in: context)
                 try deleteManagedObjects(entityName: "Pill", in: context)
@@ -674,6 +932,7 @@ final class BackupService {
                     object.setValue(habit.endDate, forKey: "endDate")
                     object.setValue(habit.historyMode, forKey: "historyModeRaw")
                     object.setValue(habit.isArchived, forKey: "isArchived")
+                    object.setValue(habit.archivedAt, forKey: "archivedAt")
                     object.setValue(habit.reminderEnabled, forKey: "reminderEnabled")
                     object.setValue(habit.reminderTime.map { Int16($0.hour) }, forKey: "reminderHour")
                     object.setValue(habit.reminderTime.map { Int16($0.minute) }, forKey: "reminderMinute")
@@ -686,6 +945,7 @@ final class BackupService {
                     guard let id = object.value(forKey: "id") as? UUID else { return nil }
                     return (id, object)
                 })
+                let calendar = Calendar.autoupdatingCurrent
 
                 for version in archive.scheduleVersions {
                     let object = NSEntityDescription.insertNewObject(forEntityName: "HabitScheduleVersion", into: context)
@@ -705,14 +965,71 @@ final class BackupService {
                     object.setValue(habitLookup[version.habitId], forKey: "habit")
                 }
 
+                for bucket in archive.habitHistoryBuckets {
+                    let object = NSEntityDescription.insertNewObject(forEntityName: "HabitHistoryBucket", into: context)
+                    object.setValue(bucket.id, forKey: "id")
+                    object.setValue(bucket.habitId, forKey: "habitID")
+                    object.setValue(Int32(bucket.yearMonthKey), forKey: "yearMonthKey")
+                    object.setValue(bucket.positiveMask, forKey: "positiveMask")
+                    object.setValue(bucket.skippedMask, forKey: "skippedMask")
+                    object.setValue(bucket.archivedMask, forKey: "archivedMask")
+                    object.setValue(Int32(bucket.positiveCount), forKey: "positiveCount")
+                    object.setValue(Int32(bucket.skippedCount), forKey: "skippedCount")
+                    object.setValue(Int32(bucket.archivedCount), forKey: "archivedCount")
+                    object.setValue(bucket.createdAt, forKey: "createdAt")
+                    object.setValue(bucket.updatedAt, forKey: "updatedAt")
+                    object.setValue(habitLookup[bucket.habitId], forKey: "habit")
+                }
+
+                for range in archive.habitHistoryRanges {
+                    let object = NSEntityDescription.insertNewObject(forEntityName: "HabitHistoryRange", into: context)
+                    object.setValue(range.id, forKey: "id")
+                    object.setValue(range.habitId, forKey: "habitID")
+                    object.setValue(range.startDate, forKey: "startDate")
+                    object.setValue(range.endDate, forKey: "endDate")
+                    object.setValue(range.state, forKey: "stateRaw")
+                    object.setValue(range.useScheduleForHistory, forKey: "useScheduleForHistory")
+                    object.setValue(range.scheduleKind, forKey: "scheduleKindRaw")
+                    object.setValue(Int16(range.weekdayMask), forKey: "weekdayMask")
+                    object.setValue(Int16(range.intervalDays), forKey: "intervalDays")
+                    object.setValue(range.anchorDate, forKey: "anchorDate")
+                    object.setValue(Int32(range.count), forKey: "count")
+                    object.setValue(range.createdAt, forKey: "createdAt")
+                    object.setValue(range.updatedAt, forKey: "updatedAt")
+                    object.setValue(habitLookup[range.habitId], forKey: "habit")
+                }
+
                 for completion in archive.completionRecords {
-                    let object = NSEntityDescription.insertNewObject(forEntityName: "HabitCompletion", into: context)
-                    object.setValue(completion.id, forKey: "id")
-                    object.setValue(completion.habitId, forKey: "habitID")
-                    object.setValue(completion.localDate, forKey: "localDate")
-                    object.setValue(completion.source, forKey: "sourceRaw")
-                    object.setValue(completion.createdAt, forKey: "createdAt")
-                    object.setValue(habitLookup[completion.habitId], forKey: "habit")
+                    guard
+                        let habit = habitLookup[completion.habitId],
+                        let state = habitBucketState(from: completion.source)
+                    else { continue }
+                    let existingState = try CoreDataHistoryBucketSupport.state(
+                        ownerID: completion.habitId,
+                        localDate: completion.localDate,
+                        bucketEntityName: "HabitHistoryBucket",
+                        ownerKey: "habitID",
+                        legacyEntityName: "HabitCompletion",
+                        rangeEntityName: "HabitHistoryRange",
+                        legacySourceToState: habitBucketState(from:),
+                        in: context,
+                        calendar: calendar
+                    )
+                    guard existingState == nil else { continue }
+                    try CoreDataHistoryBucketSupport.setState(
+                        owner: habit,
+                        ownerID: completion.habitId,
+                        localDate: completion.localDate,
+                        state: state,
+                        bucketEntityName: "HabitHistoryBucket",
+                        ownerKey: "habitID",
+                        ownerRelationshipKey: "habit",
+                        legacyEntityName: "HabitCompletion",
+                        rangeEntityName: "HabitHistoryRange",
+                        in: context,
+                        calendar: calendar,
+                        now: completion.createdAt
+                    )
                 }
 
                 for pill in archive.pills {
@@ -727,6 +1044,7 @@ final class BackupService {
                     object.setValue(pill.endDate, forKey: "endDate")
                     object.setValue(pill.historyMode, forKey: "historyModeRaw")
                     object.setValue(pill.isArchived, forKey: "isArchived")
+                    object.setValue(pill.archivedAt, forKey: "archivedAt")
                     object.setValue(pill.reminderEnabled, forKey: "reminderEnabled")
                     object.setValue(pill.reminderTime.map { Int16($0.hour) }, forKey: "reminderHour")
                     object.setValue(pill.reminderTime.map { Int16($0.minute) }, forKey: "reminderMinute")
@@ -758,14 +1076,71 @@ final class BackupService {
                     object.setValue(pillLookup[version.pillId], forKey: "pill")
                 }
 
+                for bucket in archive.pillHistoryBuckets {
+                    let object = NSEntityDescription.insertNewObject(forEntityName: "PillHistoryBucket", into: context)
+                    object.setValue(bucket.id, forKey: "id")
+                    object.setValue(bucket.pillId, forKey: "pillID")
+                    object.setValue(Int32(bucket.yearMonthKey), forKey: "yearMonthKey")
+                    object.setValue(bucket.positiveMask, forKey: "positiveMask")
+                    object.setValue(bucket.skippedMask, forKey: "skippedMask")
+                    object.setValue(bucket.archivedMask, forKey: "archivedMask")
+                    object.setValue(Int32(bucket.positiveCount), forKey: "positiveCount")
+                    object.setValue(Int32(bucket.skippedCount), forKey: "skippedCount")
+                    object.setValue(Int32(bucket.archivedCount), forKey: "archivedCount")
+                    object.setValue(bucket.createdAt, forKey: "createdAt")
+                    object.setValue(bucket.updatedAt, forKey: "updatedAt")
+                    object.setValue(pillLookup[bucket.pillId], forKey: "pill")
+                }
+
+                for range in archive.pillHistoryRanges {
+                    let object = NSEntityDescription.insertNewObject(forEntityName: "PillHistoryRange", into: context)
+                    object.setValue(range.id, forKey: "id")
+                    object.setValue(range.pillId, forKey: "pillID")
+                    object.setValue(range.startDate, forKey: "startDate")
+                    object.setValue(range.endDate, forKey: "endDate")
+                    object.setValue(range.state, forKey: "stateRaw")
+                    object.setValue(range.useScheduleForHistory, forKey: "useScheduleForHistory")
+                    object.setValue(range.scheduleKind, forKey: "scheduleKindRaw")
+                    object.setValue(Int16(range.weekdayMask), forKey: "weekdayMask")
+                    object.setValue(Int16(range.intervalDays), forKey: "intervalDays")
+                    object.setValue(range.anchorDate, forKey: "anchorDate")
+                    object.setValue(Int32(range.count), forKey: "count")
+                    object.setValue(range.createdAt, forKey: "createdAt")
+                    object.setValue(range.updatedAt, forKey: "updatedAt")
+                    object.setValue(pillLookup[range.pillId], forKey: "pill")
+                }
+
                 for intake in archive.pillIntakeRecords {
-                    let object = NSEntityDescription.insertNewObject(forEntityName: "PillIntake", into: context)
-                    object.setValue(intake.id, forKey: "id")
-                    object.setValue(intake.pillId, forKey: "pillID")
-                    object.setValue(intake.localDate, forKey: "localDate")
-                    object.setValue(intake.source, forKey: "sourceRaw")
-                    object.setValue(intake.createdAt, forKey: "createdAt")
-                    object.setValue(pillLookup[intake.pillId], forKey: "pill")
+                    guard
+                        let pill = pillLookup[intake.pillId],
+                        let state = pillBucketState(from: intake.source)
+                    else { continue }
+                    let existingState = try CoreDataHistoryBucketSupport.state(
+                        ownerID: intake.pillId,
+                        localDate: intake.localDate,
+                        bucketEntityName: "PillHistoryBucket",
+                        ownerKey: "pillID",
+                        legacyEntityName: "PillIntake",
+                        rangeEntityName: "PillHistoryRange",
+                        legacySourceToState: pillBucketState(from:),
+                        in: context,
+                        calendar: calendar
+                    )
+                    guard existingState == nil else { continue }
+                    try CoreDataHistoryBucketSupport.setState(
+                        owner: pill,
+                        ownerID: intake.pillId,
+                        localDate: intake.localDate,
+                        state: state,
+                        bucketEntityName: "PillHistoryBucket",
+                        ownerKey: "pillID",
+                        ownerRelationshipKey: "pill",
+                        legacyEntityName: "PillIntake",
+                        rangeEntityName: "PillHistoryRange",
+                        in: context,
+                        calendar: calendar,
+                        now: intake.createdAt
+                    )
                 }
 
                 for event in archive.events {
@@ -836,6 +1211,18 @@ final class BackupService {
             report: &report
         )
         appendDuplicateIdentifierIssues(
+            archive.habitHistoryBuckets.map(\.id),
+            entityName: "BackupHabitHistoryBucket",
+            area: "backup.restore",
+            report: &report
+        )
+        appendDuplicateIdentifierIssues(
+            archive.habitHistoryRanges.map(\.id),
+            entityName: "BackupHabitHistoryRange",
+            area: "backup.restore",
+            report: &report
+        )
+        appendDuplicateIdentifierIssues(
             archive.pillScheduleVersions.map(\.id),
             entityName: "BackupPillScheduleVersion",
             area: "backup.restore",
@@ -844,6 +1231,18 @@ final class BackupService {
         appendDuplicateIdentifierIssues(
             archive.pillIntakeRecords.map(\.id),
             entityName: "BackupPillIntake",
+            area: "backup.restore",
+            report: &report
+        )
+        appendDuplicateIdentifierIssues(
+            archive.pillHistoryBuckets.map(\.id),
+            entityName: "BackupPillHistoryBucket",
+            area: "backup.restore",
+            report: &report
+        )
+        appendDuplicateIdentifierIssues(
+            archive.pillHistoryRanges.map(\.id),
+            entityName: "BackupPillHistoryRange",
             area: "backup.restore",
             report: &report
         )
@@ -965,6 +1364,74 @@ final class BackupService {
             }
         }
 
+        appendDuplicateHistoryBucketKeyIssues(
+            archive.habitHistoryBuckets.map { ($0.habitId, $0.yearMonthKey) },
+            entityName: "BackupHabitHistoryBucket",
+            area: "backup.restore",
+            report: &report
+        )
+        for bucket in archive.habitHistoryBuckets {
+            let objectIdentifier = "habitHistoryBucket:\(bucket.id.uuidString)"
+            guard habitIDs.contains(bucket.habitId) else {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupHabitHistoryBucket",
+                    objectIdentifier: objectIdentifier,
+                    message: "Habit history bucket payload references missing habit."
+                )
+                continue
+            }
+            guard isValidHistoryBucket(
+                yearMonthKey: bucket.yearMonthKey,
+                positiveMask: bucket.positiveMask,
+                skippedMask: bucket.skippedMask,
+                archivedMask: bucket.archivedMask,
+                positiveCount: bucket.positiveCount,
+                skippedCount: bucket.skippedCount,
+                archivedCount: bucket.archivedCount
+            ) else {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupHabitHistoryBucket",
+                    objectIdentifier: objectIdentifier,
+                    message: "Habit history bucket payload contains invalid masks or counts."
+                )
+                continue
+            }
+        }
+
+        for range in archive.habitHistoryRanges {
+            let objectIdentifier = "habitHistoryRange:\(range.id.uuidString)"
+            guard habitIDs.contains(range.habitId) else {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupHabitHistoryRange",
+                    objectIdentifier: objectIdentifier,
+                    message: "Habit history range payload references missing habit."
+                )
+                continue
+            }
+            guard isValidHistoryRange(
+                startDate: range.startDate,
+                endDate: range.endDate,
+                state: range.state,
+                useScheduleForHistory: range.useScheduleForHistory,
+                scheduleKind: range.scheduleKind,
+                weekdayMask: range.weekdayMask,
+                intervalDays: range.intervalDays,
+                anchorDate: range.anchorDate,
+                count: range.count
+            ) else {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupHabitHistoryRange",
+                    objectIdentifier: objectIdentifier,
+                    message: "Habit history range payload contains invalid schedule or count."
+                )
+                continue
+            }
+        }
+
         for ordering in archive.ordering {
             let objectIdentifier = "habitOrdering:\(ordering.habitId.uuidString)"
             guard habitIDs.contains(ordering.habitId) else {
@@ -1066,6 +1533,74 @@ final class BackupService {
             }
         }
 
+        appendDuplicateHistoryBucketKeyIssues(
+            archive.pillHistoryBuckets.map { ($0.pillId, $0.yearMonthKey) },
+            entityName: "BackupPillHistoryBucket",
+            area: "backup.restore",
+            report: &report
+        )
+        for bucket in archive.pillHistoryBuckets {
+            let objectIdentifier = "pillHistoryBucket:\(bucket.id.uuidString)"
+            guard pillIDs.contains(bucket.pillId) else {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupPillHistoryBucket",
+                    objectIdentifier: objectIdentifier,
+                    message: "Pill history bucket payload references missing pill."
+                )
+                continue
+            }
+            guard isValidHistoryBucket(
+                yearMonthKey: bucket.yearMonthKey,
+                positiveMask: bucket.positiveMask,
+                skippedMask: bucket.skippedMask,
+                archivedMask: bucket.archivedMask,
+                positiveCount: bucket.positiveCount,
+                skippedCount: bucket.skippedCount,
+                archivedCount: bucket.archivedCount
+            ) else {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupPillHistoryBucket",
+                    objectIdentifier: objectIdentifier,
+                    message: "Pill history bucket payload contains invalid masks or counts."
+                )
+                continue
+            }
+        }
+
+        for range in archive.pillHistoryRanges {
+            let objectIdentifier = "pillHistoryRange:\(range.id.uuidString)"
+            guard pillIDs.contains(range.pillId) else {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupPillHistoryRange",
+                    objectIdentifier: objectIdentifier,
+                    message: "Pill history range payload references missing pill."
+                )
+                continue
+            }
+            guard isValidHistoryRange(
+                startDate: range.startDate,
+                endDate: range.endDate,
+                state: range.state,
+                useScheduleForHistory: range.useScheduleForHistory,
+                scheduleKind: range.scheduleKind,
+                weekdayMask: range.weekdayMask,
+                intervalDays: range.intervalDays,
+                anchorDate: range.anchorDate,
+                count: range.count
+            ) else {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupPillHistoryRange",
+                    objectIdentifier: objectIdentifier,
+                    message: "Pill history range payload contains invalid schedule or count."
+                )
+                continue
+            }
+        }
+
         for event in archive.events {
             guard EventMode(rawValue: event.mode) != nil else {
                 report.append(
@@ -1105,6 +1640,111 @@ final class BackupService {
                 objectIdentifier: duplicate.uuidString,
                 message: "\(entityName) payload contains duplicate id."
             )
+        }
+    }
+
+    private func appendDuplicateHistoryBucketKeyIssues(
+        _ keys: [(ownerID: UUID, yearMonthKey: Int)],
+        entityName: String,
+        area: String,
+        report: inout IntegrityReportBuilder
+    ) {
+        var seen: Set<String> = []
+        var duplicates: Set<String> = []
+
+        for key in keys {
+            let storageKey = "\(key.ownerID.uuidString)|\(key.yearMonthKey)"
+            if !seen.insert(storageKey).inserted {
+                duplicates.insert(storageKey)
+            }
+        }
+
+        for duplicate in duplicates {
+            report.append(
+                area: area,
+                entityName: entityName,
+                objectIdentifier: duplicate,
+                message: "\(entityName) payload contains duplicate owner/month bucket."
+            )
+        }
+    }
+
+    private nonisolated func isValidHistoryBucket(
+        yearMonthKey: Int,
+        positiveMask: Int64,
+        skippedMask: Int64,
+        archivedMask: Int64,
+        positiveCount: Int,
+        skippedCount: Int,
+        archivedCount: Int
+    ) -> Bool {
+        guard isValidYearMonthKey(yearMonthKey) else { return false }
+        guard isValidHistoryMask(positiveMask),
+              isValidHistoryMask(skippedMask),
+              isValidHistoryMask(archivedMask) else { return false }
+        guard positiveMask & skippedMask == 0,
+              positiveMask & archivedMask == 0,
+              skippedMask & archivedMask == 0 else { return false }
+        return positiveCount == positiveMask.nonzeroBitCount
+            && skippedCount == skippedMask.nonzeroBitCount
+            && archivedCount == archivedMask.nonzeroBitCount
+    }
+
+    private nonisolated func isValidHistoryRange(
+        startDate: Date,
+        endDate: Date,
+        state: String,
+        useScheduleForHistory: Bool,
+        scheduleKind: String,
+        weekdayMask: Int,
+        intervalDays: Int,
+        anchorDate: Date,
+        count: Int
+    ) -> Bool {
+        CoreDataHistoryRangeSupport.isValidPayload(
+            startDate: startDate,
+            endDate: endDate,
+            stateRaw: state,
+            useScheduleForHistory: useScheduleForHistory,
+            scheduleKindRaw: scheduleKind,
+            weekdayMask: weekdayMask,
+            intervalDays: intervalDays,
+            anchorDate: anchorDate,
+            count: count
+        )
+    }
+
+    private nonisolated func isValidYearMonthKey(_ yearMonthKey: Int) -> Bool {
+        let month = yearMonthKey % 100
+        return yearMonthKey > 0 && (1...12).contains(month)
+    }
+
+    private nonisolated func isValidHistoryMask(_ mask: Int64) -> Bool {
+        let validDayMask = (Int64(1) << 31) - 1
+        return mask >= 0 && (mask & ~validDayMask) == 0
+    }
+
+    private nonisolated func habitBucketState(from sourceRaw: String) -> CoreDataHistoryBucketState? {
+        guard let source = CompletionSource(rawValue: sourceRaw) else { return nil }
+        switch source {
+        case .swipe, .manualEdit, .notification, .restore, .autoFill:
+            return .positive
+        case .skipped:
+            return .skipped
+        case .archived:
+            return .archived
+        }
+    }
+
+    private nonisolated func pillBucketState(from sourceRaw: String) -> CoreDataHistoryBucketState? {
+        guard let source = PillCompletionSource(rawValue: sourceRaw) else { return nil }
+        switch source {
+        case .swipe, .manualEdit, .notification, .restore:
+            return .positive
+        case .skipped:
+            return .skipped
+        case .archived:
+            return .archived
         }
     }
 

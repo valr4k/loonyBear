@@ -6,11 +6,15 @@ struct BackupArchive: Codable {
     let habits: [BackupHabit]
     let scheduleVersions: [BackupScheduleVersion]
     let completionRecords: [BackupCompletion]
+    let habitHistoryBuckets: [BackupHabitHistoryBucket]
+    let habitHistoryRanges: [BackupHabitHistoryRange]
     let ordering: [BackupOrdering]
     let settings: BackupAppSettings?
     let pills: [BackupPill]
     let pillScheduleVersions: [BackupPillScheduleVersion]
     let pillIntakeRecords: [BackupPillIntake]
+    let pillHistoryBuckets: [BackupPillHistoryBucket]
+    let pillHistoryRanges: [BackupPillHistoryRange]
     let events: [BackupEvent]
 
     private enum CodingKeys: String, CodingKey {
@@ -19,11 +23,15 @@ struct BackupArchive: Codable {
         case habits
         case scheduleVersions
         case completionRecords
+        case habitHistoryBuckets
+        case habitHistoryRanges
         case ordering
         case settings
         case pills
         case pillScheduleVersions
         case pillIntakeRecords
+        case pillHistoryBuckets
+        case pillHistoryRanges
         case events
     }
 
@@ -32,12 +40,16 @@ struct BackupArchive: Codable {
         exportedAt: Date,
         habits: [BackupHabit],
         scheduleVersions: [BackupScheduleVersion],
-        completionRecords: [BackupCompletion],
+        completionRecords: [BackupCompletion] = [],
+        habitHistoryBuckets: [BackupHabitHistoryBucket] = [],
+        habitHistoryRanges: [BackupHabitHistoryRange] = [],
         ordering: [BackupOrdering],
         settings: BackupAppSettings? = nil,
         pills: [BackupPill] = [],
         pillScheduleVersions: [BackupPillScheduleVersion] = [],
         pillIntakeRecords: [BackupPillIntake] = [],
+        pillHistoryBuckets: [BackupPillHistoryBucket] = [],
+        pillHistoryRanges: [BackupPillHistoryRange] = [],
         events: [BackupEvent] = []
     ) {
         self.schemaVersion = schemaVersion
@@ -45,11 +57,15 @@ struct BackupArchive: Codable {
         self.habits = habits
         self.scheduleVersions = scheduleVersions
         self.completionRecords = completionRecords
+        self.habitHistoryBuckets = habitHistoryBuckets
+        self.habitHistoryRanges = habitHistoryRanges
         self.ordering = ordering
         self.settings = settings
         self.pills = pills
         self.pillScheduleVersions = pillScheduleVersions
         self.pillIntakeRecords = pillIntakeRecords
+        self.pillHistoryBuckets = pillHistoryBuckets
+        self.pillHistoryRanges = pillHistoryRanges
         self.events = events
     }
 
@@ -59,12 +75,16 @@ struct BackupArchive: Codable {
         exportedAt = try container.decode(Date.self, forKey: .exportedAt)
         habits = try container.decode([BackupHabit].self, forKey: .habits)
         scheduleVersions = try container.decode([BackupScheduleVersion].self, forKey: .scheduleVersions)
-        completionRecords = try container.decode([BackupCompletion].self, forKey: .completionRecords)
+        completionRecords = try container.decodeIfPresent([BackupCompletion].self, forKey: .completionRecords) ?? []
+        habitHistoryBuckets = try container.decodeIfPresent([BackupHabitHistoryBucket].self, forKey: .habitHistoryBuckets) ?? []
+        habitHistoryRanges = try container.decodeIfPresent([BackupHabitHistoryRange].self, forKey: .habitHistoryRanges) ?? []
         ordering = try container.decode([BackupOrdering].self, forKey: .ordering)
         settings = try container.decodeIfPresent(BackupAppSettings.self, forKey: .settings)
         pills = try container.decodeIfPresent([BackupPill].self, forKey: .pills) ?? []
         pillScheduleVersions = try container.decodeIfPresent([BackupPillScheduleVersion].self, forKey: .pillScheduleVersions) ?? []
         pillIntakeRecords = try container.decodeIfPresent([BackupPillIntake].self, forKey: .pillIntakeRecords) ?? []
+        pillHistoryBuckets = try container.decodeIfPresent([BackupPillHistoryBucket].self, forKey: .pillHistoryBuckets) ?? []
+        pillHistoryRanges = try container.decodeIfPresent([BackupPillHistoryRange].self, forKey: .pillHistoryRanges) ?? []
         events = try container.decodeIfPresent([BackupEvent].self, forKey: .events) ?? []
     }
 }
@@ -95,6 +115,7 @@ struct BackupHabit: Codable {
     let endDate: Date?
     let historyMode: String
     let isArchived: Bool
+    let archivedAt: Date?
     let reminderEnabled: Bool
     let reminderTime: BackupReminderTime?
     let createdAt: Date
@@ -111,6 +132,7 @@ struct BackupHabit: Codable {
         case endDate
         case historyMode
         case isArchived
+        case archivedAt
         case reminderEnabled
         case reminderTime
         case createdAt
@@ -128,6 +150,7 @@ struct BackupHabit: Codable {
         endDate: Date? = nil,
         historyMode: String = HabitHistoryMode.scheduleBased.rawValue,
         isArchived: Bool = false,
+        archivedAt: Date? = nil,
         reminderEnabled: Bool,
         reminderTime: BackupReminderTime?,
         createdAt: Date,
@@ -143,6 +166,7 @@ struct BackupHabit: Codable {
         self.endDate = endDate
         self.historyMode = historyMode
         self.isArchived = isArchived
+        self.archivedAt = archivedAt
         self.reminderEnabled = reminderEnabled
         self.reminderTime = reminderTime
         self.createdAt = createdAt
@@ -161,6 +185,7 @@ struct BackupHabit: Codable {
         endDate = try container.decodeIfPresent(Date.self, forKey: .endDate)
         historyMode = try container.decodeIfPresent(String.self, forKey: .historyMode) ?? HabitHistoryMode.scheduleBased.rawValue
         isArchived = try container.decodeIfPresent(Bool.self, forKey: .isArchived) ?? false
+        archivedAt = try container.decodeIfPresent(Date.self, forKey: .archivedAt)
         reminderEnabled = try container.decode(Bool.self, forKey: .reminderEnabled)
         reminderTime = try container.decodeIfPresent(BackupReminderTime.self, forKey: .reminderTime)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
@@ -231,6 +256,36 @@ struct BackupCompletion: Codable {
     let createdAt: Date
 }
 
+struct BackupHabitHistoryBucket: Codable {
+    let id: UUID
+    let habitId: UUID
+    let yearMonthKey: Int
+    let positiveMask: Int64
+    let skippedMask: Int64
+    let archivedMask: Int64
+    let positiveCount: Int
+    let skippedCount: Int
+    let archivedCount: Int
+    let createdAt: Date
+    let updatedAt: Date
+}
+
+struct BackupHabitHistoryRange: Codable {
+    let id: UUID
+    let habitId: UUID
+    let startDate: Date
+    let endDate: Date
+    let state: String
+    let useScheduleForHistory: Bool
+    let scheduleKind: String
+    let weekdayMask: Int
+    let intervalDays: Int
+    let anchorDate: Date
+    let count: Int
+    let createdAt: Date
+    let updatedAt: Date
+}
+
 struct BackupOrdering: Codable {
     let habitId: UUID
     let type: String
@@ -253,6 +308,7 @@ struct BackupPill: Codable {
     let endDate: Date?
     let historyMode: String
     let isArchived: Bool
+    let archivedAt: Date?
     let reminderEnabled: Bool
     let reminderTime: BackupReminderTime?
     let createdAt: Date
@@ -270,6 +326,7 @@ struct BackupPill: Codable {
         case endDate
         case historyMode
         case isArchived
+        case archivedAt
         case reminderEnabled
         case reminderTime
         case createdAt
@@ -288,6 +345,7 @@ struct BackupPill: Codable {
         endDate: Date? = nil,
         historyMode: String,
         isArchived: Bool = false,
+        archivedAt: Date? = nil,
         reminderEnabled: Bool,
         reminderTime: BackupReminderTime?,
         createdAt: Date,
@@ -304,6 +362,7 @@ struct BackupPill: Codable {
         self.endDate = endDate
         self.historyMode = historyMode
         self.isArchived = isArchived
+        self.archivedAt = archivedAt
         self.reminderEnabled = reminderEnabled
         self.reminderTime = reminderTime
         self.createdAt = createdAt
@@ -323,6 +382,7 @@ struct BackupPill: Codable {
         endDate = try container.decodeIfPresent(Date.self, forKey: .endDate)
         historyMode = try container.decodeIfPresent(String.self, forKey: .historyMode) ?? PillHistoryMode.scheduleBased.rawValue
         isArchived = try container.decodeIfPresent(Bool.self, forKey: .isArchived) ?? false
+        archivedAt = try container.decodeIfPresent(Date.self, forKey: .archivedAt)
         reminderEnabled = try container.decode(Bool.self, forKey: .reminderEnabled)
         reminderTime = try container.decodeIfPresent(BackupReminderTime.self, forKey: .reminderTime)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
@@ -391,6 +451,36 @@ struct BackupPillIntake: Codable {
     let localDate: Date
     let source: String
     let createdAt: Date
+}
+
+struct BackupPillHistoryBucket: Codable {
+    let id: UUID
+    let pillId: UUID
+    let yearMonthKey: Int
+    let positiveMask: Int64
+    let skippedMask: Int64
+    let archivedMask: Int64
+    let positiveCount: Int
+    let skippedCount: Int
+    let archivedCount: Int
+    let createdAt: Date
+    let updatedAt: Date
+}
+
+struct BackupPillHistoryRange: Codable {
+    let id: UUID
+    let pillId: UUID
+    let startDate: Date
+    let endDate: Date
+    let state: String
+    let useScheduleForHistory: Bool
+    let scheduleKind: String
+    let weekdayMask: Int
+    let intervalDays: Int
+    let anchorDate: Date
+    let count: Int
+    let createdAt: Date
+    let updatedAt: Date
 }
 
 struct BackupStatus: Equatable {

@@ -48,7 +48,6 @@ struct PillSideEffectCoordinator {
 
     func prepareReminderNotifications(forPillID pillID: UUID) async {
         await notificationService.prepareReminderNotifications(forPillID: pillID)
-        rescheduleAllReminderNotifications?()
     }
 
     func syncNotificationsAfterUpdate(from draft: EditPillDraft) async {
@@ -57,6 +56,5 @@ struct PillSideEffectCoordinator {
         } else {
             notificationService.removeNotifications(forPillID: draft.id)
         }
-        rescheduleAllReminderNotifications?()
     }
 }

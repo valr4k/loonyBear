@@ -135,6 +135,31 @@ enum AppStartupHealthCheck {
     ) throws {
         var report = IntegrityReportBuilder()
 
+        scanInvalidLegacyHistoryRows(
+            entityName: "HabitCompletion",
+            ownerKey: "habitID",
+            area: "startup.habitHistory",
+            sourceToState: habitBucketState(from:),
+            context: context,
+            report: &report
+        )
+        scanInvalidLegacyHistoryRows(
+            entityName: "PillIntake",
+            ownerKey: "pillID",
+            area: "startup.pillHistory",
+            sourceToState: pillBucketState(from:),
+            context: context,
+            report: &report
+        )
+
+        if report.hasIssues {
+            let error = report.makeError(operation: "app.startup.healthCheck")
+            ReliabilityLog.error("app.startup.healthCheck failed: \(error.localizedDescription)")
+            throw error
+        }
+
+        try migrateLegacyHistoryRowsIfNeeded(context: context, calendar: calendar)
+
         validateHabitRows(context: context, calendar: calendar, report: &report)
         validatePillRows(context: context, calendar: calendar, report: &report)
 
@@ -154,6 +179,20 @@ enum AppStartupHealthCheck {
             calendar: calendar,
             report: &report
         )
+        scanDuplicateHistoryBucketRows(
+            entityName: "HabitHistoryBucket",
+            ownerKey: "habitID",
+            area: "startup.habitHistoryBuckets",
+            context: context,
+            report: &report
+        )
+        scanDuplicateHistoryBucketRows(
+            entityName: "PillHistoryBucket",
+            ownerKey: "pillID",
+            area: "startup.pillHistoryBuckets",
+            context: context,
+            report: &report
+        )
 
         if report.hasIssues {
             let error = report.makeError(operation: "app.startup.healthCheck")
@@ -162,6 +201,74 @@ enum AppStartupHealthCheck {
         }
 
         ReliabilityLog.info("app.startup.healthCheck passed")
+    }
+
+    private static func scanInvalidLegacyHistoryRows(
+        entityName: String,
+        ownerKey: String,
+        area: String,
+        sourceToState: (String) -> CoreDataHistoryBucketState?,
+        context: NSManagedObjectContext,
+        report: inout IntegrityReportBuilder
+    ) {
+        let request = NSFetchRequest<NSManagedObject>(entityName: entityName)
+
+        do {
+            for row in try context.fetch(request) {
+                guard
+                    row.uuidValue(forKey: ownerKey) != nil,
+                    row.dateValue(forKey: "localDate") != nil,
+                    let sourceRaw = row.stringValue(forKey: "sourceRaw"),
+                    sourceToState(sourceRaw) != nil
+                else {
+                    report.append(
+                        area: area,
+                        entityName: entityName,
+                        object: row,
+                        message: "History row has invalid sourceRaw or missing required fields."
+                    )
+                    continue
+                }
+            }
+        } catch {
+            report.append(
+                area: area,
+                entityName: entityName,
+                objectIdentifier: "fetch",
+                message: "Unable to fetch legacy history rows: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private static func migrateLegacyHistoryRowsIfNeeded(
+        context: NSManagedObjectContext,
+        calendar: Calendar
+    ) throws {
+        let migratedHabitRows = try CoreDataHistoryBucketSupport.migrateLegacyRows(
+            legacyEntityName: "HabitCompletion",
+            ownerEntityName: "Habit",
+            ownerKey: "habitID",
+            ownerRelationshipKey: "habit",
+            bucketEntityName: "HabitHistoryBucket",
+            legacySourceToState: habitBucketState(from:),
+            in: context,
+            calendar: calendar
+        )
+        let migratedPillRows = try CoreDataHistoryBucketSupport.migrateLegacyRows(
+            legacyEntityName: "PillIntake",
+            ownerEntityName: "Pill",
+            ownerKey: "pillID",
+            ownerRelationshipKey: "pill",
+            bucketEntityName: "PillHistoryBucket",
+            legacySourceToState: pillBucketState(from:),
+            in: context,
+            calendar: calendar
+        )
+
+        if migratedHabitRows || migratedPillRows {
+            try context.save()
+            ReliabilityLog.info("app.startup.historyBucketMigration migrated legacy daily history")
+        }
     }
 
     private static func validateHabitRows(
@@ -174,7 +281,7 @@ enum AppStartupHealthCheck {
         do {
             for object in try context.fetch(request) {
                 guard
-                    object.uuidValue(forKey: "id") != nil,
+                    let habitID = object.uuidValue(forKey: "id"),
                     let typeRaw = object.stringValue(forKey: "typeRaw"),
                     HabitType(rawValue: typeRaw) != nil,
                     object.stringValue(forKey: "name") != nil,
@@ -219,6 +326,27 @@ enum AppStartupHealthCheck {
                     calendar: calendar,
                     report: &report
                 ) as [(Date, CompletionSource)]?
+
+                _ = CoreDataHistoryBucketSupport.validatedEntries(
+                    from: object,
+                    relationshipKey: "historyBuckets",
+                    area: "startup.habitHistoryBuckets",
+                    invalidMessage: "Habit history bucket row is missing required fields or has overlapping masks.",
+                    report: &report,
+                    ownerID: habitID,
+                    calendar: calendar
+                )
+
+                _ = CoreDataHistoryRangeSupport.validatedRecords(
+                    from: object,
+                    relationshipKey: "historyRanges",
+                    ownerKey: "habitID",
+                    area: "startup.habitHistoryRanges",
+                    invalidMessage: "Habit history range row is missing required fields or has invalid schedule/count.",
+                    report: &report,
+                    ownerID: habitID,
+                    calendar: calendar
+                )
             }
         } catch {
             report.append(
@@ -240,7 +368,7 @@ enum AppStartupHealthCheck {
         do {
             for object in try context.fetch(request) {
                 guard
-                    object.uuidValue(forKey: "id") != nil,
+                    let pillID = object.uuidValue(forKey: "id"),
                     object.stringValue(forKey: "name") != nil,
                     object.stringValue(forKey: "dosage") != nil,
                     object.dateValue(forKey: "startDate") != nil,
@@ -284,6 +412,27 @@ enum AppStartupHealthCheck {
                     calendar: calendar,
                     report: &report
                 ) as [(Date, PillCompletionSource)]?
+
+                _ = CoreDataHistoryBucketSupport.validatedEntries(
+                    from: object,
+                    relationshipKey: "historyBuckets",
+                    area: "startup.pillHistoryBuckets",
+                    invalidMessage: "Pill history bucket row is missing required fields or has overlapping masks.",
+                    report: &report,
+                    ownerID: pillID,
+                    calendar: calendar
+                )
+
+                _ = CoreDataHistoryRangeSupport.validatedRecords(
+                    from: object,
+                    relationshipKey: "historyRanges",
+                    ownerKey: "pillID",
+                    area: "startup.pillHistoryRanges",
+                    invalidMessage: "Pill history range row is missing required fields or has invalid schedule/count.",
+                    report: &report,
+                    ownerID: pillID,
+                    calendar: calendar
+                )
             }
         } catch {
             report.append(
@@ -332,6 +481,66 @@ enum AppStartupHealthCheck {
                 objectIdentifier: entityName,
                 message: "Failed to scan history rows: \(error.localizedDescription)"
             )
+        }
+    }
+
+    private static func scanDuplicateHistoryBucketRows(
+        entityName: String,
+        ownerKey: String,
+        area: String,
+        context: NSManagedObjectContext,
+        report: inout IntegrityReportBuilder
+    ) {
+        let request = NSFetchRequest<NSManagedObject>(entityName: entityName)
+
+        do {
+            let objects = try context.fetch(request)
+            let groupedObjects = Dictionary(grouping: objects) { object -> String in
+                let ownerIdentifier = object.uuidValue(forKey: ownerKey)?.uuidString ?? "missing-owner"
+                return "\(ownerIdentifier)|\(object.int32Value(forKey: "yearMonthKey"))"
+            }
+
+            for (groupKey, duplicates) in groupedObjects where duplicates.count > 1 {
+                for duplicate in duplicates.dropFirst() {
+                    report.append(
+                        area: area,
+                        entityName: duplicate.entityName,
+                        object: duplicate,
+                        message: "Duplicate history bucket row detected for \(groupKey)."
+                    )
+                }
+            }
+        } catch {
+            report.append(
+                area: area,
+                entityName: entityName,
+                objectIdentifier: entityName,
+                message: "Failed to scan history bucket rows: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private nonisolated static func habitBucketState(from sourceRaw: String) -> CoreDataHistoryBucketState? {
+        guard let source = CompletionSource(rawValue: sourceRaw) else { return nil }
+        switch source {
+        case .swipe, .manualEdit, .notification, .restore, .autoFill:
+            return .positive
+        case .skipped:
+            return .skipped
+        case .archived:
+            return .archived
+        }
+    }
+
+    private nonisolated static func pillBucketState(from sourceRaw: String) -> CoreDataHistoryBucketState? {
+        guard let source = PillCompletionSource(rawValue: sourceRaw) else { return nil }
+        switch source {
+        case .swipe, .manualEdit, .notification, .restore:
+            return .positive
+        case .skipped:
+            return .skipped
+        case .archived:
+            return .archived
         }
     }
 }

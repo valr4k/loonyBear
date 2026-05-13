@@ -21,8 +21,8 @@ This file describes the behavioral rules that are currently implemented in code.
 - A future Habit remains in its normal Build or Quit dashboard section, but it has no today action/status, no overdue state, no notifications, and no history review before its start date.
 - Future Habit cards show `Starts 03 May 2026` style dates.
 - Habits use an `End Repeat` options row and, only when `On Date` is selected, an `End Date` date row. If no end date is selected, `End Repeat` displays `Never`.
-- Habits can be soft-deleted from active Habit Details. Soft-deleted Habits move to the separate Recently Deleted page and do not produce today actions, overdue state, notifications, badge count, or history review. They preserve their stored reminder, repeat, end date, and history as historical data.
-- My Habits shows the Recently Deleted toolbar button only when at least one soft-deleted Habit exists. The button opens soft-deleted Habits without Build/Quit sections.
+- Habits can be archived from active Habit Details. Archived Habits move to the separate Archive page and do not produce today actions, overdue state, notifications, badge count, or history review. They preserve their stored reminder, repeat, end date, and history as historical data.
+- My Habits shows the Archive toolbar button only when at least one archived Habit exists. The button opens archived Habits without Build/Quit sections.
 
 ## Habit History Modes
 
@@ -42,16 +42,17 @@ This file describes the behavioral rules that are currently implemented in code.
 - After create, the repository generates completed history from `startDate` through yesterday.
 - In `scheduleBased` mode, only scheduled days are generated.
 - In `everyDay` mode, every day in that range is generated.
+- Generated create-time history is stored as one cold schedule-aware range before the editable window plus monthly bucket state inside the editable window, not as one database row per generated day.
 - The auto-filled completion source is `auto fill`.
 - Habit reconciliation does not backfill missing past history.
 - Habit reconciliation does not auto-skip overdue days.
 - A scheduled day becomes due at its reminder time. If reminders are disabled, it becomes due at 00:00.
 - The active overdue day is the latest due scheduled day only when that latest due day has no completed or skipped state.
-- Empty due scheduled days before the active overdue day are history gaps, not skipped rows.
+- Empty due scheduled days before the active overdue day are history gaps, not skipped states.
 - Stale notification actions for days that have already become history gaps are ignored and only dismiss the notification.
 - Restore clears stale overdue anchors, but overdue and history gaps are derived from the restored schedule/history data.
-- Existing completed rows are preserved.
-- Existing skipped rows are preserved.
+- Existing completed states are preserved.
+- Existing skipped states are preserved.
 
 ## Habit Edit Rules
 
@@ -67,16 +68,20 @@ This file describes the behavioral rules that are currently implemented in code.
 - Tapping an active Habit card opens the editable `Habit Details` sheet.
 - Habit cards do not expose trailing swipe actions. Delete is not available from card swipe actions.
 - Habit card clear-state swipe uses the `arrow.uturn.backward` system symbol.
-- Future and soft-deleted Habit cards do not expose day-state leading swipe actions.
+- Future and archived Habit cards do not expose day-state leading swipe actions.
 - Active Habit Details is the current editable sheet opened from an active Habit card. It shows the same dismissible floating warning banner while any past scheduled day is missing.
 - If the only missing Habit day is the active overdue day, the current editable sheet uses `Mark each overdue day as Completed or Skipped.`
 - If any other past scheduled Habit day is missing, the current editable sheet uses `Mark all past days as Completed or Skipped.`
 - The shorter `Finish updating overdue days.` and `Finish updating past days.` strings are retained only for the older `HabitDetailsView` calendar-review helper and are not the current dashboard card tap flow.
 - Saving active Habit Details does not auto-fill missing past days; the user must choose the state.
-- Active Habit Details exposes one `Delete` action. It is a soft delete, uses the confirmation `Delete this Habit?` / `This Habit will be moved to Recently Deleted.`, and moves the Habit to Recently Deleted.
+- Active Habit Details exposes two destructive actions at the bottom: `Archive` and `Delete`.
+- `Archive` uses the confirmation `Archive this Habit?` / `This Habit will be moved to Archive.` and moves the Habit to Archive without requiring the current form edits to be valid.
+- Active `Delete` is permanent and uses `Permanently delete this Habit?` / `This Habit will be permanently deleted.`
 - Habit Details shows `Start Date` as read-only; Start Date is not editable after create.
 - If the Repeat rule is changed for an active Habit, the app does not show an Apply From field. The new schedule version receives a hidden `effectiveFrom` based on `max(today, startDate)`. The technical maximum is the end of the second next calendar month. The current UI selects the lower bound, so the normal saved value is `max(today, startDate)`. If an out-of-range internal draft value ever appears, the repository falls back to the lower bound. This hidden resolver does not check whether that date matches the new Repeat and does not inspect explicit completed/skipped states; actual scheduled days are derived later by normal schedule applicability.
-- Soft-deleted Habits do not expose Edit or Restore. They can be opened from Recently Deleted into the read-only item screen, where `Delete` is available at the bottom as permanent delete with `Permanently delete this Habit?` / `This Habit will be permanently deleted.`
+- Archived Habits open from Archive into a read-only item screen. The read-only screen shows `Restore` and `Delete` at the bottom.
+- Archived `Delete` is permanent and uses `Permanently delete this Habit?` / `This Habit will be permanently deleted.`
+- `Restore` opens a Restore Draft screen where the Habit is still archived until Restore succeeds. The user can edit the new cycle before returning it to the active dashboard.
 
 ## Habit Streak Rules
 
@@ -106,8 +111,8 @@ This file describes the behavioral rules that are currently implemented in code.
 - Future Pill cards show `Starts 03 May 2026` style dates.
 - Pills use an `End Repeat` options row and, only when `On Date` is selected, an `End Date` date row. If no end date is selected, `End Repeat` displays `Never`.
 - Pills can use `Repeat = Never`, which means one scheduled day on the Pill start date. Habits do not expose this option.
-- Pills can be soft-deleted from active Pill Details. Soft-deleted Pills move to the separate Recently Deleted page and do not produce today actions, overdue state, notifications, badge count, or history review. They preserve their stored reminder, repeat, end date, and history as historical data.
-- My Pills shows the Recently Deleted toolbar button only when at least one soft-deleted Pill exists. The button opens soft-deleted Pills without Today/Pending sections.
+- Pills can be archived from active Pill Details. Archived Pills move to the separate Archive page and do not produce today actions, overdue state, notifications, badge count, or history review. They preserve their stored reminder, repeat, end date, and history as historical data.
+- My Pills shows the Archive toolbar button only when at least one archived Pill exists. The button opens archived Pills without Today/Pending sections.
 
 ## Pill History Modes
 
@@ -126,17 +131,17 @@ This file describes the behavioral rules that are currently implemented in code.
 - Repository create generates taken history from `startDate` through yesterday.
 - In `scheduleBased` mode, generated `takenDays` include only scheduled days.
 - In `everyDay` mode, generated `takenDays` include all days in that range.
-- Repository create inserts `manual edit` intake rows for all generated `takenDays`.
+- Repository create writes generated `takenDays` as one cold schedule-aware range before the editable window plus monthly bucket state inside the editable window, not as one database row per generated day.
 - Today is not prefilled.
 - Pill reconciliation does not backfill missing past history.
 - Pill reconciliation does not auto-skip overdue days.
 - A scheduled day becomes due at its reminder time. If reminders are disabled, it becomes due at 00:00.
 - The active overdue day is the latest due scheduled day only when that latest due day has no taken or skipped state.
-- Empty due scheduled days before the active overdue day are history gaps, not skipped rows.
+- Empty due scheduled days before the active overdue day are history gaps, not skipped states.
 - Stale notification actions for days that have already become history gaps are ignored and only dismiss the notification.
 - Restore clears stale overdue anchors, but overdue and history gaps are derived from the restored schedule/history data.
-- Existing taken rows are preserved.
-- Existing skipped rows are preserved.
+- Existing taken states are preserved.
+- Existing skipped states are preserved.
 
 ## Pill Edit Rules
 
@@ -152,21 +157,25 @@ This file describes the behavioral rules that are currently implemented in code.
 - Tapping an active Pill card opens the editable `Pill Details` sheet.
 - Pill cards do not expose trailing swipe actions. Delete is not available from card swipe actions.
 - Pill card clear-state swipe uses the `arrow.uturn.backward` system symbol.
-- Future and soft-deleted Pill cards do not expose day-state leading swipe actions.
+- Future and archived Pill cards do not expose day-state leading swipe actions.
 - Active Pill Details is the current editable sheet opened from an active Pill card. It shows the same dismissible floating warning banner while any past scheduled day is missing.
 - If the only missing Pill day is the active overdue day, the current editable sheet uses `Mark each overdue day as Taken or Skipped.`
 - If any other past scheduled Pill day is missing, the current editable sheet uses `Mark all past days as Taken or Skipped.`
 - The shorter `Finish updating overdue days.` and `Finish updating past days.` strings are retained only for the older `PillDetailsView` calendar-review helper and are not the current dashboard card tap flow.
 - Saving active Pill Details does not auto-fill missing past days; the user must choose the state.
-- Active Pill Details exposes one `Delete` action. It is a soft delete, uses the confirmation `Delete this Pill?` / `This Pill will be moved to Recently Deleted.`, and moves the Pill to Recently Deleted.
+- Active Pill Details exposes two destructive actions at the bottom: `Archive` and `Delete`.
+- `Archive` uses the confirmation `Archive this Pill?` / `This Pill will be moved to Archive.` and moves the Pill to Archive without requiring the current form edits to be valid.
+- Active `Delete` is permanent and uses `Permanently delete this Pill?` / `This Pill will be permanently deleted.`
 - Pill Details shows `Start Date` as read-only; Start Date is not editable after create.
 - If the Repeat rule is changed for an active Pill, the app does not show an Apply From field. The new schedule version receives a hidden `effectiveFrom` based on `max(today, startDate)`. The technical maximum is the end of the second next calendar month. The current UI selects the lower bound, so the normal saved value is `max(today, startDate)`. If an out-of-range internal draft value ever appears, the repository falls back to the lower bound. This hidden resolver does not check whether that date matches the new Repeat and does not inspect explicit taken/skipped states; actual scheduled days are derived later by normal schedule applicability.
-- Soft-deleted Pills do not expose Edit or Restore. They can be opened from Recently Deleted into the read-only item screen, where `Delete` is available at the bottom as permanent delete with `Permanently delete this Pill?` / `This Pill will be permanently deleted.`
+- Archived Pills open from Archive into a read-only item screen. The read-only screen shows `Restore` and `Delete` at the bottom.
+- Archived `Delete` is permanent and uses `Permanently delete this Pill?` / `This Pill will be permanently deleted.`
+- `Restore` opens a Restore Draft screen where the Pill is still archived until Restore succeeds. The user can edit the new cycle before returning it to the active dashboard.
 
 ## Events
 
 - Events live on a separate `Events` tab between `My Habits` and `Settings`.
-- Events are not Habits or Pills and do not participate in reminders, notifications, overdue state, badge count, history review, Recently Deleted, widgets, or streak calculation.
+- Events are not Habits or Pills and do not participate in reminders, notifications, overdue state, badge count, history review, Archive, Restore, widgets, or streak calculation.
 - The Events dashboard has one global empty state when no Events exist:
   - `No Events Yet`
   - `Create your first event to get started.`
@@ -210,13 +219,13 @@ This file describes the behavioral rules that are currently implemented in code.
 - Create screens and active Details screens edit Repeat from a pushed `Repeat` screen inside the sheet.
 - The Repeat screen has `Days` and `Interval` sections.
 - `Use schedule for history?` is no longer exposed in the UI. New items still use schedule-based history generation.
-- Recently Deleted read-only item screens show Repeat as read-only text and do not open a schedule picker.
+- Archive read-only item screens show Repeat as read-only text and do not open a schedule picker until the user enters Restore Draft.
 - Schedule ordering uses:
   - `effectiveFrom`
   - then `version`
   - then `createdAt`
 
-## End Repeat, End Date, and Recently Deleted Rules
+## End Repeat, End Date, Archive, and Restore Rules
 
 - End Date is optional for both Pills and Habits.
 - The visible Schedule UI splits the concept into two rows: `End Repeat` chooses `Never` or `On Date`; the `End Date` picker row appears only when `On Date` is selected.
@@ -225,13 +234,30 @@ This file describes the behavioral rules that are currently implemented in code.
 - The End Date row uses the native compact system date picker with no app-level selectable range. Save does not silently raise End Date during `normalizedDraft()`.
 - A selected End Date is valid only when it is not in the past and at least one scheduled day exists between the active lower bound and the selected date. If the selected date is earlier than local today, Save stays disabled and a dismissible floating warning says `End date can’t be in the past.` If the selected date is not in the past but the range contains no scheduled day, Save stays disabled and the warning says `End date must include at least one scheduled day.`
 - End Date validation is run on Create and active Details for both domains. Pill `Repeat = Never` ignores End Date validation because the End Date is cleared and disabled for one-time Pills.
-- Once the final scheduled day has a completed/taken or skipped state, the item moves to Recently Deleted automatically without confirmation.
+- Once the final scheduled day has a completed/taken or skipped state, the item moves to Archive automatically without confirmation.
 - If the final scheduled day is still empty, the item remains active and can become overdue with the same `Today`, `Yesterday`, or date labels as other overdue items.
-- Manual soft delete asks for confirmation.
-- Manual soft delete does not require the current Edit form to be valid.
-- Manual soft delete and automatic move to Recently Deleted only toggle `isArchived`, update `updatedAt`, and clear stale overdue anchors. They preserve reminder settings, Repeat, End Repeat/End Date, and history rows as historical data.
-- Restore is not available for soft-deleted items. For a new cycle, the user creates a new item.
-- `Repeat = Never` for Pills behaves like a one-time schedule on the start date. After that day is taken or skipped, the Pill moves to Recently Deleted automatically. If it is not acted on, it stays active and can become overdue.
+- Manual Archive asks for confirmation.
+- Manual Archive does not require the current Details form to be valid.
+- Manual Archive and automatic Archive set `isArchived = true`, store `archivedAt`, update `updatedAt`, and clear stale overdue anchors. They preserve reminder settings, Repeat, End Repeat/End Date, and stored history as historical data.
+- Archived items are excluded from notifications, badge count, today actions, overdue state, and missing-history review.
+- Archive pages list archived cards without Today/Pending or Build/Quit sections. The Archive toolbar button appears only when at least one archived item exists for that dashboard.
+- Restore closes the read-only Archive item screen and opens a separate Restore Draft screen. Until the Restore Draft screen is saved, the stored item remains archived.
+- Restore Draft shows the same edit-like layout plus an editable `Active From` row under read-only Start Date.
+- `Active From` defaults to today.
+- `Active From` minimum is `max(archivedAt, today - 29 days)`. This gives the user up to the normal 30-day editable window including today, but never allows Active From before the archive date.
+- `Active From` can be the archive date, any later date, today, or a future date.
+- In Restore Draft, End Repeat defaults to `Never` and End Date is cleared. The read-only archived screen still shows the stored historical End Repeat/End Date until Restore Draft starts.
+- The Restore Draft screen uses the normal `Save` action. When Save succeeds, the app saves the draft edits, sets `isArchived = false`, clears `archivedAt`, writes `activeFrom`, and inserts a new schedule version effective from Active From.
+- Restore writes `archived` history states from `archivedAt` through the day before Active From. If Active From is the archive day, this gap is empty and no archived states are created.
+- Restore writes archived gap rows only into empty days. Existing Completed/Taken/Skipped rows in the archive gap are preserved and continue to count normally.
+- Archived history states never count as Completed, Taken, or Skipped, and they are never editable.
+- Archived history states appear in custom calendars as quiet system-gray circles that do not use the app tint.
+- If Active From is in the past, scheduled days from Active From through yesterday that are still empty are auto-filled as Completed/Taken with source `restore`, matching the app's existing historical start-date autofill behavior.
+- After Restore, editable history starts from Active From inside the normal editable window. Days before Active From remain historical and are not editable for the new cycle.
+- If Active From is today, the item returns to the active dashboard immediately. If Active From is in the future, Pills go to Pending and Habits stay in Build/Quit without today action/status, overdue state, notifications, or history review before Active From.
+- If the user changes tabs after tapping Restore but before the Restore Draft sheet opens, the pending Restore Draft is cancelled.
+- Manual and automatic Archive use the actual archive day as `archivedAt`. Auto Archive does not backdate `archivedAt` to the logical End Date.
+- `Repeat = Never` for Pills behaves like a one-time schedule on the start date. After that day is taken or skipped, the Pill moves to Archive automatically. If it is not acted on, it stays active and can become overdue.
 
 ## Reminder Rules
 
@@ -252,7 +278,7 @@ This file describes the behavioral rules that are currently implemented in code.
 - A reminder is not created for a day that is already completed or taken.
 - A reminder is not created for a day that is already skipped.
 - A reminder is not created for a day earlier than `startDate`.
-- A reminder is not created for a soft-deleted item.
+- A reminder is not created for an archived item.
 - A reminder is not created after the item's final scheduled day.
 - If 3 or more reminders share the same scheduled time, they may be aggregated into a summary notification.
 
@@ -278,7 +304,7 @@ This file describes the behavioral rules that are currently implemented in code.
 - Badge count equals overdue Habits plus overdue Pills.
 - An item is overdue when the latest due scheduled day has no positive or skipped state.
 - Overdue labels are `Today`, `Yesterday`, or a date like `03 May 2026`.
-- Badge calculation is derived state only. Reconciliation does not persist skipped rows for overdue catch-up.
+- Badge calculation is derived state only. Reconciliation does not persist skipped states for overdue catch-up.
 - Restore/history gaps are not badge-counted overdue unless they are also the latest due scheduled day.
 - Dashboard cards do not count an active overdue day as a missing-history gap while it remains the latest due scheduled day; active Details still surface a past active overdue day as requiring review.
 - Badge refresh can reuse already-loaded dashboard projections and only writes the app icon badge when the count changes, unless a force apply is requested.

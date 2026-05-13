@@ -49,8 +49,8 @@ enum ReminderPlanningSupport {
                     return nil
                 }
                 guard isScheduled(normalizedDay, for: reminder, calendar: calendar) else { return nil }
-                guard !reminder.completedDays.contains(normalizedDay) else { return nil }
-                guard !reminder.skippedDays.contains(normalizedDay) else { return nil }
+                guard !reminder.hasCompletedState(on: normalizedDay, calendar: calendar) else { return nil }
+                guard !reminder.hasSkippedState(on: normalizedDay, calendar: calendar) else { return nil }
                 guard let scheduledDateTime = calendar.date(
                     bySettingHour: reminderTime.hour,
                     minute: reminderTime.minute,
@@ -94,8 +94,8 @@ enum ReminderPlanningSupport {
                     return nil
                 }
                 guard isScheduled(normalizedDay, for: reminder, calendar: calendar) else { return nil }
-                guard !reminder.takenDays.contains(normalizedDay) else { return nil }
-                guard !reminder.skippedDays.contains(normalizedDay) else { return nil }
+                guard !reminder.hasTakenState(on: normalizedDay, calendar: calendar) else { return nil }
+                guard !reminder.hasSkippedState(on: normalizedDay, calendar: calendar) else { return nil }
                 guard let scheduledDateTime = calendar.date(
                     bySettingHour: reminderTime.hour,
                     minute: reminderTime.minute,

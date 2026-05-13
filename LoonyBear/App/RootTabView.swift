@@ -27,6 +27,8 @@ struct RootTabView: View {
     @State private var presentedHabitSheet: HabitSheet?
     @State private var presentedPillSheet: PillSheet?
     @State private var presentedEventSheet: EventSheet?
+    @State private var pendingHabitSheetAfterDismiss: HabitSheet?
+    @State private var pendingPillSheetAfterDismiss: PillSheet?
     @SceneStorage("settings_route") private var settingsRouteRawValue = ""
     @State private var settingsPath: [SettingsRoute] = []
     @State private var didRestoreSettingsPath = false
@@ -53,7 +55,7 @@ struct RootTabView: View {
                 )
                 .environmentObject(pillAppState)
                 .navigationTitle("My Pills")
-                .sheet(item: $presentedPillSheet, onDismiss: restoreTabBarVisualState) { sheet in
+                .sheet(item: $presentedPillSheet, onDismiss: handlePillSheetDismiss) { sheet in
                     NavigationStack {
                         pillSheetContent(for: sheet)
                     }
@@ -80,7 +82,7 @@ struct RootTabView: View {
                 )
                 .environmentObject(appState)
                 .navigationTitle("My Habits")
-                .sheet(item: $presentedHabitSheet, onDismiss: restoreTabBarVisualState) { sheet in
+                .sheet(item: $presentedHabitSheet, onDismiss: handleHabitSheetDismiss) { sheet in
                     NavigationStack {
                         habitSheetContent(for: sheet)
                     }
@@ -148,6 +150,9 @@ struct RootTabView: View {
         }
         .onChange(of: quickActionCenter.pendingAction) { _, action in
             routeQuickActionIfNeeded(action)
+        }
+        .onChange(of: selectedTabRawValue) { _, rawValue in
+            clearPendingRestoreSheets(for: AppTab(rawValue: rawValue) ?? .myPills)
         }
     }
 
@@ -217,7 +222,16 @@ struct RootTabView: View {
             HabitEditSheetLoader(habitID: habitID)
                 .environmentObject(appState)
         case .archivedReadOnly(let habitID):
-            HabitEditSheetLoader(habitID: habitID, isReadOnly: true)
+            HabitEditSheetLoader(
+                habitID: habitID,
+                isReadOnly: true,
+                onRestoreRequested: {
+                    openHabitRestoreAfterCurrentSheetDismisses(habitID: habitID)
+                }
+            )
+                .environmentObject(appState)
+        case .restore(let habitID):
+            HabitEditSheetLoader(habitID: habitID, startsInRestoreMode: true)
                 .environmentObject(appState)
         }
     }
@@ -232,7 +246,16 @@ struct RootTabView: View {
             PillEditSheetLoader(pillID: pillID)
                 .environmentObject(pillAppState)
         case .archivedReadOnly(let pillID):
-            PillEditSheetLoader(pillID: pillID, isReadOnly: true)
+            PillEditSheetLoader(
+                pillID: pillID,
+                isReadOnly: true,
+                onRestoreRequested: {
+                    openPillRestoreAfterCurrentSheetDismisses(pillID: pillID)
+                }
+            )
+                .environmentObject(pillAppState)
+        case .restore(let pillID):
+            PillEditSheetLoader(pillID: pillID, startsInRestoreMode: true)
                 .environmentObject(pillAppState)
         }
     }
@@ -262,12 +285,53 @@ struct RootTabView: View {
             pills: pillAppState.dashboard.pills
         )
     }
+
+    private func handleHabitSheetDismiss() {
+        restoreTabBarVisualState()
+        guard let pendingHabitSheetAfterDismiss else { return }
+        self.pendingHabitSheetAfterDismiss = nil
+        DispatchQueue.main.async {
+            guard selectedTab.wrappedValue == .myHabits else { return }
+            presentedHabitSheet = pendingHabitSheetAfterDismiss
+        }
+    }
+
+    private func handlePillSheetDismiss() {
+        restoreTabBarVisualState()
+        guard let pendingPillSheetAfterDismiss else { return }
+        self.pendingPillSheetAfterDismiss = nil
+        DispatchQueue.main.async {
+            guard selectedTab.wrappedValue == .myPills else { return }
+            presentedPillSheet = pendingPillSheetAfterDismiss
+        }
+    }
+
+    private func clearPendingRestoreSheets(for tab: AppTab) {
+        if tab != .myHabits {
+            pendingHabitSheetAfterDismiss = nil
+        }
+        if tab != .myPills {
+            pendingPillSheetAfterDismiss = nil
+        }
+    }
+
+    private func openHabitRestoreAfterCurrentSheetDismisses(habitID: UUID) {
+        pendingHabitSheetAfterDismiss = .restore(habitID)
+        presentedHabitSheet = nil
+    }
+
+    private func openPillRestoreAfterCurrentSheetDismisses(pillID: UUID) {
+        pendingPillSheetAfterDismiss = .restore(pillID)
+        presentedPillSheet = nil
+    }
 }
 
 private struct HabitEditSheetLoader: View {
     @EnvironmentObject private var appState: HabitAppState
     let habitID: UUID
     var isReadOnly = false
+    var startsInRestoreMode = false
+    var onRestoreRequested: (() -> Void)?
     @State private var state: HabitEditSheetLoadState = .loading
 
     var body: some View {
@@ -276,7 +340,12 @@ private struct HabitEditSheetLoader: View {
             case .loading:
                 ProgressView()
             case .found(let details):
-                EditHabitView(details: details, isReadOnly: isReadOnly)
+                EditHabitView(
+                    details: details,
+                    isReadOnly: isReadOnly,
+                    startsInRestoreMode: startsInRestoreMode,
+                    onRestoreRequested: onRestoreRequested
+                )
                     .environmentObject(appState)
             case .notFound:
                 ContentUnavailableView(
@@ -317,6 +386,8 @@ private struct PillEditSheetLoader: View {
     @EnvironmentObject private var pillAppState: PillAppState
     let pillID: UUID
     var isReadOnly = false
+    var startsInRestoreMode = false
+    var onRestoreRequested: (() -> Void)?
     @State private var state: PillEditSheetLoadState = .loading
 
     var body: some View {
@@ -325,7 +396,12 @@ private struct PillEditSheetLoader: View {
             case .loading:
                 ProgressView()
             case .found(let details):
-                EditPillView(details: details, isReadOnly: isReadOnly)
+                EditPillView(
+                    details: details,
+                    isReadOnly: isReadOnly,
+                    startsInRestoreMode: startsInRestoreMode,
+                    onRestoreRequested: onRestoreRequested
+                )
                     .environmentObject(pillAppState)
             case .notFound:
                 ContentUnavailableView(
@@ -428,6 +504,7 @@ private enum HabitSheet: Hashable, Identifiable {
     case create
     case edit(UUID)
     case archivedReadOnly(UUID)
+    case restore(UUID)
 
     var id: String {
         switch self {
@@ -437,6 +514,8 @@ private enum HabitSheet: Hashable, Identifiable {
             return "edit_\(id.uuidString)"
         case .archivedReadOnly(let id):
             return "archived_read_only_\(id.uuidString)"
+        case .restore(let id):
+            return "restore_\(id.uuidString)"
         }
     }
 }
@@ -445,6 +524,7 @@ private enum PillSheet: Hashable, Identifiable {
     case create
     case edit(UUID)
     case archivedReadOnly(UUID)
+    case restore(UUID)
 
     var id: String {
         switch self {
@@ -454,6 +534,8 @@ private enum PillSheet: Hashable, Identifiable {
             return "edit_\(id.uuidString)"
         case .archivedReadOnly(let id):
             return "archived_read_only_\(id.uuidString)"
+        case .restore(let id):
+            return "restore_\(id.uuidString)"
         }
     }
 }

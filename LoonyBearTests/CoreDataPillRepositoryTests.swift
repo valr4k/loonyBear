@@ -70,6 +70,61 @@ struct CoreDataPillRepositoryTests {
     }
 
     @Test
+    func restorePillWritesArchivedGapWithoutOverwritingExplicitHistory() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        var now = TestSupport.makeDate(2026, 5, 3, calendar: calendar).addingTimeInterval(10 * 60 * 60)
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+
+        var draft = PillDraft()
+        draft.name = "Restore pill"
+        draft.dosage = "1 tablet"
+        draft.startDate = TestSupport.makeDate(2026, 5, 1, calendar: calendar)
+        draft.scheduleRule = .weekly(.daily)
+
+        let pillID = try repository.createPill(from: draft)
+        let skippedInArchivedGap = TestSupport.makeDate(2026, 5, 4, calendar: calendar)
+        let takenInArchivedGap = TestSupport.makeDate(2026, 5, 5, calendar: calendar)
+        try repository.skipPillDay(id: pillID, on: skippedInArchivedGap)
+        try repository.markPillTaken(id: pillID, on: takenInArchivedGap)
+        try repository.setPillArchived(id: pillID, isArchived: true)
+
+        now = TestSupport.makeDate(2026, 5, 10, calendar: calendar).addingTimeInterval(10 * 60 * 60)
+        let archivedDetails = try #require(try repository.fetchPillDetails(id: pillID))
+        var restoreDraft = EditPillDraft(
+            id: pillID,
+            name: archivedDetails.name,
+            dosage: archivedDetails.dosage,
+            details: archivedDetails.details ?? "",
+            startDate: archivedDetails.startDate,
+            activeFrom: archivedDetails.activeFrom,
+            endDate: nil,
+            scheduleRule: archivedDetails.scheduleRule,
+            reminderEnabled: archivedDetails.reminderEnabled,
+            reminderTime: archivedDetails.reminderTime ?? ReminderTime.default(),
+            takenDays: archivedDetails.takenDays,
+            skippedDays: archivedDetails.skippedDays
+        )
+        restoreDraft.restoreActiveFrom = TestSupport.makeDate(2026, 5, 7, calendar: calendar)
+
+        try repository.restorePill(from: restoreDraft)
+
+        let restoredDetails = try #require(try repository.fetchPillDetails(id: pillID))
+        #expect(restoredDetails.archivedDays.contains(TestSupport.makeDate(2026, 5, 3, calendar: calendar)))
+        #expect(restoredDetails.archivedDays.contains(TestSupport.makeDate(2026, 5, 6, calendar: calendar)))
+        #expect(!restoredDetails.archivedDays.contains(skippedInArchivedGap))
+        #expect(!restoredDetails.archivedDays.contains(takenInArchivedGap))
+        #expect(restoredDetails.skippedDays.contains(skippedInArchivedGap))
+        #expect(restoredDetails.takenDays.contains(takenInArchivedGap))
+        #expect(try TestSupport.pillHistoryRangeCount(pillID: pillID, state: .archived, context: persistence.container.viewContext) == 2)
+    }
+
+    @Test
     func oneTimePillAutoArchivesAfterTaken() throws {
         let calendar = Calendar(identifier: .gregorian)
         let now = TestSupport.makeDate(2026, 5, 4, calendar: calendar).addingTimeInterval(10 * 60 * 60)
@@ -599,12 +654,8 @@ struct CoreDataPillRepositoryTests {
         #expect(takenDetails.takenDays.count == 1)
         #expect(takenDetails.skippedDays.isEmpty)
 
-        let request = NSFetchRequest<NSManagedObject>(entityName: "PillIntake")
-        request.predicate = NSPredicate(format: "pillID == %@", pillID as CVarArg)
-        let intakes = try context.fetch(request)
-
-        #expect(intakes.count == 1)
-        #expect(intakes.first?.value(forKey: "sourceRaw") as? String == PillCompletionSource.swipe.rawValue)
+        #expect(try TestSupport.pillBucketState(pillID: pillID, localDate: Date(), context: context) == .positive)
+        #expect(try TestSupport.legacyPillIntakeCount(pillID: pillID, context: context) == 0)
     }
 
     @Test
@@ -641,15 +692,8 @@ struct CoreDataPillRepositoryTests {
 
         try repository.markTakenToday(id: pillID)
 
-        let request = NSFetchRequest<NSManagedObject>(entityName: "PillIntake")
-        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
-            NSPredicate(format: "pillID == %@", pillID as CVarArg),
-            NSPredicate(format: "localDate == %@", today as CVarArg),
-        ])
-        let intakes = try context.fetch(request)
-
-        #expect(intakes.count == 1)
-        #expect(intakes.first?.value(forKey: "sourceRaw") as? String == PillCompletionSource.swipe.rawValue)
+        #expect(try TestSupport.pillBucketState(pillID: pillID, localDate: today, context: context) == .positive)
+        #expect(try TestSupport.legacyPillIntakeCount(pillID: pillID, localDate: today, context: context) == 0)
     }
 
     @Test
@@ -818,14 +862,12 @@ struct CoreDataPillRepositoryTests {
         draft.reminderTime = ReminderTime(hour: 9, minute: 0)
         let pillID = try repository.createPill(from: draft)
 
-        let request = NSFetchRequest<NSManagedObject>(entityName: "PillIntake")
-        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
-            NSPredicate(format: "pillID == %@", pillID as CVarArg),
-            NSPredicate(format: "localDate == %@", yesterday as CVarArg),
-        ])
-        for intake in try context.fetch(request) {
-            context.delete(intake)
-        }
+        try TestSupport.clearPillHistoryState(
+            pillID: pillID,
+            localDate: yesterday,
+            context: context,
+            calendar: calendar
+        )
         try context.save()
 
         let finalized = try repository.reconcilePastDays(today: now)
@@ -886,11 +928,24 @@ struct CoreDataPillRepositoryTests {
         draft.reminderTime = ReminderTime(hour: 9, minute: 0)
         let pillID = try repository.createPill(from: draft)
 
-        let request = NSFetchRequest<NSManagedObject>(entityName: "PillIntake")
-        request.predicate = NSPredicate(format: "pillID == %@", pillID as CVarArg)
-        for intake in try context.fetch(request) {
-            context.delete(intake)
-        }
+        try TestSupport.clearPillHistoryState(
+            pillID: pillID,
+            localDate: monday,
+            context: context,
+            calendar: calendar
+        )
+        try TestSupport.clearPillHistoryState(
+            pillID: pillID,
+            localDate: wednesday,
+            context: context,
+            calendar: calendar
+        )
+        try TestSupport.clearPillHistoryState(
+            pillID: pillID,
+            localDate: friday,
+            context: context,
+            calendar: calendar
+        )
         try context.save()
 
         let finalized = try repository.reconcilePastDays(today: now)
@@ -927,13 +982,12 @@ struct CoreDataPillRepositoryTests {
         draft.useScheduleForHistory = false
 
         let pillID = try repository.createPill(from: draft)
-        let request = NSFetchRequest<NSManagedObject>(entityName: "PillIntake")
-        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
-            NSPredicate(format: "pillID == %@", pillID as CVarArg),
-            NSPredicate(format: "localDate == %@", yesterday as CVarArg),
-        ])
-        let intake = try #require(context.fetch(request).first)
-        context.delete(intake)
+        try TestSupport.clearPillHistoryState(
+            pillID: pillID,
+            localDate: yesterday,
+            context: context,
+            calendar: calendar
+        )
         try context.save()
 
         let details = try #require(try repository.fetchPillDetails(id: pillID))
@@ -966,6 +1020,159 @@ struct CoreDataPillRepositoryTests {
         let updatedDetails = try #require(try repository.fetchPillDetails(id: pillID))
         #expect(!updatedDetails.skippedDays.contains(yesterday))
         #expect(!updatedDetails.takenDays.contains(yesterday))
+    }
+
+    @Test
+    func createPillWritesInitialHistoryAsColdRangeAndEditableBuckets() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = calendar.date(from: DateComponents(year: 2026, month: 5, day: 12, hour: 10, minute: 0))!
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataPillRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+
+        var draft = PillDraft()
+        draft.name = "Long history"
+        draft.dosage = "1 tablet"
+        draft.startDate = TestSupport.makeDate(2021, 1, 1, calendar: calendar)
+        draft.scheduleRule = .weekly(.daily)
+
+        let pillID = try repository.createPill(from: draft)
+        let details = try #require(try repository.fetchPillDetails(id: pillID))
+        let coldRangeEnd = TestSupport.makeDate(2026, 4, 12, calendar: calendar)
+        let coldDayDelta = try #require(calendar.dateComponents([.day], from: draft.startDate, to: coldRangeEnd).day)
+        let expectedColdCount = coldDayDelta + 1
+
+        #expect(try TestSupport.legacyPillIntakeCount(pillID: pillID, context: context) == 0)
+        #expect(try TestSupport.pillHistoryRangeCount(pillID: pillID, context: context) == 1)
+        #expect(try TestSupport.pillHistoryBucketCount(pillID: pillID, context: context) == 2)
+        #expect(details.historySnapshot.positiveCount == expectedColdCount + 29)
+        #expect(details.historySnapshot.state(on: TestSupport.makeDate(2021, 1, 1, calendar: calendar), calendar: calendar) == .positive)
+        #expect(details.historySnapshot.state(on: TestSupport.makeDate(2026, 4, 15, calendar: calendar), calendar: calendar) == .positive)
+        #expect(details.historySnapshot.state(on: TestSupport.makeDate(2026, 5, 11, calendar: calendar), calendar: calendar) == .positive)
+        #expect(details.historySnapshot.state(on: TestSupport.makeDate(2026, 5, 12, calendar: calendar), calendar: calendar) == nil)
+    }
+
+    @Test
+    func updatePillWithAncientStartDateKeepsAggregatedHistory() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = calendar.date(from: DateComponents(year: 2026, month: 5, day: 12, hour: 10, minute: 0))!
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataPillRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+
+        var draft = PillDraft()
+        draft.name = "Ancient pill"
+        draft.dosage = "1 tablet"
+        draft.startDate = TestSupport.makeDate(1200, 1, 1, calendar: calendar)
+        draft.scheduleRule = .weekly(.daily)
+
+        let pillID = try repository.createPill(from: draft)
+        let details = try #require(try repository.fetchPillDetails(id: pillID))
+        var editDraft = EditPillDraft(
+            id: pillID,
+            name: "Ancient pill updated",
+            dosage: details.dosage,
+            details: details.details ?? "",
+            startDate: details.startDate,
+            activeFrom: details.activeFrom,
+            endDate: TestSupport.makeDate(2026, 6, 1, calendar: calendar),
+            scheduleRule: details.scheduleRule,
+            reminderEnabled: true,
+            reminderTime: ReminderTime(hour: 9, minute: 0),
+            takenDays: details.takenDays,
+            skippedDays: details.skippedDays
+        )
+        editDraft.scheduleEffectiveFrom = details.activeFrom
+
+        try repository.updatePill(from: editDraft)
+
+        let updatedDetails = try #require(try repository.fetchPillDetails(id: pillID))
+        #expect(updatedDetails.name == "Ancient pill updated")
+        #expect(updatedDetails.reminderEnabled)
+        #expect(try TestSupport.legacyPillIntakeCount(pillID: pillID, context: context) == 0)
+        #expect(try TestSupport.pillHistoryRangeCount(pillID: pillID, context: context) == 1)
+        #expect(try TestSupport.pillHistoryBucketCount(pillID: pillID, context: context) == 2)
+        #expect(updatedDetails.historySnapshot.state(on: TestSupport.makeDate(1200, 1, 1, calendar: calendar), calendar: calendar) == .positive)
+        #expect(updatedDetails.historySnapshot.state(on: TestSupport.makeDate(2026, 5, 11, calendar: calendar), calendar: calendar) == .positive)
+    }
+
+    @Test
+    func createPillColdRangeCountsOnlyScheduledWeekdays() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = calendar.date(from: DateComponents(year: 2026, month: 5, day: 12, hour: 10, minute: 0))!
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataPillRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+
+        var draft = PillDraft()
+        draft.name = "Weekend history"
+        draft.dosage = "1 tablet"
+        draft.startDate = TestSupport.makeDate(2021, 1, 1, calendar: calendar)
+        draft.scheduleRule = .weekly(.weekends)
+
+        let pillID = try repository.createPill(from: draft)
+        let details = try #require(try repository.fetchPillDetails(id: pillID))
+        let expectedPlan = CoreDataInitialHistoryPlanner.positiveHistoryPlan(
+            startDate: draft.startDate,
+            endDate: draft.endDate,
+            scheduleRule: draft.scheduleRule,
+            useScheduleForHistory: draft.useScheduleForHistory,
+            today: now,
+            calendar: calendar
+        )
+
+        #expect(try TestSupport.pillHistoryRangeCount(pillID: pillID, state: .positive, context: context) == 1)
+        #expect(details.historySnapshot.positiveCount == (expectedPlan.coldRange?.count ?? 0) + expectedPlan.editableBucketPlan.dayCount)
+        #expect(details.historySnapshot.state(on: TestSupport.makeDate(2021, 1, 1, calendar: calendar), calendar: calendar) == nil)
+        #expect(details.historySnapshot.state(on: TestSupport.makeDate(2021, 1, 2, calendar: calendar), calendar: calendar) == .positive)
+        #expect(details.historySnapshot.state(on: TestSupport.makeDate(2021, 1, 3, calendar: calendar), calendar: calendar) == .positive)
+    }
+
+    @Test
+    func pillBucketOverrideSplitsOverlappingColdRange() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = calendar.date(from: DateComponents(year: 2026, month: 5, day: 12, hour: 10, minute: 0))!
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let repository = CoreDataPillRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { now })
+        )
+
+        var draft = PillDraft()
+        draft.name = "Range split"
+        draft.dosage = "1 tablet"
+        draft.startDate = TestSupport.makeDate(2021, 1, 1, calendar: calendar)
+        draft.scheduleRule = .weekly(.daily)
+
+        let pillID = try repository.createPill(from: draft)
+        let initialDetails = try #require(try repository.fetchPillDetails(id: pillID))
+        let skippedDay = TestSupport.makeDate(2021, 1, 10, calendar: calendar)
+
+        try repository.skipPillDay(id: pillID, on: skippedDay)
+
+        let details = try #require(try repository.fetchPillDetails(id: pillID))
+        #expect(details.historySnapshot.state(on: skippedDay, calendar: calendar) == .skipped)
+        #expect(details.historySnapshot.positiveCount == initialDetails.historySnapshot.positiveCount - 1)
+        #expect(details.historySnapshot.skippedCount == 1)
+        #expect(try TestSupport.pillHistoryRangeCount(pillID: pillID, state: .positive, context: context) == 2)
     }
 
     @Test

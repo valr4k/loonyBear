@@ -6,9 +6,19 @@ enum PillCompletionSource: String, Codable {
     case notification = "notification"
     case restore = "restore"
     case skipped = "skipped"
+    case archived = "archived"
 
     var countsAsIntake: Bool {
-        self != .skipped
+        switch self {
+        case .swipe, .manualEdit, .notification, .restore:
+            return true
+        case .skipped, .archived:
+            return false
+        }
+    }
+
+    var countsAsSkipped: Bool {
+        self == .skipped
     }
 }
 
@@ -119,6 +129,7 @@ struct PillDetailsProjection: Equatable {
     let dosage: String
     let details: String?
     let startDate: Date
+    let activeFrom: Date?
     let endDate: Date?
     let historyMode: PillHistoryMode
     let scheduleSummary: String
@@ -129,12 +140,15 @@ struct PillDetailsProjection: Equatable {
     let totalTakenDays: Int
     let takenDays: Set<Date>
     let skippedDays: Set<Date>
+    let archivedDays: Set<Date>
+    let historySnapshot: CoreDataHistoryBucketSnapshot
     let scheduleHistory: [PillScheduleVersion]
     let scheduledDates: Set<Date>
     var needsHistoryReview = false
     var requiredPastScheduledDays: Set<Date> = []
     var activeOverdueDay: Date?
     var isArchived = false
+    var archivedAt: Date?
 }
 
 struct PillDashboardProjection: Equatable {
@@ -180,6 +194,7 @@ struct EditPillDraft: Equatable {
     var dosage: String
     var details: String
     let startDate: Date
+    var activeFrom: Date?
     var endDate: Date?
     var scheduleRule: ScheduleRule
     var reminderEnabled: Bool
@@ -187,6 +202,7 @@ struct EditPillDraft: Equatable {
     var takenDays: Set<Date>
     var skippedDays: Set<Date>
     var scheduleEffectiveFrom: Date?
+    var restoreActiveFrom: Date?
 
     init(
         id: UUID,
@@ -194,6 +210,7 @@ struct EditPillDraft: Equatable {
         dosage: String,
         details: String,
         startDate: Date,
+        activeFrom: Date? = nil,
         endDate: Date? = nil,
         scheduleDays: WeekdaySet,
         reminderEnabled: Bool,
@@ -206,6 +223,7 @@ struct EditPillDraft: Equatable {
         self.dosage = dosage
         self.details = details
         self.startDate = startDate
+        self.activeFrom = activeFrom
         self.endDate = endDate
         self.scheduleRule = .weekly(scheduleDays)
         self.reminderEnabled = reminderEnabled
@@ -213,6 +231,7 @@ struct EditPillDraft: Equatable {
         self.takenDays = takenDays
         self.skippedDays = skippedDays
         scheduleEffectiveFrom = nil
+        restoreActiveFrom = nil
     }
 
     init(
@@ -221,6 +240,7 @@ struct EditPillDraft: Equatable {
         dosage: String,
         details: String,
         startDate: Date,
+        activeFrom: Date? = nil,
         endDate: Date? = nil,
         scheduleRule: ScheduleRule,
         reminderEnabled: Bool,
@@ -233,6 +253,7 @@ struct EditPillDraft: Equatable {
         self.dosage = dosage
         self.details = details
         self.startDate = startDate
+        self.activeFrom = activeFrom
         self.endDate = endDate
         self.scheduleRule = scheduleRule
         self.reminderEnabled = reminderEnabled
@@ -240,6 +261,7 @@ struct EditPillDraft: Equatable {
         self.takenDays = takenDays
         self.skippedDays = skippedDays
         scheduleEffectiveFrom = nil
+        restoreActiveFrom = nil
     }
 
     var scheduleDays: WeekdaySet {

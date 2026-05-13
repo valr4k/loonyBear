@@ -38,9 +38,19 @@ enum CompletionSource: String, Codable {
     case restore = "restore"
     case autoFill = "auto fill"
     case skipped = "skipped"
+    case archived = "archived"
 
     var countsAsCompletion: Bool {
-        self != .skipped
+        switch self {
+        case .swipe, .manualEdit, .notification, .restore, .autoFill:
+            return true
+        case .skipped, .archived:
+            return false
+        }
+    }
+
+    var countsAsSkipped: Bool {
+        self == .skipped
     }
 }
 
@@ -476,6 +486,7 @@ struct EditHabitDraft: Equatable {
     let id: UUID
     let type: HabitType
     let startDate: Date
+    var activeFrom: Date?
     var endDate: Date?
     var name: String
     var scheduleRule: ScheduleRule
@@ -484,11 +495,13 @@ struct EditHabitDraft: Equatable {
     var completedDays: Set<Date>
     var skippedDays: Set<Date>
     var scheduleEffectiveFrom: Date?
+    var restoreActiveFrom: Date?
 
     init(
         id: UUID,
         type: HabitType,
         startDate: Date,
+        activeFrom: Date? = nil,
         endDate: Date? = nil,
         name: String,
         scheduleDays: WeekdaySet,
@@ -500,6 +513,7 @@ struct EditHabitDraft: Equatable {
         self.id = id
         self.type = type
         self.startDate = startDate
+        self.activeFrom = activeFrom
         self.endDate = endDate
         self.name = name
         self.scheduleRule = .weekly(scheduleDays)
@@ -508,12 +522,14 @@ struct EditHabitDraft: Equatable {
         self.completedDays = completedDays
         self.skippedDays = skippedDays
         scheduleEffectiveFrom = nil
+        restoreActiveFrom = nil
     }
 
     init(
         id: UUID,
         type: HabitType,
         startDate: Date,
+        activeFrom: Date? = nil,
         endDate: Date? = nil,
         name: String,
         scheduleRule: ScheduleRule,
@@ -525,6 +541,7 @@ struct EditHabitDraft: Equatable {
         self.id = id
         self.type = type
         self.startDate = startDate
+        self.activeFrom = activeFrom
         self.endDate = endDate
         self.name = name
         self.scheduleRule = scheduleRule
@@ -533,6 +550,7 @@ struct EditHabitDraft: Equatable {
         self.completedDays = completedDays
         self.skippedDays = skippedDays
         scheduleEffectiveFrom = nil
+        restoreActiveFrom = nil
     }
 
     var scheduleDays: WeekdaySet {
@@ -550,6 +568,7 @@ struct HabitDetailsProjection: Equatable {
     let type: HabitType
     let name: String
     let startDate: Date
+    let activeFrom: Date?
     let endDate: Date?
     let historyMode: HabitHistoryMode
     let scheduleSummary: String
@@ -562,12 +581,15 @@ struct HabitDetailsProjection: Equatable {
     let totalCompletedDays: Int
     let completedDays: Set<Date>
     let skippedDays: Set<Date>
+    let archivedDays: Set<Date>
+    let historySnapshot: CoreDataHistoryBucketSnapshot
     let scheduleHistory: [HabitScheduleVersion]
     let scheduledDates: Set<Date>
     var needsHistoryReview = false
     var requiredPastScheduledDays: Set<Date> = []
     var activeOverdueDay: Date?
     var isArchived = false
+    var archivedAt: Date?
 
     var heatmapDays: [Date] {
         completedDays.sorted()

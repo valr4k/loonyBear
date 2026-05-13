@@ -9,6 +9,12 @@ import XCTest
 @MainActor
 @Suite(.serialized)
 struct NotificationServiceTests {
+    init() {
+        AppNotificationCenterProvider.setOverride(TestNotificationCenter.shared)
+    }
+
+    private var notificationCenter: TestNotificationCenter { TestNotificationCenter.shared }
+
     @Test
     func habitSchedulingUsesCurrentTwoDayWindow() async throws {
         let persistence = PersistenceController(inMemory: true)
@@ -617,7 +623,7 @@ struct NotificationServiceTests {
             readContext: persistence.container.viewContext,
             makeWriteContext: persistence.makeBackgroundContext
         )
-        let center = UNUserNotificationCenter.current()
+        let center = notificationCenter
         let prefix = "coalesce_\(UUID().uuidString.lowercased())"
         let tracker = RescheduleInvocationTracker()
 
@@ -628,7 +634,7 @@ struct NotificationServiceTests {
             let delay = callIndex == 1 ? 0.15 : 0.01
 
             DispatchQueue.global().asyncAfter(deadline: .now() + delay) {
-                UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+                center.removeAllPendingNotificationRequests()
                 completion()
             }
         }
@@ -849,15 +855,19 @@ struct NotificationServiceTests {
         draft.startDate = today
         draft.scheduleDays = .daily
         let habitID = try repository.createHabit(from: draft)
-        try repository.completeHabitToday(id: habitID)
 
-        let request = NSFetchRequest<NSManagedObject>(entityName: "HabitCompletion")
-        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
-            NSPredicate(format: "habitID == %@", habitID as CVarArg),
-            NSPredicate(format: "localDate == %@", today as CVarArg),
-        ])
-        let completion = try #require(persistence.container.viewContext.fetch(request).first)
+        let context = persistence.container.viewContext
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
+        request.predicate = NSPredicate(format: "id == %@", habitID as CVarArg)
+        request.fetchLimit = 1
+        let habitObject = try #require(context.fetch(request).first)
+        let completion = NSEntityDescription.insertNewObject(forEntityName: "HabitCompletion", into: context)
+        completion.setValue(UUID(), forKey: "id")
+        completion.setValue(habitID, forKey: "habitID")
+        completion.setValue(today, forKey: "localDate")
         completion.setValue("invalid", forKey: "sourceRaw")
+        completion.setValue(Date(), forKey: "createdAt")
+        completion.setValue(habitObject, forKey: "habit")
         try persistence.container.viewContext.save()
 
         final class CleanupState {
@@ -906,15 +916,19 @@ struct NotificationServiceTests {
         draft.dosage = "1 tablet"
         draft.startDate = today
         let pillID = try repository.createPill(from: draft)
-        try repository.markTakenToday(id: pillID)
 
-        let request = NSFetchRequest<NSManagedObject>(entityName: "PillIntake")
-        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
-            NSPredicate(format: "pillID == %@", pillID as CVarArg),
-            NSPredicate(format: "localDate == %@", today as CVarArg),
-        ])
-        let intake = try #require(persistence.container.viewContext.fetch(request).first)
+        let context = persistence.container.viewContext
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Pill")
+        request.predicate = NSPredicate(format: "id == %@", pillID as CVarArg)
+        request.fetchLimit = 1
+        let pillObject = try #require(context.fetch(request).first)
+        let intake = NSEntityDescription.insertNewObject(forEntityName: "PillIntake", into: context)
+        intake.setValue(UUID(), forKey: "id")
+        intake.setValue(pillID, forKey: "pillID")
+        intake.setValue(today, forKey: "localDate")
         intake.setValue("invalid", forKey: "sourceRaw")
+        intake.setValue(Date(), forKey: "createdAt")
+        intake.setValue(pillObject, forKey: "pill")
         try persistence.container.viewContext.save()
 
         final class CleanupState {
@@ -2753,7 +2767,7 @@ struct NotificationServiceTests {
     }
 
     private func clearNotifications() async throws {
-        let center = UNUserNotificationCenter.current()
+        let center = notificationCenter
         center.removeAllPendingNotificationRequests()
         center.removeAllDeliveredNotifications()
 
@@ -2802,7 +2816,7 @@ struct NotificationServiceTests {
         matching predicate: @escaping (UNNotificationRequest) -> Bool = { _ in true }
     ) async -> [UNNotificationRequest] {
         await withCheckedContinuation { continuation in
-            UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+            notificationCenter.getPendingNotificationRequests { requests in
                 continuation.resume(returning: requests.filter(predicate))
             }
         }
@@ -2810,7 +2824,7 @@ struct NotificationServiceTests {
 
     private func deliveredNotifications() async -> [UNNotification] {
         await withCheckedContinuation { continuation in
-            UNUserNotificationCenter.current().getDeliveredNotifications { notifications in
+            notificationCenter.getDeliveredNotifications { notifications in
                 continuation.resume(returning: notifications)
             }
         }
@@ -2848,7 +2862,7 @@ struct NotificationServiceTests {
     }
 
     private func triggerRescheduleSupport(
-        center: UNUserNotificationCenter,
+        center: AppNotificationCenter,
         storeContext: NotificationStoreContext,
         logName: String,
         removePendingNotifications: @escaping (@escaping () -> Void) -> Void,
@@ -2879,6 +2893,52 @@ struct NotificationServiceTests {
             trigger: UNTimeIntervalNotificationTrigger(timeInterval: 60, repeats: false)
         )
     }
+}
+
+private final class TestNotificationCenter: AppNotificationCenter, @unchecked Sendable {
+    static let shared = TestNotificationCenter()
+
+    private let lock = NSLock()
+    private var pendingRequestsByIdentifier: [String: UNNotificationRequest] = [:]
+
+    func add(
+        _ request: UNNotificationRequest,
+        withCompletionHandler completionHandler: (@Sendable (Error?) -> Void)?
+    ) {
+        lock.lock()
+        pendingRequestsByIdentifier[request.identifier] = request
+        lock.unlock()
+        completionHandler?(nil)
+    }
+
+    func getPendingNotificationRequests(completionHandler: @escaping @Sendable ([UNNotificationRequest]) -> Void) {
+        lock.lock()
+        let requests = Array(pendingRequestsByIdentifier.values)
+        lock.unlock()
+        completionHandler(requests)
+    }
+
+    func removePendingNotificationRequests(withIdentifiers identifiers: [String]) {
+        lock.lock()
+        for identifier in identifiers {
+            pendingRequestsByIdentifier.removeValue(forKey: identifier)
+        }
+        lock.unlock()
+    }
+
+    func removeAllPendingNotificationRequests() {
+        lock.lock()
+        pendingRequestsByIdentifier.removeAll()
+        lock.unlock()
+    }
+
+    func getDeliveredNotifications(completionHandler: @escaping @Sendable ([UNNotification]) -> Void) {
+        completionHandler([])
+    }
+
+    func removeDeliveredNotifications(withIdentifiers identifiers: [String]) {}
+
+    func removeAllDeliveredNotifications() {}
 }
 
 private final class RescheduleInvocationTracker: @unchecked Sendable {

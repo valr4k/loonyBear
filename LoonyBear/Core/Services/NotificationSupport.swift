@@ -2,6 +2,36 @@ import CoreData
 import Foundation
 import UserNotifications
 
+protocol AppNotificationCenter: AnyObject {
+    func add(_ request: UNNotificationRequest, withCompletionHandler completionHandler: (@Sendable (Error?) -> Void)?)
+    func getPendingNotificationRequests(completionHandler: @escaping @Sendable ([UNNotificationRequest]) -> Void)
+    func removePendingNotificationRequests(withIdentifiers identifiers: [String])
+    func removeAllPendingNotificationRequests()
+    func getDeliveredNotifications(completionHandler: @escaping @Sendable ([UNNotification]) -> Void)
+    func removeDeliveredNotifications(withIdentifiers identifiers: [String])
+    func removeAllDeliveredNotifications()
+}
+
+extension UNUserNotificationCenter: AppNotificationCenter {}
+
+enum AppNotificationCenterProvider {
+    private static let lock = NSLock()
+    private static var overrideCenter: AppNotificationCenter?
+
+    static var current: AppNotificationCenter {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return overrideCenter ?? UNUserNotificationCenter.current()
+    }
+
+    static func setOverride(_ center: AppNotificationCenter?) {
+        lock.lock()
+        overrideCenter = center
+        lock.unlock()
+    }
+}
+
 extension Notification.Name {
     static let habitStoreDidChange = Notification.Name("habit_store_did_change")
     static let pillStoreDidChange = Notification.Name("pill_store_did_change")
@@ -184,7 +214,7 @@ enum LocalNotificationSupport {
     }
 
     static func cleanupStaleDeliveredNotifications(
-        center: UNUserNotificationCenter,
+        center: AppNotificationCenter,
         calendar: Calendar,
         today: Date? = nil
     ) {
@@ -199,7 +229,7 @@ enum LocalNotificationSupport {
     }
 
     static func removeDeliveredAggregatedNotifications(
-        center: UNUserNotificationCenter,
+        center: AppNotificationCenter,
         calendar: Calendar,
         type: String,
         on localDate: Date
@@ -221,7 +251,7 @@ enum LocalNotificationSupport {
     }
 
     static func removePendingNotifications(
-        center: UNUserNotificationCenter,
+        center: AppNotificationCenter,
         prefix: String,
         completion: @escaping () -> Void
     ) {
@@ -233,7 +263,7 @@ enum LocalNotificationSupport {
     }
 
     static func removePendingNotifications(
-        center: UNUserNotificationCenter,
+        center: AppNotificationCenter,
         matching predicate: @escaping (UNNotificationRequest) -> Bool,
         completion: @escaping () -> Void
     ) {
@@ -246,7 +276,7 @@ enum LocalNotificationSupport {
     }
 
     private static func removePendingNotifications(
-        center: UNUserNotificationCenter,
+        center: AppNotificationCenter,
         matching predicate: @escaping (UNNotificationRequest) -> Bool,
         attemptsRemaining: Int,
         completion: @escaping () -> Void
@@ -380,7 +410,7 @@ enum NotificationCleanupSupport {
     }
 
     static func removeDeliveredNotifications(
-        center: UNUserNotificationCenter,
+        center: AppNotificationCenter,
         prefix: String
     ) {
         center.getDeliveredNotifications { notifications in
@@ -392,7 +422,7 @@ enum NotificationCleanupSupport {
     }
 
     static func removeDeliveredNotifications(
-        center: UNUserNotificationCenter,
+        center: AppNotificationCenter,
         prefix: String,
         on localDate: Date,
         calendar: Calendar,
@@ -412,7 +442,7 @@ enum NotificationCleanupSupport {
     }
 
     private static func removeDeliveredNotifications(
-        center: UNUserNotificationCenter,
+        center: AppNotificationCenter,
         prefix: String,
         on localDate: Date,
         calendar: Calendar,
@@ -523,7 +553,7 @@ enum NotificationCleanupSupport {
     }
 
     static func removePendingNotifications(
-        center: UNUserNotificationCenter,
+        center: AppNotificationCenter,
         prefix: String,
         on localDate: Date,
         calendar: Calendar
@@ -549,7 +579,7 @@ enum NotificationRescheduleSupport {
     private static let coordinator = NotificationRescheduleCoordinator.shared
 
     static func rescheduleAll(
-        center: UNUserNotificationCenter,
+        center: AppNotificationCenter,
         storeContext: NotificationStoreContext,
         logName: String,
         now: @escaping () -> Date,
@@ -573,7 +603,7 @@ enum NotificationRescheduleSupport {
     }
 
     private static func performReschedule(
-        center: UNUserNotificationCenter,
+        center: AppNotificationCenter,
         storeContext: NotificationStoreContext,
         logName: String,
         now: @escaping () -> Date,
@@ -728,5 +758,52 @@ enum NotificationConfigurationSupport {
         }
 
         return entries
+    }
+
+    static func loadAggregatedHistoryEntries<Source: RawRepresentable>(
+        for object: NSManagedObject,
+        legacyRelationshipKey: String,
+        bucketRelationshipKey: String,
+        ownerID: UUID,
+        invalidEntryMessage: String,
+        invalidBucketMessage: String,
+        calendar: Calendar,
+        report: inout IntegrityReportBuilder,
+        sourceForBucketState: (CoreDataHistoryBucketState) -> Source
+    ) -> [(Date, Source)]? where Source.RawValue == String {
+        guard
+            let bucketEntries = CoreDataHistoryBucketSupport.validatedEntries(
+                from: object,
+                relationshipKey: bucketRelationshipKey,
+                area: "notification",
+                invalidMessage: invalidBucketMessage,
+                report: &report,
+                ownerID: ownerID,
+                calendar: calendar
+            ),
+            let legacyEntries = loadHistoryEntries(
+                for: object,
+                relationshipKey: legacyRelationshipKey,
+                invalidEntryMessage: invalidEntryMessage,
+                calendar: calendar,
+                report: &report
+            ) as [(Date, Source)]?
+        else {
+            return nil
+        }
+
+        var entriesByDay = Dictionary(uniqueKeysWithValues: bucketEntries.map {
+            (calendar.startOfDay(for: $0.localDate), sourceForBucketState($0.state))
+        })
+
+        for legacyEntry in legacyEntries {
+            let day = calendar.startOfDay(for: legacyEntry.0)
+            guard entriesByDay[day] == nil else { continue }
+            entriesByDay[day] = legacyEntry.1
+        }
+
+        return entriesByDay
+            .map { ($0.key, $0.value) }
+            .sorted { $0.0 < $1.0 }
     }
 }

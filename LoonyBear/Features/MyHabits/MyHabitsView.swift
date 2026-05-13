@@ -29,7 +29,7 @@ struct MyHabitsView: View {
                 ContentUnavailableView(
                     allHabits.isEmpty ? "No habits yet" : "No active habits",
                     systemImage: "checklist",
-                    description: Text(allHabits.isEmpty ? "Create your first habit to start tracking your progress." : "Deleted habits live in Recently Deleted.")
+                    description: Text(allHabits.isEmpty ? "Create your first habit to start tracking your progress." : "Archived habits live in Archive.")
                 )
             } else {
                 List {
@@ -131,7 +131,7 @@ struct MyHabitsView: View {
                     Button {
                         isShowingArchive = true
                     } label: {
-                        AppToolbarIconLabel("Recently Deleted", systemName: "tray.badge")
+                        AppToolbarIconLabel("Archive", systemName: "tray.badge")
                     }
                     .appAccentTint()
                 }
@@ -208,9 +208,9 @@ private struct ArchivedHabitsView: View {
         Group {
             if archivedHabits.isEmpty {
                 ContentUnavailableView(
-                    "No recently deleted habits",
-                    systemImage: "trash",
-                    description: Text("Deleted habits will appear here.")
+                    "No archived habits",
+                    systemImage: "tray.badge",
+                    description: Text("Archived habits will appear here.")
                 )
             } else {
                 List {
@@ -235,7 +235,7 @@ private struct ArchivedHabitsView: View {
                 .scrollContentBackground(.hidden)
             }
         }
-        .navigationTitle("Recently Deleted")
+        .navigationTitle("Archive")
         .navigationBarTitleDisplayMode(.inline)
         .background(AppBackground(style: .habits))
         .appTintedBackButton()

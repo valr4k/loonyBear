@@ -79,7 +79,21 @@ struct CoreDataHabitRepository: HabitRepository {
         let today = calendar.startOfDay(for: now)
         var report = IntegrityReportBuilder()
         guard
-            let completions = loadCompletions(for: habitObject, habitID: id, report: &report),
+            let historySnapshot = CoreDataHistoryBucketSupport.validatedSnapshot(
+                from: habitObject,
+                bucketRelationshipKey: "historyBuckets",
+                rangeRelationshipKey: "historyRanges",
+                rangeOwnerKey: "habitID",
+                ownerID: id,
+                legacyRelationshipKey: "completions",
+                area: "details",
+                invalidBucketMessage: "Habit history bucket row is missing required fields or has overlapping masks.",
+                invalidRangeMessage: "Habit history range row is missing required fields or has invalid schedule/count.",
+                invalidLegacyMessage: "Habit completion row is missing required fields or has invalid sourceRaw.",
+                report: &report,
+                legacySourceToState: bucketState(from:),
+                calendar: calendar
+            ),
             let scheduleHistory = loadSchedules(for: habitObject, habitID: id, report: &report),
             let historyMode = habitHistoryMode(for: habitObject)
         else {
@@ -94,13 +108,6 @@ struct CoreDataHabitRepository: HabitRepository {
             throw error
         }
 
-        let successfulCompletions = completions.filter { $0.source.countsAsCompletion }
-        let completedDays = Set(successfulCompletions.map { calendar.startOfDay(for: $0.localDate) })
-        let skippedDays = Set(
-            completions
-                .filter { !$0.source.countsAsCompletion }
-                .map { calendar.startOfDay(for: $0.localDate) }
-        )
         let latestSchedule = scheduleHistory.sorted(by: CoreDataScheduleSupport.isNewerSchedule).first
 
         guard
@@ -128,6 +135,15 @@ struct CoreDataHabitRepository: HabitRepository {
             fallbackStartDate: startDate,
             calendar: calendar
         )
+        let displayRange = initialDetailsHistoryRange(startDate: activeStartDate, today: today)
+        let historySets = historySnapshot.daySets(
+            from: displayRange.lowerBound,
+            through: displayRange.upperBound,
+            calendar: calendar
+        )
+        let completedDays = historySets.positiveDays
+        let skippedDays = historySets.skippedDays
+        let archivedDays = historySets.archivedDays
         let reminderTime = ReminderValidation.validatedReminderTime(
             from: habitObject,
             reminderEnabled: reminderEnabled,
@@ -151,14 +167,14 @@ struct CoreDataHabitRepository: HabitRepository {
             endDate: endDate,
             schedules: scheduleHistory,
             reminderTime: reminderTime,
-            positiveDays: completedDays,
-            skippedDays: skippedDays,
+            hasPositiveState: { historySnapshot.state(on: $0, calendar: calendar) == .positive },
+            hasSkippedState: { historySnapshot.state(on: $0, calendar: calendar) == .skipped },
             now: now,
             calendar: calendar
         )
         let scheduledDates = HistoryScheduleApplicability.scheduledDays(
+            in: initialCalendarMonthRange(startDate: activeStartDate, today: today),
             startDate: activeStartDate,
-            through: HistoryMonthWindow.detailsCalendarEndDate(startDate: startDate, today: today, calendar: calendar),
             limitingTo: endDate,
             schedules: scheduleHistory,
             calendar: calendar
@@ -169,6 +185,7 @@ struct CoreDataHabitRepository: HabitRepository {
             type: type,
             name: name,
             startDate: startDate,
+            activeFrom: habitObject.dateValue(forKey: "activeFrom"),
             endDate: endDate,
             historyMode: historyMode,
             scheduleSummary: latestSchedule?.rule.summary ?? "No days selected",
@@ -177,28 +194,37 @@ struct CoreDataHabitRepository: HabitRepository {
             reminderEnabled: reminderEnabled,
             reminderTime: reminderTime,
             currentStreak: StreakEngine.currentStreak(
-                completions: successfulCompletions,
-                skippedCompletions: completions.filter { !$0.source.countsAsCompletion },
+                earliestCompletionDate: historySnapshot.earliestPositiveDate,
+                containsCompletion: { historySnapshot.state(on: $0, calendar: calendar) == .positive },
+                containsSkippedCompletion: { historySnapshot.state(on: $0, calendar: calendar) == .skipped },
                 schedules: scheduleHistory,
                 startDate: startDate,
-                today: today
+                today: today,
+                seed: historySnapshot.positiveStreakSeed(calendar: calendar),
+                calendar: calendar
             ),
             longestStreak: StreakEngine.longestStreak(
-                completions: successfulCompletions,
+                earliestCompletionDate: historySnapshot.earliestPositiveDate,
+                latestCompletionDate: historySnapshot.latestPositiveDate,
+                containsCompletion: { historySnapshot.state(on: $0, calendar: calendar) == .positive },
                 schedules: scheduleHistory,
-                startDate: startDate
+                startDate: startDate,
+                seed: historySnapshot.positiveStreakSeed(calendar: calendar),
+                calendar: calendar
             ),
-            totalCompletedDays: completedDays.count,
+            totalCompletedDays: historySnapshot.positiveCount,
             completedDays: completedDays,
             skippedDays: skippedDays,
+            archivedDays: archivedDays,
+            historySnapshot: historySnapshot,
             scheduleHistory: scheduleHistory,
             scheduledDates: scheduledDates,
             needsHistoryReview: !isArchived && needsHistoryReview(
                 startDate: activeStartDate,
                 endDate: endDate,
                 schedules: scheduleHistory,
-                positiveDays: completedDays,
-                skippedDays: skippedDays,
+                positiveDays: historySets.positiveDays,
+                skippedDays: historySets.skippedDays,
                 today: today,
                 activeOverdueDay: activeOverdueDay
             ),
@@ -209,7 +235,8 @@ struct CoreDataHabitRepository: HabitRepository {
                 today: today
             ),
             activeOverdueDay: activeOverdueDay,
-            isArchived: isArchived
+            isArchived: isArchived,
+            archivedAt: habitObject.dateValue(forKey: "archivedAt")
         )
     }
 
@@ -242,6 +269,7 @@ struct CoreDataHabitRepository: HabitRepository {
             habit.setValue(calendar.startOfDay(for: draft.startDate), forKey: "startDate")
             habit.setValue(draft.endDate.map { calendar.startOfDay(for: $0) }, forKey: "endDate")
             habit.setValue(false, forKey: "isArchived")
+            habit.setValue(nil, forKey: "archivedAt")
             habit.setValue(
                 draft.useScheduleForHistory ? HabitHistoryMode.scheduleBased.rawValue : HabitHistoryMode.everyDay.rawValue,
                 forKey: "historyModeRaw"
@@ -262,16 +290,39 @@ struct CoreDataHabitRepository: HabitRepository {
             schedule.setValue(Int32(1), forKey: "version")
             schedule.setValue(habit, forKey: "habit")
 
-            let initialCompletedDays = generatedInitialCompletedDays(from: draft, today: now)
-            for day in initialCompletedDays {
-                insertCompletion(
-                    for: habit,
-                    habitID: habitID,
-                    on: day,
-                    source: .autoFill,
-                    in: context
-                )
-            }
+            let initialCompletedPlan = CoreDataInitialHistoryPlanner.positiveHistoryPlan(
+                startDate: draft.startDate,
+                endDate: draft.endDate,
+                scheduleRule: draft.scheduleRule,
+                useScheduleForHistory: draft.useScheduleForHistory,
+                today: now,
+                calendar: calendar
+            )
+            try CoreDataHistoryRangeSupport.insertRange(
+                owner: habit,
+                ownerID: habitID,
+                draft: initialCompletedPlan.coldRange,
+                rangeEntityName: "HabitHistoryRange",
+                ownerKey: "habitID",
+                ownerRelationshipKey: "habit",
+                in: context,
+                now: now
+            )
+            try CoreDataHistoryBucketSupport.setStates(
+                owner: habit,
+                ownerID: habitID,
+                plan: initialCompletedPlan.editableBucketPlan,
+                state: .positive,
+                bucketEntityName: "HabitHistoryBucket",
+                ownerKey: "habitID",
+                ownerRelationshipKey: "habit",
+                legacyEntityName: "HabitCompletion",
+                rangeEntityName: "HabitHistoryRange",
+                in: context,
+                calendar: calendar,
+                now: now,
+                shouldDeleteLegacyRows: false
+            )
 
             applyAutomaticArchiveIfNeeded(
                 for: habit,
@@ -279,8 +330,7 @@ struct CoreDataHabitRepository: HabitRepository {
                 startDate: calendar.startOfDay(for: draft.startDate),
                 endDate: draft.endDate,
                 schedules: loadSchedules(for: habit, habitID: habitID),
-                positiveDays: Set(initialCompletedDays),
-                skippedDays: []
+                isFinalized: { initialCompletedPlan.contains($0, calendar: calendar) }
             )
 
             try context.save()
@@ -361,12 +411,8 @@ struct CoreDataHabitRepository: HabitRepository {
             guard let habit = try fetchHabit(id: id, in: context) else { return }
             guard !habit.boolValue(forKey: "isArchived") else { return }
             let today = calendar.startOfDay(for: day)
-            let completions = try fetchCompletions(for: id, on: today, in: context)
-            guard !completions.isEmpty else { return }
-
-            for completion in completions {
-                context.delete(completion)
-            }
+            let didChange = try clearCompletion(for: habit, habitID: id, on: today, in: context)
+            guard didChange else { return }
             try context.save()
             syncTodayOverdueAnchorAfterClearingDay(for: habit, habitID: id, clearedDay: today)
         }
@@ -387,6 +433,7 @@ struct CoreDataHabitRepository: HabitRepository {
             guard habit.boolValue(forKey: "isArchived") != isArchived else { return }
 
             habit.setValue(isArchived, forKey: "isArchived")
+            habit.setValue(isArchived ? clock.now() : nil, forKey: "archivedAt")
             habit.setValue(clock.now(), forKey: "updatedAt")
             try context.save()
 
@@ -486,18 +533,12 @@ struct CoreDataHabitRepository: HabitRepository {
                 throw EditableHistoryValidationError.missingHabitPastDays(missingPastDays)
             }
 
-            let existingCompletionObjects = try fetchCompletions(for: draft.id, on: editableSet, in: context)
-            let existingByDay = CoreDataHistorySupport.groupedHistoryObjectsByDay(existingCompletionObjects)
+            let existingByDay = try historySources(habitID: draft.id, on: editableSet, in: context)
 
             for day in editableSet {
                 let shouldBeCompleted = normalizedSelection.positiveDays.contains(day)
                 let shouldBeSkipped = normalizedSelection.skippedDays.contains(day)
-                let existingObjects = existingByDay[day] ?? []
-                let existing = primaryHistoryObject(in: existingObjects)
-
-                for duplicate in existingObjects where duplicate != existing {
-                    context.delete(duplicate)
-                }
+                let existing = existingByDay[day]
 
                 if shouldBeCompleted {
                     _ = try upsertCompletion(
@@ -517,8 +558,8 @@ struct CoreDataHabitRepository: HabitRepository {
                         in: context,
                         updateWhen: { $0 != .skipped }
                     )
-                } else if let existing {
-                    context.delete(existing)
+                } else if existing != nil {
+                    _ = try clearCompletion(for: habit, habitID: draft.id, on: day, in: context)
                 }
             }
 
@@ -542,6 +583,101 @@ struct CoreDataHabitRepository: HabitRepository {
                     now: now
                 )
             }
+        }
+    }
+
+    func restoreHabit(from draft: EditHabitDraft) throws {
+        try repositoryContext.performWrite { context in
+            guard let habit = try fetchHabit(id: draft.id, in: context) else { return }
+            guard habit.boolValue(forKey: "isArchived") else { return }
+
+            let now = clock.now()
+            let today = calendar.startOfDay(for: now)
+            let archivedAt = habit.dateValue(forKey: "archivedAt").map { calendar.startOfDay(for: $0) } ?? today
+            let activeFrom = calendar.startOfDay(for: draft.restoreActiveFrom ?? today)
+            let minimumActiveFrom = restoreMinimumActiveFrom(archivedAt: archivedAt, today: today)
+            guard activeFrom >= minimumActiveFrom else {
+                throw HabitRepositoryError.internalFailure
+            }
+
+            habit.setValue(draft.trimmedName, forKey: "name")
+            habit.setValue(draft.endDate.map { calendar.startOfDay(for: $0) }, forKey: "endDate")
+            habit.setValue(false, forKey: "isArchived")
+            habit.setValue(nil, forKey: "archivedAt")
+            habit.setValue(activeFrom, forKey: "activeFrom")
+            habit.setValue(draft.reminderEnabled, forKey: "reminderEnabled")
+            habit.setValue(draft.reminderEnabled ? Int16(draft.reminderTime.hour) : nil, forKey: "reminderHour")
+            habit.setValue(draft.reminderEnabled ? Int16(draft.reminderTime.minute) : nil, forKey: "reminderMinute")
+            habit.setValue(now, forKey: "updatedAt")
+
+            let scheduleRelationship = habit.mutableSetValue(forKey: "scheduleVersions")
+            let nextVersion = CoreDataScheduleSupport.nextVersion(in: scheduleRelationship)
+            CoreDataScheduleSupport.deleteScheduleObjects(
+                in: scheduleRelationship,
+                onOrAfter: activeFrom,
+                calendar: calendar,
+                context: context
+            )
+            let schedule = NSEntityDescription.insertNewObject(forEntityName: "HabitScheduleVersion", into: context)
+            schedule.setValue(UUID(), forKey: "id")
+            schedule.setValue(draft.id, forKey: "habitID")
+            CoreDataScheduleSupport.apply(draft.scheduleRule, to: schedule)
+            schedule.setValue(activeFrom, forKey: "effectiveFrom")
+            schedule.setValue(now, forKey: "createdAt")
+            schedule.setValue(nextVersion, forKey: "version")
+            schedule.setValue(habit, forKey: "habit")
+
+            try writeArchivedGap(
+                for: habit,
+                habitID: draft.id,
+                archivedAt: archivedAt,
+                activeFrom: activeFrom,
+                in: context
+            )
+
+            try applyRestoreDraftHistorySelection(
+                for: habit,
+                habitID: draft.id,
+                draft: draft,
+                activeFrom: activeFrom,
+                today: today,
+                in: context
+            )
+
+            let schedules = loadSchedules(for: habit, habitID: draft.id)
+            let restoredDays = try autoFillRestoredCompletedDays(
+                for: habit,
+                habitID: draft.id,
+                activeFrom: activeFrom,
+                endDate: draft.endDate,
+                schedules: schedules,
+                today: today,
+                in: context
+            )
+
+            try context.save()
+
+            let allCompletions = loadCompletions(for: habit, habitID: draft.id)
+            let positiveDays = Set(
+                allCompletions
+                    .filter { $0.source.countsAsCompletion }
+                    .map { calendar.startOfDay(for: $0.localDate) }
+            ).union(restoredDays)
+            let skippedDays = Set(
+                allCompletions
+                    .filter { $0.source.countsAsSkipped }
+                    .map { calendar.startOfDay(for: $0.localDate) }
+            )
+            syncTodayOverdueAnchorAfterEdit(
+                habitID: draft.id,
+                startDate: activeFrom,
+                endDate: draft.endDate,
+                schedules: schedules,
+                reminderTime: draft.reminderEnabled ? draft.reminderTime : nil,
+                positiveDays: positiveDays,
+                skippedDays: skippedDays,
+                now: now
+            )
         }
     }
 
@@ -581,6 +717,94 @@ struct CoreDataHabitRepository: HabitRepository {
         CoreDataHistorySupport.primaryHistoryObject(in: objects)
     }
 
+    private func bucketState(for source: CompletionSource) -> CoreDataHistoryBucketState {
+        if source.countsAsSkipped {
+            return .skipped
+        }
+        if source == .archived {
+            return .archived
+        }
+        return .positive
+    }
+
+    private func bucketState(from sourceRaw: String) -> CoreDataHistoryBucketState? {
+        CompletionSource(rawValue: sourceRaw).map(bucketState(for:))
+    }
+
+    private func completionSource(for state: CoreDataHistoryBucketState) -> CompletionSource {
+        switch state {
+        case .positive: return .manualEdit
+        case .skipped: return .skipped
+        case .archived: return .archived
+        }
+    }
+
+    private func historySource(for habitID: UUID, on localDate: Date, in context: NSManagedObjectContext) throws -> CompletionSource? {
+        try CoreDataHistoryBucketSupport.state(
+            ownerID: habitID,
+            localDate: localDate,
+            bucketEntityName: "HabitHistoryBucket",
+            ownerKey: "habitID",
+            legacyEntityName: "HabitCompletion",
+            rangeEntityName: "HabitHistoryRange",
+            legacySourceToState: bucketState(from:),
+            in: context,
+            calendar: calendar
+        ).map(completionSource(for:))
+    }
+
+    private func explicitHistorySource(for habitID: UUID, on localDate: Date, in context: NSManagedObjectContext) throws -> CompletionSource? {
+        try CoreDataHistoryBucketSupport.state(
+            ownerID: habitID,
+            localDate: localDate,
+            bucketEntityName: "HabitHistoryBucket",
+            ownerKey: "habitID",
+            legacyEntityName: "HabitCompletion",
+            legacySourceToState: bucketState(from:),
+            in: context,
+            calendar: calendar
+        ).map(completionSource(for:))
+    }
+
+    private func historySources(
+        habitID: UUID,
+        on localDates: Set<Date>,
+        in context: NSManagedObjectContext
+    ) throws -> [Date: CompletionSource] {
+        guard !localDates.isEmpty else { return [:] }
+
+        let normalizedDates = Set(localDates.map { calendar.startOfDay(for: $0) })
+        var sources: [Date: CompletionSource] = [:]
+        for day in normalizedDates {
+            if let source = try historySource(for: habitID, on: day, in: context) {
+                sources[day] = source
+            }
+        }
+
+        return sources
+    }
+
+    private func clearCompletion(
+        for habit: NSManagedObject,
+        habitID: UUID,
+        on localDate: Date,
+        in context: NSManagedObjectContext
+    ) throws -> Bool {
+        try CoreDataHistoryBucketSupport.clearState(
+            owner: habit,
+            ownerID: habitID,
+            localDate: localDate,
+            bucketEntityName: "HabitHistoryBucket",
+            ownerKey: "habitID",
+            ownerRelationshipKey: "habit",
+            legacyEntityName: "HabitCompletion",
+            rangeEntityName: "HabitHistoryRange",
+            in: context,
+            calendar: calendar,
+            now: clock.now()
+        )
+    }
+
     private func upsertCompletion(
         for habit: NSManagedObject,
         habitID: UUID,
@@ -590,79 +814,238 @@ struct CoreDataHabitRepository: HabitRepository {
         updateWhen shouldUpdate: (CompletionSource) -> Bool
     ) throws -> Bool {
         let normalizedDate = calendar.startOfDay(for: localDate)
-        let existingObjects = try fetchCompletions(for: habitID, on: normalizedDate, in: context)
-        let existing = primaryHistoryObject(in: existingObjects)
-        let duplicateObjects = existingObjects.filter { $0 != existing }
-
-        for duplicate in duplicateObjects {
-            context.delete(duplicate)
-        }
-
-        guard let existing else {
-            insertCompletion(
+        guard let existingSource = try explicitHistorySource(for: habitID, on: normalizedDate, in: context) else {
+            return try insertCompletion(
                 for: habit,
                 habitID: habitID,
                 on: normalizedDate,
                 source: desiredSource,
                 in: context
             )
-            return true
-        }
-
-        guard
-            let sourceRaw = existing.stringValue(forKey: "sourceRaw"),
-            let existingSource = CompletionSource(rawValue: sourceRaw)
-        else {
-            return !duplicateObjects.isEmpty
         }
 
         guard shouldUpdate(existingSource), existingSource != desiredSource else {
-            return !duplicateObjects.isEmpty
+            return false
         }
 
-        existing.setValue(desiredSource.rawValue, forKey: "sourceRaw")
-        existing.setValue(clock.now(), forKey: "createdAt")
-        existing.setValue(habit, forKey: "habit")
-        return true
+        return try insertCompletion(
+            for: habit,
+            habitID: habitID,
+            on: normalizedDate,
+            source: desiredSource,
+            in: context
+        )
     }
 
+    @discardableResult
     private func insertCompletion(
         for habit: NSManagedObject,
         habitID: UUID,
         on localDate: Date,
         source: CompletionSource,
         in context: NSManagedObjectContext
-    ) {
-        let completion = NSEntityDescription.insertNewObject(forEntityName: "HabitCompletion", into: context)
-        completion.setValue(UUID(), forKey: "id")
-        completion.setValue(habitID, forKey: "habitID")
-        completion.setValue(localDate, forKey: "localDate")
-        completion.setValue(source.rawValue, forKey: "sourceRaw")
-        completion.setValue(clock.now(), forKey: "createdAt")
-        completion.setValue(habit, forKey: "habit")
+    ) throws -> Bool {
+        try CoreDataHistoryBucketSupport.setState(
+            owner: habit,
+            ownerID: habitID,
+            localDate: localDate,
+            state: bucketState(for: source),
+            bucketEntityName: "HabitHistoryBucket",
+            ownerKey: "habitID",
+            ownerRelationshipKey: "habit",
+            legacyEntityName: "HabitCompletion",
+            rangeEntityName: "HabitHistoryRange",
+            in: context,
+            calendar: calendar,
+            now: clock.now()
+        )
+    }
+
+    private func writeArchivedGap(
+        for habit: NSManagedObject,
+        habitID: UUID,
+        archivedAt: Date,
+        activeFrom: Date,
+        in context: NSManagedObjectContext
+    ) throws {
+        let normalizedArchivedAt = calendar.startOfDay(for: archivedAt)
+        let normalizedActiveFrom = calendar.startOfDay(for: activeFrom)
+        guard let end = calendar.date(byAdding: .day, value: -1, to: normalizedActiveFrom), normalizedArchivedAt <= end else {
+            return
+        }
+
+        try CoreDataHistoryRangeSupport.insertCalendarDayRanges(
+            owner: habit,
+            ownerID: habitID,
+            startDate: normalizedArchivedAt,
+            endDate: end,
+            state: .archived,
+            excludedDays: explicitHistoryDates(
+                for: habit,
+                habitID: habitID,
+                from: normalizedArchivedAt,
+                through: end
+            ),
+            rangeEntityName: "HabitHistoryRange",
+            ownerKey: "habitID",
+            ownerRelationshipKey: "habit",
+            in: context,
+            calendar: calendar,
+            now: clock.now()
+        )
+    }
+
+    private func applyRestoreDraftHistorySelection(
+        for habit: NSManagedObject,
+        habitID: UUID,
+        draft: EditHabitDraft,
+        activeFrom: Date,
+        today: Date,
+        in context: NSManagedObjectContext
+    ) throws {
+        let editableSet = EditableHistoryWindow.dates(
+            startDate: activeFrom,
+            today: today,
+            calendar: calendar
+        )
+        let normalizedSelection = EditableHistoryContract.normalizedSelection(
+            positiveDays: draft.completedDays,
+            skippedDays: draft.skippedDays,
+            requiredFinalizedDays: [],
+            pastDefaultSelection: .none,
+            today: today,
+            calendar: calendar
+        )
+        let existingByDay = try historySources(habitID: habitID, on: editableSet, in: context)
+
+        for day in editableSet {
+            let shouldBeCompleted = normalizedSelection.positiveDays.contains(day)
+            let shouldBeSkipped = normalizedSelection.skippedDays.contains(day)
+            let existing = existingByDay[day]
+
+            if shouldBeCompleted {
+                _ = try upsertCompletion(
+                    for: habit,
+                    habitID: habitID,
+                    on: day,
+                    source: .manualEdit,
+                    in: context,
+                    updateWhen: { !$0.countsAsCompletion }
+                )
+            } else if shouldBeSkipped {
+                _ = try upsertCompletion(
+                    for: habit,
+                    habitID: habitID,
+                    on: day,
+                    source: .skipped,
+                    in: context,
+                    updateWhen: { $0 != .skipped }
+                )
+            } else if existing != nil {
+                _ = try clearCompletion(for: habit, habitID: habitID, on: day, in: context)
+            }
+        }
+    }
+
+    private func autoFillRestoredCompletedDays(
+        for habit: NSManagedObject,
+        habitID: UUID,
+        activeFrom: Date,
+        endDate: Date?,
+        schedules: [HabitScheduleVersion],
+        today: Date,
+        in context: NSManagedObjectContext
+    ) throws -> Set<Date> {
+        guard let yesterday = calendar.date(byAdding: .day, value: -1, to: today), activeFrom <= yesterday else {
+            return []
+        }
+
+        var restoredDays = Set<Date>()
+        for day in calendarDays(from: activeFrom, through: yesterday) where HistoryScheduleApplicability.isScheduled(
+            on: day,
+            startDate: activeFrom,
+            endDate: endDate,
+            from: schedules,
+            calendar: calendar
+        ) {
+            let didChange = try upsertCompletion(
+                for: habit,
+                habitID: habitID,
+                on: day,
+                source: .restore,
+                in: context,
+                updateWhen: { !$0.countsAsCompletion && !$0.countsAsSkipped }
+            )
+            if didChange {
+                restoredDays.insert(day)
+            }
+        }
+        return restoredDays
+    }
+
+    private func restoreMinimumActiveFrom(archivedAt: Date, today: Date) -> Date {
+        let editableStart = calendar.date(byAdding: .day, value: -29, to: today) ?? today
+        return max(calendar.startOfDay(for: archivedAt), calendar.startOfDay(for: editableStart))
+    }
+
+    private func calendarDays(from start: Date, through end: Date) -> [Date] {
+        var days: [Date] = []
+        var cursor = calendar.startOfDay(for: start)
+        let normalizedEnd = calendar.startOfDay(for: end)
+        while cursor <= normalizedEnd {
+            days.append(cursor)
+            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else { break }
+            cursor = calendar.startOfDay(for: next)
+        }
+        return days
+    }
+
+    private func explicitHistoryDates(
+        for habit: NSManagedObject,
+        habitID: UUID,
+        from startDate: Date,
+        through endDate: Date
+    ) -> Set<Date> {
+        let normalizedStart = calendar.startOfDay(for: startDate)
+        let normalizedEnd = calendar.startOfDay(for: endDate)
+        let bucketDates = CoreDataHistoryBucketSupport.entries(
+            from: habit,
+            relationshipKey: "historyBuckets",
+            ownerID: habitID,
+            calendar: calendar
+        ).map { calendar.startOfDay(for: $0.localDate) }
+        let legacyDates = ((habit.mutableSetValue(forKey: "completions").allObjects as? [NSManagedObject]) ?? [])
+            .compactMap { $0.dateValue(forKey: "localDate") }
+            .map { calendar.startOfDay(for: $0) }
+
+        return Set((bucketDates + legacyDates).filter { $0 >= normalizedStart && $0 <= normalizedEnd })
     }
 
     private func applyAutomaticArchiveIfNeeded(
         for habit: NSManagedObject,
         habitID: UUID
     ) {
-        let completions = loadCompletions(for: habit, habitID: habitID)
-        let positiveDays = Set(
-            completions
-                .filter { $0.source.countsAsCompletion }
-                .map { calendar.startOfDay(for: $0.localDate) }
+        guard let startDate = habit.dateValue(forKey: "startDate") else { return }
+        let activeStartDate = ActiveCycleStartDate.value(
+            for: habit,
+            fallbackStartDate: startDate,
+            calendar: calendar
         )
-        let skippedDays = Set(
-            completions
-                .filter { !$0.source.countsAsCompletion }
-                .map { calendar.startOfDay(for: $0.localDate) }
-        )
-
         applyAutomaticArchiveIfNeeded(
             for: habit,
             habitID: habitID,
-            positiveDays: positiveDays,
-            skippedDays: skippedDays
+            startDate: activeStartDate,
+            endDate: habit.dateValue(forKey: "endDate"),
+            schedules: loadSchedules(for: habit, habitID: habitID),
+            isFinalized: { day in
+                guard
+                    let context = habit.managedObjectContext,
+                    let source = try? historySource(for: habitID, on: day, in: context)
+                else {
+                    return false
+                }
+                return source.countsAsCompletion || source.countsAsSkipped
+            }
         )
     }
 
@@ -699,18 +1082,40 @@ struct CoreDataHabitRepository: HabitRepository {
         skippedDays: Set<Date>
     ) {
         guard !habit.boolValue(forKey: "isArchived") else { return }
+        let normalizedPositiveDays = Set(positiveDays.map { calendar.startOfDay(for: $0) })
+        let normalizedSkippedDays = Set(skippedDays.map { calendar.startOfDay(for: $0) })
+        let finalizedDays = normalizedPositiveDays.union(normalizedSkippedDays)
+        applyAutomaticArchiveIfNeeded(
+            for: habit,
+            habitID: habitID,
+            startDate: startDate,
+            endDate: endDate,
+            schedules: schedules,
+            isFinalized: { finalizedDays.contains($0) }
+        )
+    }
+
+    private func applyAutomaticArchiveIfNeeded(
+        for habit: NSManagedObject,
+        habitID: UUID,
+        startDate: Date,
+        endDate: Date?,
+        schedules: [HabitScheduleVersion],
+        isFinalized: (Date) -> Bool
+    ) {
+        guard !habit.boolValue(forKey: "isArchived") else { return }
         guard ScheduleLifecycleSupport.shouldAutoArchive(
             startDate: startDate,
             endDate: endDate,
             schedules: schedules,
-            positiveDays: positiveDays,
-            skippedDays: skippedDays,
+            isFinalized: isFinalized,
             calendar: calendar
         ) else {
             return
         }
 
         habit.setValue(true, forKey: "isArchived")
+        habit.setValue(clock.now(), forKey: "archivedAt")
         habit.setValue(clock.now(), forKey: "updatedAt")
         overdueAnchorStore.clearAnchorDay(for: .habit, id: habitID)
     }
@@ -736,41 +1141,22 @@ struct CoreDataHabitRepository: HabitRepository {
         )?.resolvedDate ?? minimumDate
     }
 
-    private func generatedInitialCompletedDays(from draft: CreateHabitDraft, today: Date) -> [Date] {
-        let startDate = calendar.startOfDay(for: draft.startDate)
-        let normalizedToday = calendar.startOfDay(for: today)
-        guard let yesterday = calendar.date(byAdding: .day, value: -1, to: normalizedToday) else {
-            return []
-        }
-        let endDate = draft.endDate
-            .map { min(calendar.startOfDay(for: yesterday), calendar.startOfDay(for: $0)) }
-            ?? calendar.startOfDay(for: yesterday)
-        guard startDate <= endDate else { return [] }
-
-        var completedDays: [Date] = []
-        var cursor = startDate
-
-        while cursor <= endDate {
-            if shouldGenerateInitialCompletion(on: cursor, for: draft) {
-                completedDays.append(cursor)
-            }
-
-            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else {
-                break
-            }
-            cursor = calendar.startOfDay(for: next)
-        }
-
-        return completedDays
-    }
-
-    private func shouldGenerateInitialCompletion(on day: Date, for draft: CreateHabitDraft) -> Bool {
-        guard draft.useScheduleForHistory else { return true }
-        return draft.scheduleRule.isScheduled(on: day, anchorDate: draft.startDate, calendar: calendar)
-    }
-
     private func loadCompletions(for habitObject: NSManagedObject, habitID: UUID) -> [HabitCompletion] {
-        CoreDataRelationshipLoadingSupport.compactHistoryModels(
+        let bucketCompletions = CoreDataHistoryBucketSupport.entries(
+            from: habitObject,
+            relationshipKey: "historyBuckets",
+            ownerID: habitID,
+            calendar: calendar
+        ).map { entry in
+            HabitCompletion(
+                id: UUID(),
+                habitID: habitID,
+                localDate: entry.localDate,
+                source: completionSource(for: entry.state),
+                createdAt: entry.createdAt
+            )
+        }
+        let legacyCompletions = CoreDataRelationshipLoadingSupport.compactHistoryModels(
             from: habitObject,
             relationshipKey: "completions"
         ) { completionID, localDate, source, createdAt in
@@ -782,6 +1168,7 @@ struct CoreDataHabitRepository: HabitRepository {
                 createdAt: createdAt
             )
         }
+        return mergedCompletions(bucketCompletions: bucketCompletions, legacyCompletions: legacyCompletions)
     }
 
     private func loadCompletions(
@@ -789,7 +1176,27 @@ struct CoreDataHabitRepository: HabitRepository {
         habitID: UUID,
         report: inout IntegrityReportBuilder
     ) -> [HabitCompletion]? {
-        CoreDataRelationshipLoadingSupport.validatedHistoryModels(
+        guard let bucketEntries = CoreDataHistoryBucketSupport.validatedEntries(
+            from: habitObject,
+            relationshipKey: "historyBuckets",
+            area: "dashboard",
+            invalidMessage: "Habit history bucket row is missing required fields or has overlapping masks.",
+            report: &report,
+            ownerID: habitID,
+            calendar: calendar
+        ) else {
+            return nil
+        }
+        let bucketCompletions = bucketEntries.map { entry in
+            HabitCompletion(
+                id: UUID(),
+                habitID: habitID,
+                localDate: entry.localDate,
+                source: completionSource(for: entry.state),
+                createdAt: entry.createdAt
+            )
+        }
+        let legacyCompletions = CoreDataRelationshipLoadingSupport.validatedHistoryModels(
             from: habitObject,
             relationshipKey: "completions",
             area: "dashboard",
@@ -804,6 +1211,54 @@ struct CoreDataHabitRepository: HabitRepository {
                 createdAt: createdAt
             )
         }
+        guard let legacyCompletions else {
+            return nil
+        }
+        return mergedCompletions(bucketCompletions: bucketCompletions, legacyCompletions: legacyCompletions)
+    }
+
+    private func mergedCompletions(
+        bucketCompletions: [HabitCompletion],
+        legacyCompletions: [HabitCompletion]
+    ) -> [HabitCompletion] {
+        var byDay = Dictionary(uniqueKeysWithValues: bucketCompletions.map {
+            (calendar.startOfDay(for: $0.localDate), $0)
+        })
+        for completion in legacyCompletions {
+            let day = calendar.startOfDay(for: completion.localDate)
+            guard byDay[day] == nil else { continue }
+            byDay[day] = completion
+        }
+        return byDay.values.sorted { $0.localDate < $1.localDate }
+    }
+
+    private func initialCalendarMonthRange(startDate: Date, today: Date) -> ClosedRange<Date> {
+        let displayMonth = HistoryMonthWindow.displayMonth(
+            startDate: startDate,
+            today: today,
+            calendar: calendar
+        )
+        let displayMonthEnd = HistoryMonthWindow.endOfMonth(containing: displayMonth, calendar: calendar)
+        return displayMonth ... displayMonthEnd
+    }
+
+    private func initialDetailsHistoryRange(startDate: Date, today: Date) -> ClosedRange<Date> {
+        var lowerBound = initialCalendarMonthRange(startDate: startDate, today: today).lowerBound
+        var upperBound = initialCalendarMonthRange(startDate: startDate, today: today).upperBound
+        let editableDays = EditableHistoryWindow.dates(
+            startDate: startDate,
+            today: today,
+            calendar: calendar
+        )
+
+        if let firstEditableDay = editableDays.min() {
+            lowerBound = min(lowerBound, firstEditableDay)
+        }
+        if let lastEditableDay = editableDays.max() {
+            upperBound = max(upperBound, lastEditableDay)
+        }
+
+        return lowerBound ... upperBound
     }
 
     private func loadSchedules(for habitObject: NSManagedObject, habitID: UUID) -> [HabitScheduleVersion] {
@@ -869,7 +1324,21 @@ struct CoreDataHabitRepository: HabitRepository {
         }
 
         guard
-            let completionModels = loadCompletions(for: habitObject, habitID: id, report: &report),
+            let historySnapshot = CoreDataHistoryBucketSupport.validatedSnapshot(
+                from: habitObject,
+                bucketRelationshipKey: "historyBuckets",
+                rangeRelationshipKey: "historyRanges",
+                rangeOwnerKey: "habitID",
+                ownerID: id,
+                legacyRelationshipKey: "completions",
+                area: "dashboard",
+                invalidBucketMessage: "Habit history bucket row is missing required fields or has overlapping masks.",
+                invalidRangeMessage: "Habit history range row is missing required fields or has invalid schedule/count.",
+                invalidLegacyMessage: "Habit completion row is missing required fields or has invalid sourceRaw.",
+                report: &report,
+                legacySourceToState: bucketState(from:),
+                calendar: calendar
+            ),
             let scheduleHistory = loadSchedules(for: habitObject, habitID: id, report: &report)
         else {
             report.append(
@@ -885,23 +1354,15 @@ struct CoreDataHabitRepository: HabitRepository {
         let endDate = habitObject.dateValue(forKey: "endDate")
         let isArchived = habitObject.boolValue(forKey: "isArchived")
         let latestSchedule = scheduleHistory.sorted(by: CoreDataScheduleSupport.isNewerSchedule).first
-        let successfulCompletions = completionModels.filter { $0.source.countsAsCompletion }
-        let completedDays = Set(successfulCompletions.map { calendar.startOfDay(for: $0.localDate) })
-        let skippedDays = Set(
-            completionModels
-                .filter { !$0.source.countsAsCompletion }
-                .map { calendar.startOfDay(for: $0.localDate) }
-        )
         let activeStartDate = ActiveCycleStartDate.value(
             for: habitObject,
             fallbackStartDate: startDate,
             calendar: calendar
         )
         let hasStarted = activeStartDate <= today
-        let isCompletedToday = !isArchived && hasStarted && successfulCompletions.contains { calendar.isDate($0.localDate, inSameDayAs: today) }
-        let isSkippedToday = !isArchived && hasStarted && completionModels.contains {
-            !$0.source.countsAsCompletion && calendar.isDate($0.localDate, inSameDayAs: today)
-        }
+        let todayState = historySnapshot.state(on: today, calendar: calendar)
+        let isCompletedToday = !isArchived && hasStarted && todayState == .positive
+        let isSkippedToday = !isArchived && hasStarted && todayState == .skipped
         let reminderEnabled = habitObject.boolValue(forKey: "reminderEnabled")
         let validatedReminderTime = ReminderValidation.validatedReminderTime(
             from: habitObject,
@@ -940,20 +1401,29 @@ struct CoreDataHabitRepository: HabitRepository {
         }
 
         let streak = StreakEngine.currentStreak(
-            completions: successfulCompletions,
-            skippedCompletions: completionModels.filter { !$0.source.countsAsCompletion },
+            earliestCompletionDate: historySnapshot.earliestPositiveDate,
+            containsCompletion: { historySnapshot.state(on: $0, calendar: calendar) == .positive },
+            containsSkippedCompletion: { historySnapshot.state(on: $0, calendar: calendar) == .skipped },
             schedules: scheduleHistory,
             startDate: startDate,
-            today: today
+            today: today,
+            seed: historySnapshot.positiveStreakSeed(calendar: calendar),
+            calendar: calendar
         )
         let activeOverdueDay = isArchived ? nil : ScheduledOverdueState.activeOverdueDay(
             startDate: activeStartDate,
             endDate: endDate,
             schedules: scheduleHistory,
             reminderTime: validatedReminderTime,
-            positiveDays: completedDays,
-            skippedDays: skippedDays,
+            hasPositiveState: { historySnapshot.state(on: $0, calendar: calendar) == .positive },
+            hasSkippedState: { historySnapshot.state(on: $0, calendar: calendar) == .skipped },
             now: now,
+            calendar: calendar
+        )
+        let editableDays = EditableHistoryWindow.dates(startDate: activeStartDate, today: today, calendar: calendar)
+        let editableSets = historySnapshot.daySets(
+            from: editableDays.min() ?? today,
+            through: editableDays.max() ?? today,
             calendar: calendar
         )
 
@@ -980,8 +1450,8 @@ struct CoreDataHabitRepository: HabitRepository {
                 startDate: activeStartDate,
                 endDate: endDate,
                 schedules: scheduleHistory,
-                positiveDays: completedDays,
-                skippedDays: skippedDays,
+                positiveDays: editableSets.positiveDays,
+                skippedDays: editableSets.skippedDays,
                 today: today,
                 activeOverdueDay: activeOverdueDay
             ),
@@ -1087,7 +1557,8 @@ struct CoreDataHabitRepository: HabitRepository {
         now: Date
     ) {
         let today = calendar.startOfDay(for: now)
-        let dueDays = ScheduledOverdueState.dueScheduledDays(
+        let isTodayDue = ScheduledOverdueState.isDueScheduledDay(
+            today,
             startDate: startDate,
             endDate: endDate,
             schedules: schedules,
@@ -1098,7 +1569,7 @@ struct CoreDataHabitRepository: HabitRepository {
             calendar: calendar
         )
 
-        if dueDays.contains(today) {
+        if isTodayDue {
             overdueAnchorStore.setAnchorDay(today, for: .habit, id: habitID, calendar: calendar)
         } else if overdueAnchorStore.anchorDay(for: .habit, id: habitID, calendar: calendar) == today {
             overdueAnchorStore.clearAnchorDay(for: .habit, id: habitID)

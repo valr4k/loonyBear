@@ -53,7 +53,6 @@ struct HabitSideEffectCoordinator {
 
     func prepareReminderNotifications(forHabitID habitID: UUID) async {
         await notificationService.prepareReminderNotifications(forHabitID: habitID)
-        rescheduleAllReminderNotifications?()
     }
 
     func syncNotificationsAfterUpdate(from draft: EditHabitDraft) async {
@@ -62,6 +61,5 @@ struct HabitSideEffectCoordinator {
         } else {
             notificationService.removeNotifications(forHabitID: draft.id)
         }
-        rescheduleAllReminderNotifications?()
     }
 }

@@ -90,9 +90,12 @@ struct HabitDetailsView: View {
                     DetailsCard {
                         HabitHeatmapView(
                             startDate: details.startDate,
+                            endDate: details.endDate,
                             completedDays: details.completedDays,
                             skippedDays: details.skippedDays,
-                            scheduledDates: details.scheduledDates,
+                            archivedDays: details.archivedDays,
+                            historySnapshot: details.historySnapshot,
+                            scheduleHistory: details.scheduleHistory,
                             displayedMonth: $displayedMonth
                         )
                         .padding(.horizontal, 18)
@@ -359,9 +362,12 @@ private struct DetailsCard<Content: View>: View {
 
 private struct HabitHeatmapView: View {
     let startDate: Date
+    let endDate: Date?
     let completedDays: Set<Date>
     let skippedDays: Set<Date>
-    let scheduledDates: Set<Date>
+    let archivedDays: Set<Date>
+    let historySnapshot: CoreDataHistoryBucketSnapshot
+    let scheduleHistory: [HabitScheduleVersion]
     @Binding var displayedMonth: Date
 
     private var calendar: Calendar {
@@ -376,20 +382,42 @@ private struct HabitHeatmapView: View {
                 month: displayedMonth,
                 completedDays: completedDays,
                 skippedDays: skippedDays,
-                scheduledDates: scheduledDates,
-                availableMonths: displayMonths,
+                archivedDays: archivedDays,
+                historySnapshot: historySnapshot,
+                scheduledDates: visibleScheduledDates,
+                availableMonthRange: displayMonthRange,
                 onMonthChange: { displayedMonth = $0 }
             )
         }
         .padding(.vertical, 4)
     }
 
-    private var displayMonths: [Date] {
-        HistoryMonthWindow.months(
-            from: startDate,
-            through: HistoryMonthWindow.detailsCalendarEndDate(startDate: startDate, today: Date(), calendar: calendar),
+    private var displayMonthRange: ClosedRange<Date> {
+        let firstMonth = HistoryMonthWindow.monthStart(containing: startDate, calendar: calendar)
+        let lastMonth = HistoryMonthWindow.monthStart(
+            containing: HistoryMonthWindow.detailsCalendarEndDate(startDate: startDate, today: Date(), calendar: calendar),
             calendar: calendar
         )
+        return firstMonth ... max(firstMonth, lastMonth)
+    }
+
+    private var visibleScheduledDates: Set<Date> {
+        HistoryScheduleApplicability.scheduledDays(
+            in: displayedMonthRange,
+            startDate: startDate,
+            limitingTo: endDate,
+            schedules: scheduleHistory,
+            calendar: calendar
+        )
+    }
+
+    private var displayedMonthRange: ClosedRange<Date> {
+        let monthStart = calendar.date(
+            from: calendar.dateComponents([.year, .month], from: displayedMonth)
+        ) ?? calendar.startOfDay(for: displayedMonth)
+        let nextMonth = calendar.date(byAdding: .month, value: 1, to: monthStart) ?? monthStart
+        let monthEnd = calendar.date(byAdding: .day, value: -1, to: nextMonth) ?? monthStart
+        return monthStart ... monthEnd
     }
 }
 
@@ -397,8 +425,10 @@ private struct ReadOnlyMonthCalendarView: View {
     let month: Date
     let completedDays: Set<Date>
     let skippedDays: Set<Date>
+    let archivedDays: Set<Date>
+    let historySnapshot: CoreDataHistoryBucketSnapshot
     let scheduledDates: Set<Date>
-    let availableMonths: [Date]
+    let availableMonthRange: ClosedRange<Date>
     let onMonthChange: (Date) -> Void
 
     private var calendar: Calendar {
@@ -408,7 +438,7 @@ private struct ReadOnlyMonthCalendarView: View {
     var body: some View {
         MonthCalendarView(
             month: month,
-            availableMonths: availableMonths,
+            availableMonthRange: availableMonthRange,
             calendar: calendar,
             headerSpacing: 10,
             onMonthChange: onMonthChange
@@ -431,6 +461,19 @@ private struct ReadOnlyMonthCalendarView: View {
         }
         if skippedDays.contains(normalizedDate) {
             return .skipped
+        }
+        if archivedDays.contains(normalizedDate) {
+            return .archived
+        }
+        if let state = historySnapshot.state(on: normalizedDate, calendar: calendar) {
+            switch state {
+            case .positive:
+                return .completed
+            case .skipped:
+                return .skipped
+            case .archived:
+                return .archived
+            }
         }
         return .disabled
     }

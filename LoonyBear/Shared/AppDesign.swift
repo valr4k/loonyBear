@@ -259,8 +259,8 @@ enum AppCopy {
     static let chooseAtLeastOneDay = "Select at least one day."
     static let notificationsRequired = "Turn on notifications in Settings to use reminders."
     static let endDateRemovedForNeverRepeat = "End date removed. Repeat set to Never."
-    static let endDateCannotBeInPast = "End date can’t be in the past."
-    static let endDateMustIncludeScheduledDay = "End date must include at least one scheduled day."
+    nonisolated static let endDateCannotBeInPast = "End date can’t be in the past."
+    nonisolated static let endDateMustIncludeScheduledDay = "End date must include at least one scheduled day."
     static let countdownDateMustBeFuture = "Countdown date must be in the future."
     static let countUpDateMustBePast = "Count Up date must be in the past."
     static let backupFolderHint = "Backups stay in the selected Files folder even if the app is deleted. After reinstalling, choose the same folder again before restoring."
@@ -282,7 +282,7 @@ enum AppCopy {
         "Finish updating past days."
     }
 
-    static func endDateValidationMessage(for reason: EndDateValidationFailureReason) -> String {
+    nonisolated static func endDateValidationMessage(for reason: EndDateValidationFailureReason) -> String {
         switch reason {
         case .dateInPast:
             return endDateCannotBeInPast
@@ -927,17 +927,20 @@ struct AppReminderTimeRows: View {
 struct AppDatePickerRow: View {
     let title: String
     @Binding var date: Date
+    let dateRange: ClosedRange<Date>?
     let onTap: (() -> Void)?
     let isPickerPresentationBlocked: Bool
 
     init(
         title: String = "Start Date",
         date: Binding<Date>,
+        dateRange: ClosedRange<Date>? = nil,
         onTap: (() -> Void)? = nil,
         isPickerPresentationBlocked: Bool = false
     ) {
         self.title = title
         _date = date
+        self.dateRange = dateRange
         self.onTap = onTap
         self.isPickerPresentationBlocked = isPickerPresentationBlocked
     }
@@ -960,8 +963,21 @@ struct AppDatePickerRow: View {
         })
     }
 
+    @ViewBuilder
     private var datePicker: some View {
-        DatePicker("", selection: $date, displayedComponents: .date)
+        if let dateRange {
+            styledDatePicker(
+                DatePicker("", selection: $date, in: dateRange, displayedComponents: .date)
+            )
+        } else {
+            styledDatePicker(
+                DatePicker("", selection: $date, displayedComponents: .date)
+            )
+        }
+    }
+
+    private func styledDatePicker<Picker: View>(_ picker: Picker) -> some View {
+        picker
             .datePickerStyle(.compact)
             .labelsHidden()
             .appAccentTint()
@@ -1393,6 +1409,8 @@ struct AppCreateScheduleSection<RepeatDestination: View>: View {
 
 struct AppEditScheduleSection<RepeatDestination: View>: View {
     let startDate: Date
+    let activeFrom: Binding<Date>?
+    let activeFromRange: ClosedRange<Date>?
     @Binding var reminderEnabled: Bool
     @Binding var reminderDate: Date
     let repeatSummary: String
@@ -1401,6 +1419,7 @@ struct AppEditScheduleSection<RepeatDestination: View>: View {
     let isEndDateEnabled: Bool
     let endDateTitle: String
     let endDateEmptyTitle: String
+    let activeFromTap: (() -> Void)?
     let reminderTimeTap: (() -> Void)?
     let repeatTap: (() -> Void)?
     let endDateTap: (() -> Void)?
@@ -1411,6 +1430,8 @@ struct AppEditScheduleSection<RepeatDestination: View>: View {
 
     init(
         startDate: Date,
+        activeFrom: Binding<Date>? = nil,
+        activeFromRange: ClosedRange<Date>? = nil,
         reminderEnabled: Binding<Bool>,
         reminderDate: Binding<Date>,
         repeatSummary: String,
@@ -1419,6 +1440,7 @@ struct AppEditScheduleSection<RepeatDestination: View>: View {
         isEndDateEnabled: Bool = true,
         endDateTitle: String = "End Repeat",
         endDateEmptyTitle: String = "Never",
+        activeFromTap: (() -> Void)? = nil,
         reminderTimeTap: (() -> Void)? = nil,
         repeatTap: (() -> Void)? = nil,
         endDateTap: (() -> Void)? = nil,
@@ -1426,6 +1448,8 @@ struct AppEditScheduleSection<RepeatDestination: View>: View {
         @ViewBuilder repeatDestination: () -> RepeatDestination
     ) {
         self.startDate = startDate
+        self.activeFrom = activeFrom
+        self.activeFromRange = activeFromRange
         _reminderEnabled = reminderEnabled
         _reminderDate = reminderDate
         self.repeatSummary = repeatSummary
@@ -1434,6 +1458,7 @@ struct AppEditScheduleSection<RepeatDestination: View>: View {
         self.isEndDateEnabled = isEndDateEnabled
         self.endDateTitle = endDateTitle
         self.endDateEmptyTitle = endDateEmptyTitle
+        self.activeFromTap = activeFromTap
         self.reminderTimeTap = reminderTimeTap
         self.repeatTap = repeatTap
         self.endDateTap = endDateTap
@@ -1448,6 +1473,18 @@ struct AppEditScheduleSection<RepeatDestination: View>: View {
             AppCard {
                 VStack(alignment: .leading, spacing: 0) {
                     AppStartDateValueRow(date: startDate)
+
+                    if let activeFrom {
+                        AppSectionDivider()
+
+                        AppDatePickerRow(
+                            title: "Active From",
+                            date: activeFrom,
+                            dateRange: activeFromRange,
+                            onTap: activeFromTap,
+                            isPickerPresentationBlocked: presentationGuard.isPickerPresentationBlocked
+                        )
+                    }
 
                     AppSectionDivider()
 

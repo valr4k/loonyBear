@@ -12,8 +12,8 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
 - create and edit pills with dosage and optional description
 - take, skip, or clear today for pills
 - tap active cards to open Pill Details / Habit Details
-- open soft-deleted cards from Recently Deleted as read-only item screens
-- soft-delete active items and permanently delete items from Recently Deleted
+- open archived cards from Archive as read-only item screens
+- archive active items, restore archived items, and permanently delete active or archived items
 - create, edit, and permanently delete Countdown / Count Up events
 - configure reminder notifications
 - use pill remind-later notifications
@@ -55,7 +55,7 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
 2. `AppEnvironment` creates persistence, repositories, services, use cases, and app state.
 3. `ContentView` configures notifications, loads dashboards, and refreshes the badge.
 4. `RootTabView` exposes `My Pills`, `My Habits`, `Events`, and `Settings`.
-5. Create screens and item Details screens are opened as sheets. Create sheet titles are `Add new Pill`, `Add new Habit`, and `Add new Event`. Active cards open editable `Pill Details` / `Habit Details` sheets; Recently Deleted cards open the same layout read-only. Event cards open editable `Event Details`.
+5. Create screens and item Details screens are opened as sheets. Create sheet titles are `Add new Pill`, `Add new Habit`, and `Add new Event`. Active cards open editable `Pill Details` / `Habit Details` sheets; Archive cards open the same layout read-only and can hand off to a separate Restore Draft sheet. Event cards open editable `Event Details`.
 6. App-active lifecycle refreshes derived overdue/history state and reschedules notifications.
 
 ## Habit Flow Summary
@@ -77,14 +77,15 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
   - End Repeat / End Date
   - recent editable history
   - description-free calendar/history review
-  - Delete as soft delete
-- Habit Details for a Recently Deleted Habit shows the same layout read-only:
+  - Archive
+  - permanent Delete
+- Habit Details for an archived Habit shows the same layout read-only:
   - name
   - streak metrics
   - Schedule facts as historical data
   - start date and End Date
   - read-only calendar
-  - permanent Delete at the bottom
+  - Restore and permanent Delete at the bottom
 
 ## Pill Flow Summary
 
@@ -107,8 +108,9 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
   - End Repeat / End Date
   - recent editable history
   - optional description
-  - Delete as soft delete
-- Pill Details for a Recently Deleted Pill shows the same layout read-only:
+  - Archive
+  - permanent Delete
+- Pill Details for an archived Pill shows the same layout read-only:
   - name
   - dosage
   - taken total
@@ -116,7 +118,7 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
   - start date and End Date
   - read-only calendar
   - description
-  - permanent Delete at the bottom
+  - Restore and permanent Delete at the bottom
 
 ## Event Flow Summary
 
@@ -145,7 +147,7 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
 - Event cards show the name on the left and duration on the right in the same compact style as streak text, for example `2yr 2mo 7d`.
 - Event duration uses the app tint, except completed Countdown cards show `0d` in red forever.
 - Event Details supports editing name, mode, and date.
-- Event Delete is permanent. There is no Recently Deleted, Archive, Restore, reminder, overdue, badge, history review, or auto-delete behavior for Events.
+- Event Delete is permanent. There is no Archive, Restore, reminder, overdue, badge, history review, or auto-delete behavior for Events.
 
 ## Important Current Rules
 
@@ -159,23 +161,29 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
 - Repeat uses a pushed editor with Days and Interval blocks. Days supports weekday combinations. Interval is `Every N days`, limited to 2 through 5 days, and for Pills only also includes `Never`. Weekday summaries are canonicalized as Daily, Weekdays, Weekends, `Weekly on Mon` for one selected weekday, or abbreviated day lists such as `Mon, Wed, Fri` for other combinations.
 - Pill Repeat can be `Never`; this means one scheduled day on Start Date. Habits do not expose `Never`.
 - Pills and Habits both use `End Repeat`; `On Date` reveals an `End Date` picker row. Empty end dates display `Never`.
-- Active items can be deleted from their Details screen. This is a soft delete: the item moves to Recently Deleted, keeps its stored reminder/repeat/end-date/history facts, stops producing active state, and cannot be restored.
-- Recently Deleted is final inactive storage. Recently Deleted items open read-only item screens and expose only permanent Delete at the bottom.
-- My Pills and My Habits show the Recently Deleted toolbar button only when that tracker has at least one soft-deleted item.
+- Active items can be archived from their Details screen. Archive keeps stored reminder/repeat/end-date/history facts, moves the item to the separate Archive page, and stops active today actions, overdue state, notifications, badge contribution, and history review.
+- Active items can also be permanently deleted from their Details screen.
+- Archive items open read-only item screens and expose Restore plus permanent Delete at the bottom.
+- Restore closes the read-only Archive sheet and opens a separate Restore Draft sheet. The item remains archived until the Restore Draft sheet is saved.
+- Restore Draft defaults End Repeat to `Never`, clears End Date in the draft, and shows editable `Active From` under the read-only Start Date.
+- Restore writes archived history states only into empty days between `archivedAt` and the day before Active From. Existing Completed/Taken/Skipped states in that gap are preserved.
+- Archived history states render in custom calendars as quiet system-gray circles, independent of app tint, and they are never editable.
+- If the user changes tabs after requesting Restore but before the Restore Draft sheet opens, the pending Restore Draft is cancelled.
+- My Pills and My Habits show the Archive toolbar button only when that tracker has at least one archived item.
 - Settings supports System/Light/Dark appearance and Blue/Indigo/Green/Amber app color selection; Blue is the default and first palette option.
 - App tint colors supported accent surfaces, while page backgrounds stay on the system grouped background.
 - Backup includes the selected appearance mode and app tint, while legacy backups without those settings keep the current appearance.
 - Backup includes Events. Legacy backups without Events restore normally with an empty Events list.
 - Custom calendars use arrow-only month navigation, without horizontal swipe paging.
 - Custom calendar blocks keep a stable six-week footprint when changing months.
-- Habit and Pill Details calendars show all stored history. Active Details calendars preserve edit restrictions: only days in the editable 30-day window, not earlier than Start Date, can be changed. Recently Deleted Details calendars are fully read-only.
+- Habit and Pill Details calendars show all stored history. Active Details calendars preserve edit restrictions: only days in the editable 30-day window, not earlier than Start Date, and not stored as archived can be changed. Archive Details calendars are fully read-only.
 - Habit and Pill Details calendars show a small tertiary system-gray dot under days that match the active schedule history. Marked completed/taken/skipped days use circular markers; editable marked days also draw a subtle border, while non-editable marked days keep a softer historical marker.
 - Missing past-day review warnings use a dismissible floating red material banner on active Details screens; they do not list dates and do not take space inside the calendar layout.
-- Create and active Details Repeat selection opens as a pushed screen inside the sheet. Recently Deleted Details show Repeat as read-only text and do not open a schedule picker.
+- Create and active Details Repeat selection opens as a pushed screen inside the sheet. Archive Details show Repeat as read-only text and do not open a schedule picker until Restore Draft.
 - Create and active Details Schedule blocks keep the native compact Start Date, Time, and End Date pickers where applicable. Active Details show Start Date as read-only. When Create first switches End Repeat to `On Date`, End Date defaults to today rather than Start Date. End Date uses `max(today, startDate)` as its lower bound and is validated by shared schedule-aware logic: a selected End Date is valid only when at least one scheduled day exists between the lower bound and the selected date. Save does not silently raise an invalid End Date inside `normalizedDraft()`. Invalid End Date warnings are dismissible and reappear when the invalid state changes through form input. If Repeat changes on active Details, the hidden schedule version `effectiveFrom` is based on `max(today, startDate)`, bounded by the schedule-change technical window, normally saved at the lower bound, and not shown as Apply From. It is not adjusted to the next matching scheduled day. A shared presentation guard prevents simultaneous picker/popover/navigation presentation races without changing the visible UI.
 - My Pills and My Habits use native `List` sections with system sticky headers. Headers keep only light styling on top of the system behavior: `title3` semibold text, secondary color, and no forced uppercasing.
 - End Repeat uses the native options popover. While it is open, neighboring compact pickers do not accept hit-testing; Time and End Repeat use a window-level touch-down observer to briefly block the opposite presentation path without stealing scroll gestures; Repeat navigation dismisses/briefly blocks End Repeat so the popover cannot remain over the pushed Repeat screen.
-- Active Delete confirmations use system alerts with `Cancel` and destructive `Delete` actions: `Delete this Pill?` / `This Pill will be moved to Recently Deleted.` and `Delete this Habit?` / `This Habit will be moved to Recently Deleted.`
+- Active Archive confirmations use system alerts with `Cancel` and `Archive` actions: `Archive this Pill?` / `This Pill will be moved to Archive.` and `Archive this Habit?` / `This Habit will be moved to Archive.`
 - Permanent Delete confirmations use system alerts with `Cancel` and destructive `Delete` actions: `Permanently delete this Pill?` / `This Pill will be permanently deleted.` and `Permanently delete this Habit?` / `This Habit will be permanently deleted.`
 - Backup and Delete actions use the shared material capsule button style; light mode uses a `systemGray4` base under `.ultraThinMaterial`, dark mode uses clear material-only base. `Last backup` follows the cloud status icon color and uses `03 May at 22:35` style dates; backup action confirmations use system alerts with short action labels.
 - Backup action notices are floating banners derived from folder contents and remembered backup fingerprints, so already created/restored backups do not show restore-needed notices after reopening the screen. Backup success feedback uses green floating banners.

@@ -194,4 +194,100 @@ struct StartupHealthCheckTests {
             #expect(weekdayIssues.count >= 2)
         }
     }
+
+    @Test
+    func startupHealthCheckFailsOnCorruptedHistoryRanges() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let now = Date(timeIntervalSince1970: 0)
+        let rangeEnd = Date(timeIntervalSince1970: 86_400 * 2)
+
+        let habitID = UUID()
+        let habit = NSEntityDescription.insertNewObject(forEntityName: "Habit", into: context)
+        habit.setValue(habitID, forKey: "id")
+        habit.setValue(HabitType.build.rawValue, forKey: "typeRaw")
+        habit.setValue("Walk", forKey: "name")
+        habit.setValue(Int32(0), forKey: "sortOrder")
+        habit.setValue(now, forKey: "startDate")
+        habit.setValue(HabitHistoryMode.scheduleBased.rawValue, forKey: "historyModeRaw")
+        habit.setValue(false, forKey: "reminderEnabled")
+        habit.setValue(now, forKey: "createdAt")
+        habit.setValue(now, forKey: "updatedAt")
+        habit.setValue(Int32(1), forKey: "version")
+
+        let habitSchedule = NSEntityDescription.insertNewObject(forEntityName: "HabitScheduleVersion", into: context)
+        habitSchedule.setValue(UUID(), forKey: "id")
+        habitSchedule.setValue(habitID, forKey: "habitID")
+        habitSchedule.setValue(Int16(WeekdaySet.daily.rawValue), forKey: "weekdayMask")
+        habitSchedule.setValue(now, forKey: "effectiveFrom")
+        habitSchedule.setValue(now, forKey: "createdAt")
+        habitSchedule.setValue(Int32(1), forKey: "version")
+        habitSchedule.setValue(habit, forKey: "habit")
+
+        let habitRange = NSEntityDescription.insertNewObject(forEntityName: "HabitHistoryRange", into: context)
+        habitRange.setValue(UUID(), forKey: "id")
+        habitRange.setValue(habitID, forKey: "habitID")
+        habitRange.setValue(now, forKey: "startDate")
+        habitRange.setValue(rangeEnd, forKey: "endDate")
+        habitRange.setValue(CoreDataHistoryBucketState.positive.storageRaw, forKey: "stateRaw")
+        habitRange.setValue(true, forKey: "useScheduleForHistory")
+        habitRange.setValue(ScheduleRule.Kind.weekly.rawValue, forKey: "scheduleKindRaw")
+        habitRange.setValue(Int16(WeekdaySet.daily.rawValue), forKey: "weekdayMask")
+        habitRange.setValue(Int16(ScheduleRule.defaultIntervalDays), forKey: "intervalDays")
+        habitRange.setValue(now, forKey: "anchorDate")
+        habitRange.setValue(Int32(99), forKey: "count")
+        habitRange.setValue(now, forKey: "createdAt")
+        habitRange.setValue(now, forKey: "updatedAt")
+        habitRange.setValue(habit, forKey: "habit")
+
+        let pillID = UUID()
+        let pill = NSEntityDescription.insertNewObject(forEntityName: "Pill", into: context)
+        pill.setValue(pillID, forKey: "id")
+        pill.setValue("Vitamin", forKey: "name")
+        pill.setValue("1 pill", forKey: "dosage")
+        pill.setValue(Int32(0), forKey: "sortOrder")
+        pill.setValue(now, forKey: "startDate")
+        pill.setValue(PillHistoryMode.scheduleBased.rawValue, forKey: "historyModeRaw")
+        pill.setValue(false, forKey: "reminderEnabled")
+        pill.setValue(now, forKey: "createdAt")
+        pill.setValue(now, forKey: "updatedAt")
+        pill.setValue(Int32(1), forKey: "version")
+
+        let pillSchedule = NSEntityDescription.insertNewObject(forEntityName: "PillScheduleVersion", into: context)
+        pillSchedule.setValue(UUID(), forKey: "id")
+        pillSchedule.setValue(pillID, forKey: "pillID")
+        pillSchedule.setValue(Int16(WeekdaySet.daily.rawValue), forKey: "weekdayMask")
+        pillSchedule.setValue(now, forKey: "effectiveFrom")
+        pillSchedule.setValue(now, forKey: "createdAt")
+        pillSchedule.setValue(Int32(1), forKey: "version")
+        pillSchedule.setValue(pill, forKey: "pill")
+
+        let pillRange = NSEntityDescription.insertNewObject(forEntityName: "PillHistoryRange", into: context)
+        pillRange.setValue(UUID(), forKey: "id")
+        pillRange.setValue(pillID, forKey: "pillID")
+        pillRange.setValue(now, forKey: "startDate")
+        pillRange.setValue(rangeEnd, forKey: "endDate")
+        pillRange.setValue(CoreDataHistoryBucketState.positive.storageRaw, forKey: "stateRaw")
+        pillRange.setValue(true, forKey: "useScheduleForHistory")
+        pillRange.setValue(ScheduleRule.Kind.weekly.rawValue, forKey: "scheduleKindRaw")
+        pillRange.setValue(Int16(WeekdaySet.daily.rawValue), forKey: "weekdayMask")
+        pillRange.setValue(Int16(ScheduleRule.defaultIntervalDays), forKey: "intervalDays")
+        pillRange.setValue(now, forKey: "anchorDate")
+        pillRange.setValue(Int32(99), forKey: "count")
+        pillRange.setValue(now, forKey: "createdAt")
+        pillRange.setValue(now, forKey: "updatedAt")
+        pillRange.setValue(pill, forKey: "pill")
+
+        try context.save()
+
+        do {
+            try AppStartupHealthCheck.run(
+                makeContext: persistence.makeBackgroundContext
+            )
+            Issue.record("Expected startup health check to fail for corrupted history range rows.")
+        } catch let error as DataIntegrityError {
+            #expect(error.report.issues.contains { $0.area == "startup.habitHistoryRanges" })
+            #expect(error.report.issues.contains { $0.area == "startup.pillHistoryRanges" })
+        }
+    }
 }

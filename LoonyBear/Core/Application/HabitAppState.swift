@@ -197,6 +197,22 @@ final class HabitAppState: ObservableObject {
         }
     }
 
+    func restoreHabit(from draft: EditHabitDraft) async throws {
+        try await writeCoordinator.performThrowingMutation(
+            refresh: { self.refreshDashboard(animated: true) },
+            setError: { self.actionErrorMessage = $0 },
+            refreshOnFailure: true
+        ) {
+            try self.repository.restoreHabit(from: draft)
+        }
+
+        sideEffectCoordinator.handleArchiveChange(
+            forHabitID: draft.id,
+            dashboard: dashboard,
+            isArchived: false
+        )
+    }
+
     func prepareReminderNotifications(forHabitID habitID: UUID) async {
         await sideEffectCoordinator.prepareReminderNotifications(forHabitID: habitID)
     }

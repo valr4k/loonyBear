@@ -6,7 +6,8 @@ struct MonthCalendarView<DayContent: View>: View {
     private let weekdayRowHeight: CGFloat = 20
 
     let month: Date
-    let availableMonths: [Date]
+    let firstAvailableMonth: Date
+    let lastAvailableMonth: Date
     let calendar: Calendar
     let headerSpacing: CGFloat
     let onMonthChange: (Date) -> Void
@@ -23,7 +24,25 @@ struct MonthCalendarView<DayContent: View>: View {
         @ViewBuilder dayContent: @escaping (Date, CGFloat) -> DayContent
     ) {
         self.month = month
-        self.availableMonths = availableMonths
+        self.firstAvailableMonth = availableMonths.first ?? month
+        self.lastAvailableMonth = availableMonths.last ?? month
+        self.calendar = calendar
+        self.headerSpacing = headerSpacing
+        self.onMonthChange = onMonthChange
+        self.dayContent = dayContent
+    }
+
+    init(
+        month: Date,
+        availableMonthRange: ClosedRange<Date>,
+        calendar: Calendar = MonthCalendarSupport.defaultCalendar(),
+        headerSpacing: CGFloat = 10,
+        onMonthChange: @escaping (Date) -> Void,
+        @ViewBuilder dayContent: @escaping (Date, CGFloat) -> DayContent
+    ) {
+        self.month = month
+        self.firstAvailableMonth = calendar.startOfDay(for: availableMonthRange.lowerBound)
+        self.lastAvailableMonth = calendar.startOfDay(for: availableMonthRange.upperBound)
         self.calendar = calendar
         self.headerSpacing = headerSpacing
         self.onMonthChange = onMonthChange
@@ -129,20 +148,25 @@ struct MonthCalendarView<DayContent: View>: View {
     }
 
     private var canGoBackward: Bool {
-        guard let first = availableMonths.first else { return false }
-        return month > first
+        month > firstAvailableMonth
     }
 
     private var canGoForward: Bool {
-        guard let last = availableMonths.last else { return false }
-        return month < last
+        month < lastAvailableMonth
     }
 
     private func changeMonth(step: Int) {
-        guard let currentIndex = availableMonths.firstIndex(of: month) else { return }
-        let nextIndex = currentIndex + step
-        guard availableMonths.indices.contains(nextIndex) else { return }
-        onMonthChange(availableMonths[nextIndex])
+        guard let nextMonth = calendar.date(byAdding: .month, value: step, to: month)
+            .map({ MonthCalendarSupport.monthStart(containing: $0, calendar: calendar) })
+        else {
+            return
+        }
+
+        guard nextMonth >= firstAvailableMonth, nextMonth <= lastAvailableMonth else {
+            return
+        }
+
+        onMonthChange(nextMonth)
     }
 }
 
@@ -173,6 +197,14 @@ enum MonthCalendarSupport {
         let prefix = Array(symbols[firstWeekdayIndex...])
         let suffix = Array(symbols[..<firstWeekdayIndex])
         return (prefix + suffix).map { $0.uppercased() }
+    }
+
+    static func monthStart(
+        containing date: Date,
+        calendar: Calendar
+    ) -> Date {
+        calendar.date(from: calendar.dateComponents([.year, .month], from: date))
+            ?? calendar.startOfDay(for: date)
     }
 
     static func dayRows(for month: Date, calendar: Calendar) -> [[MonthCalendarCell]] {

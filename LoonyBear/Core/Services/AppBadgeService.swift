@@ -69,8 +69,8 @@ enum ProjectedBadgeCountCalculator {
             endDate: habit.endDate,
             schedules: effectiveHabitScheduleHistory(for: habit),
             reminderTime: habit.reminderEnabled ? habit.reminderTime : nil,
-            positiveDays: habit.completedDays,
-            skippedDays: habit.skippedDays,
+            hasPositiveState: { habit.hasCompletedState(on: $0, calendar: calendar) },
+            hasSkippedState: { habit.hasSkippedState(on: $0, calendar: calendar) },
             now: date,
             calendar: calendar
         ) != nil
@@ -82,8 +82,8 @@ enum ProjectedBadgeCountCalculator {
             endDate: pill.endDate,
             schedules: effectivePillScheduleHistory(for: pill),
             reminderTime: pill.reminderEnabled ? pill.reminderTime : nil,
-            positiveDays: pill.takenDays,
-            skippedDays: pill.skippedDays,
+            hasPositiveState: { pill.hasTakenState(on: $0, calendar: calendar) },
+            hasSkippedState: { pill.hasSkippedState(on: $0, calendar: calendar) },
             now: date,
             calendar: calendar
         ) != nil

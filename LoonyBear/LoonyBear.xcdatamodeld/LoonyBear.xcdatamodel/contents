@@ -30,6 +30,7 @@
     </entity>
     <entity name="Habit" representedClassName="NSManagedObject" syncable="YES">
         <attribute name="activeFrom" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="archivedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="endDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
@@ -45,6 +46,8 @@
         <attribute name="updatedAt" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="version" attributeType="Integer 32" defaultValueString="1" usesScalarValueType="YES"/>
         <relationship name="completions" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="HabitCompletion" inverseName="habit" inverseEntity="HabitCompletion"/>
+        <relationship name="historyBuckets" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="HabitHistoryBucket" inverseName="habit" inverseEntity="HabitHistoryBucket"/>
+        <relationship name="historyRanges" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="HabitHistoryRange" inverseName="habit" inverseEntity="HabitHistoryRange"/>
         <relationship name="scheduleVersions" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="HabitScheduleVersion" inverseName="habit" inverseEntity="HabitScheduleVersion"/>
         <uniquenessConstraints>
             <uniquenessConstraint>
@@ -69,6 +72,50 @@
             </uniquenessConstraint>
         </uniquenessConstraints>
     </entity>
+    <entity name="HabitHistoryBucket" representedClassName="NSManagedObject" syncable="YES">
+        <attribute name="archivedCount" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="archivedMask" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="habitID" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="positiveCount" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="positiveMask" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="skippedCount" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="skippedMask" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="updatedAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="yearMonthKey" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <relationship name="habit" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Habit" inverseName="historyBuckets" inverseEntity="Habit"/>
+        <uniquenessConstraints>
+            <uniquenessConstraint>
+                <constraint value="id"/>
+            </uniquenessConstraint>
+            <uniquenessConstraint>
+                <constraint value="habitID"/>
+                <constraint value="yearMonthKey"/>
+            </uniquenessConstraint>
+        </uniquenessConstraints>
+    </entity>
+    <entity name="HabitHistoryRange" representedClassName="NSManagedObject" syncable="YES">
+        <attribute name="anchorDate" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="count" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="endDate" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="habitID" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="intervalDays" attributeType="Integer 16" defaultValueString="2" usesScalarValueType="YES"/>
+        <attribute name="scheduleKindRaw" attributeType="String" defaultValueString="weekly"/>
+        <attribute name="startDate" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="stateRaw" attributeType="String"/>
+        <attribute name="updatedAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="useScheduleForHistory" attributeType="Boolean" defaultValueString="YES" usesScalarValueType="YES"/>
+        <attribute name="weekdayMask" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <relationship name="habit" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Habit" inverseName="historyRanges" inverseEntity="Habit"/>
+        <uniquenessConstraints>
+            <uniquenessConstraint>
+                <constraint value="id"/>
+            </uniquenessConstraint>
+        </uniquenessConstraints>
+    </entity>
     <entity name="HabitScheduleVersion" representedClassName="NSManagedObject" syncable="YES">
         <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="effectiveFrom" attributeType="Date" usesScalarValueType="NO"/>
@@ -87,6 +134,7 @@
     </entity>
     <entity name="Pill" representedClassName="NSManagedObject" syncable="YES">
         <attribute name="activeFrom" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="archivedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="detailsText" optional="YES" attributeType="String"/>
         <attribute name="dosage" attributeType="String"/>
@@ -102,6 +150,8 @@
         <attribute name="startDate" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="updatedAt" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="version" attributeType="Integer 32" defaultValueString="1" usesScalarValueType="YES"/>
+        <relationship name="historyBuckets" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="PillHistoryBucket" inverseName="pill" inverseEntity="PillHistoryBucket"/>
+        <relationship name="historyRanges" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="PillHistoryRange" inverseName="pill" inverseEntity="PillHistoryRange"/>
         <relationship name="intakes" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="PillIntake" inverseName="pill" inverseEntity="PillIntake"/>
         <relationship name="scheduleVersions" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="PillScheduleVersion" inverseName="pill" inverseEntity="PillScheduleVersion"/>
         <uniquenessConstraints>
@@ -127,6 +177,50 @@
             </uniquenessConstraint>
         </uniquenessConstraints>
     </entity>
+    <entity name="PillHistoryBucket" representedClassName="NSManagedObject" syncable="YES">
+        <attribute name="archivedCount" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="archivedMask" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="pillID" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="positiveCount" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="positiveMask" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="skippedCount" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="skippedMask" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="updatedAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="yearMonthKey" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <relationship name="pill" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Pill" inverseName="historyBuckets" inverseEntity="Pill"/>
+        <uniquenessConstraints>
+            <uniquenessConstraint>
+                <constraint value="id"/>
+            </uniquenessConstraint>
+            <uniquenessConstraint>
+                <constraint value="pillID"/>
+                <constraint value="yearMonthKey"/>
+            </uniquenessConstraint>
+        </uniquenessConstraints>
+    </entity>
+    <entity name="PillHistoryRange" representedClassName="NSManagedObject" syncable="YES">
+        <attribute name="anchorDate" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="count" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="endDate" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="intervalDays" attributeType="Integer 16" defaultValueString="2" usesScalarValueType="YES"/>
+        <attribute name="pillID" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="scheduleKindRaw" attributeType="String" defaultValueString="weekly"/>
+        <attribute name="startDate" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="stateRaw" attributeType="String"/>
+        <attribute name="updatedAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="useScheduleForHistory" attributeType="Boolean" defaultValueString="YES" usesScalarValueType="YES"/>
+        <attribute name="weekdayMask" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <relationship name="pill" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Pill" inverseName="historyRanges" inverseEntity="Pill"/>
+        <uniquenessConstraints>
+            <uniquenessConstraint>
+                <constraint value="id"/>
+            </uniquenessConstraint>
+        </uniquenessConstraints>
+    </entity>
     <entity name="PillScheduleVersion" representedClassName="NSManagedObject" syncable="YES">
         <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="effectiveFrom" attributeType="Date" usesScalarValueType="NO"/>
@@ -146,10 +240,14 @@
     <elements>
         <element name="AppPreference" positionX="-214" positionY="-16" width="128" height="134"/>
         <element name="Event" positionX="-214" positionY="151" width="128" height="164"/>
-        <element name="Habit" positionX="30" positionY="-16" width="128" height="239"/>
+        <element name="Habit" positionX="30" positionY="-16" width="128" height="284"/>
         <element name="HabitCompletion" positionX="270" positionY="-16" width="128" height="149"/>
+        <element name="HabitHistoryBucket" positionX="270" positionY="390" width="128" height="254"/>
+        <element name="HabitHistoryRange" positionX="270" positionY="682" width="128" height="269"/>
         <element name="HabitScheduleVersion" positionX="270" positionY="174" width="128" height="179"/>
-        <element name="Pill" positionX="540" positionY="-16" width="128" height="254"/>
+        <element name="Pill" positionX="540" positionY="-16" width="128" height="299"/>
+        <element name="PillHistoryBucket" positionX="780" positionY="390" width="128" height="254"/>
+        <element name="PillHistoryRange" positionX="780" positionY="682" width="128" height="269"/>
         <element name="PillIntake" positionX="780" positionY="-16" width="128" height="149"/>
         <element name="PillScheduleVersion" positionX="780" positionY="174" width="128" height="179"/>
     </elements>

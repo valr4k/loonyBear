@@ -139,9 +139,13 @@ Stored facts include:
 - habits
 - pills
 - schedule versions
-- completion / intake rows
+- monthly history buckets
+- schedule-aware history ranges
+- legacy completion / intake rows for migration and backup compatibility
 - reminder fields
 - history mode fields
+
+Generated initial Habit/Pill history is split by editability. Cold generated history before the editable window is written as a schedule-aware range; recent editable generated history is written into monthly bucket masks. The create path does not materialize one Core Data object per generated historical day.
 
 Derived values include:
 - dashboard sections
@@ -204,14 +208,15 @@ On every `.active` scene phase:
 ## Current Technical Boundaries
 
 - Habits and Pills use separate repositories and separate app state.
-- Events use their own repository and app state. They do not participate in reminders, overdue, badges, history review, Recently Deleted, or widget snapshots.
+- Events use their own repository and app state. They do not participate in reminders, overdue, badges, history review, Archive, Restore, or widget snapshots.
 - Streak logic exists only for Habits.
 - Pills support reordering through `sortOrder`.
 - Backup covers Habits, Pills, Events, and app appearance settings in one archive schema.
 - Backup owns create/restore feedback through floating banners; restore success refreshes app state and shows a green banner on the Backup screen.
-- Habit and Pill dashboards expose separate Recently Deleted pages backed by stored `isArchived` facts. The Recently Deleted toolbar entry is conditional and appears only when the corresponding dashboard has soft-deleted items.
+- Habit and Pill dashboards expose separate Archive pages backed by stored `isArchived` facts. The Archive toolbar entry is conditional and appears only when the corresponding dashboard has archived items.
 - Schedule editing is shared through a pushed Repeat editor with Days and Interval sections.
-- End Repeat/End Date and Pill one-time repeat rules are stored facts; active/soft-deleted state, overdue, reminders, and calendar dots are derived from those facts at read time. Shared End Date validation lives in `EndDateValidationSupport`: optional End Date is valid, one-time Pills ignore End Date, and selected End Date must be at or after the active lower bound with at least one scheduled day in range. Shared Schedule UI uses native compact date pickers without app-level selectable ranges, and Save normalization only stores date-only values and does not silently raise End Date during `normalizedDraft()`.
+- End Repeat/End Date and Pill one-time repeat rules are stored facts; active/archive state, overdue, reminders, and calendar dots are derived from those facts at read time. Shared End Date validation lives in `EndDateValidationSupport`: optional End Date is valid, one-time Pills ignore End Date, and selected End Date must be at or after the active lower bound with at least one scheduled day in range. Shared Schedule UI uses native compact date pickers without app-level selectable ranges, and Save normalization only stores date-only values and does not silently raise End Date during `normalizedDraft()`.
+- Archived Habit and Pill Details are read-only by default. Restore dismisses the read-only sheet and opens a separate Restore Draft sheet: the item stays archived until the Restore Draft sheet is saved, `Active From` is chosen in a bounded window, `End Repeat` defaults to Never inside the draft, a new schedule version starts at Active From, archived gap rows are written only into empty days from `archivedAt` through the day before Active From, and scheduled past days from Active From through yesterday are auto-filled as restored completed/taken when empty. If the user changes tabs before the Restore Draft handoff opens, the pending handoff is cancelled.
 - Active Details schedule changes still use schedule version rows, but Apply From is no longer a customer-facing field. The hidden schedule-change `effectiveFrom` is based on `max(today, startDate)` and bounded by the technical schedule-change window. Current UI normally saves the lower bound; out-of-range internal values fall back to the lower bound. Resolution does not check whether the date matches the new Repeat or has explicit history state.
 - Schedule Create/active Details picker safety is centralized in shared UI infrastructure: native compact `DatePicker` controls and Repeat `NavigationLink` stay system-owned, while `AppSchedulePresentationGuard`, the Schedule card exclusive-touch scope, a window-level touch-down observer, and the End Repeat dismiss signal prevent simultaneous picker/popover/navigation presentation races without attaching scroll-stealing SwiftUI gestures to the picker capsules.
 - App tint updates are applied through SwiftUI tint helpers and visible UIKit tab/navigation bar updates.

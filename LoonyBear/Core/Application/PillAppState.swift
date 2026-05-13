@@ -136,6 +136,18 @@ final class PillAppState: ObservableObject {
         }
     }
 
+    func restorePill(from draft: EditPillDraft) async throws {
+        try await writeCoordinator.performThrowingMutation(
+            refresh: { self.refreshDashboard(animated: true) },
+            setError: { self.actionErrorMessage = $0 },
+            refreshOnFailure: true
+        ) {
+            try self.repository.restorePill(from: draft)
+        }
+
+        sideEffectCoordinator.handleArchiveChange(forPillID: draft.id, isArchived: false)
+    }
+
     func markTakenToday(id: UUID, animatedRefresh: Bool = false) async {
         await markPillTaken(id: id, on: clock.now(), animatedRefresh: animatedRefresh)
     }

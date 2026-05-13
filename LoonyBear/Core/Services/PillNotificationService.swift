@@ -30,7 +30,7 @@ final class PillNotificationService {
     private let schedulingWindowDays = 2
     private let remindLaterInterval: TimeInterval = 10 * 60
     private let storeContext: NotificationStoreContext
-    private let center = UNUserNotificationCenter.current()
+    private var center: AppNotificationCenter { AppNotificationCenterProvider.current }
     private let prefix = "pill_"
     private let calendar: Calendar
     private let clock: AppClock
@@ -54,12 +54,12 @@ final class PillNotificationService {
     }
 
     func ensureAuthorizationIfNeeded() async -> Bool {
-        await LocalNotificationSupport.ensureAuthorizationIfNeeded(center: center)
+        await LocalNotificationSupport.ensureAuthorizationIfNeeded(center: UNUserNotificationCenter.current())
     }
 
     func prepareReminderNotifications(forPillID pillID: UUID) async {
         if await ensureAuthorizationIfNeeded() {
-            rescheduleAllNotifications()
+            rescheduleNotifications(forPillID: pillID)
         }
     }
 
@@ -442,7 +442,7 @@ final class PillNotificationService {
                 guard
                     let startDate = pill.dateValue(forKey: "startDate"),
                     let schedules = loadPillSchedules(for: pill, pillID: pillID, report: &report),
-                    let intakeEntries = loadPillIntakeEntries(for: pill, report: &report)
+                    let historySnapshot = loadPillHistorySnapshot(for: pill, pillID: pillID, report: &report)
                 else {
                     throw report.makeError(operation: "notification.pill.action.currentDay")
                 }
@@ -458,8 +458,6 @@ final class PillNotificationService {
                     throw report.makeError(operation: "notification.pill.action.currentDay")
                 }
 
-                let takenDays = Set(intakeEntries.compactMap { $0.1.countsAsIntake ? $0.0 : nil })
-                let skippedDays = Set(intakeEntries.compactMap { !$0.1.countsAsIntake ? $0.0 : nil })
                 let activeStartDate = ActiveCycleStartDate.value(
                     for: pill,
                     fallbackStartDate: startDate,
@@ -470,8 +468,8 @@ final class PillNotificationService {
                     endDate: pill.dateValue(forKey: "endDate"),
                     schedules: schedules,
                     reminderTime: reminderTime,
-                    positiveDays: takenDays,
-                    skippedDays: skippedDays,
+                    hasPositiveState: { historySnapshot.state(on: $0, calendar: calendar) == .positive },
+                    hasSkippedState: { historySnapshot.state(on: $0, calendar: calendar) == .skipped },
                     now: clock.now(),
                     calendar: calendar
                 )
@@ -492,25 +490,22 @@ final class PillNotificationService {
         context: NSManagedObjectContext
     ) throws -> Bool {
         let normalizedDate = calendar.startOfDay(for: localDate)
-        let fetchRequest = NSFetchRequest<NSManagedObject>(entityName: "PillIntake")
-        fetchRequest.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
-            NSPredicate(format: "pillID == %@", pillID as CVarArg),
-            NSPredicate(format: "localDate == %@", normalizedDate as CVarArg),
-        ])
-        fetchRequest.fetchLimit = 1
-
-        if try context.fetch(fetchRequest).first != nil {
+        let existingState = try pillHistoryBucketState(
+            pillID: pillID,
+            on: normalizedDate,
+            context: context
+        )
+        if existingState != nil {
             return false
         }
 
-        let intake = NSEntityDescription.insertNewObject(forEntityName: "PillIntake", into: context)
-        intake.setValue(UUID(), forKey: "id")
-        intake.setValue(pillID, forKey: "pillID")
-        intake.setValue(normalizedDate, forKey: "localDate")
-        intake.setValue(PillCompletionSource.skipped.rawValue, forKey: "sourceRaw")
-        intake.setValue(clock.now(), forKey: "createdAt")
-        intake.setValue(pill, forKey: "pill")
-        return true
+        return try setPillHistoryBucketState(
+            for: pill,
+            pillID: pillID,
+            on: normalizedDate,
+            state: .skipped,
+            context: context
+        )
     }
 
     private func loadPillSchedules(
@@ -770,7 +765,7 @@ final class PillNotificationService {
         }
         let scheduleRule = latestScheduleRule(from: scheduleHistory)
         let scheduleDays = scheduleRule.weeklyDays ?? .daily
-        guard let intakeEntries = loadPillIntakeEntries(for: object, report: &report) else {
+        guard let historySnapshot = loadPillHistorySnapshot(for: object, pillID: id, report: &report) else {
             report.append(
                 area: "notification",
                 entityName: object.entityName,
@@ -779,8 +774,6 @@ final class PillNotificationService {
             )
             return nil
         }
-        let takenDays = Set(intakeEntries.compactMap { $0.1.countsAsIntake ? $0.0 : nil })
-        let skippedDays = Set(intakeEntries.compactMap { !$0.1.countsAsIntake ? $0.0 : nil })
         let activeStartDate = ActiveCycleStartDate.value(
             for: object,
             fallbackStartDate: startDate,
@@ -798,8 +791,9 @@ final class PillNotificationService {
             scheduleHistory: scheduleHistory,
             reminderEnabled: reminderEnabled,
             reminderTime: reminderTime,
-            takenDays: takenDays,
-            skippedDays: skippedDays
+            takenDays: [],
+            skippedDays: [],
+            historySnapshot: historySnapshot
         )
     }
 
@@ -915,7 +909,7 @@ final class PillNotificationService {
             )
             return nil
         }
-        guard let completionEntries = loadHabitCompletionEntries(for: object, report: &report) else {
+        guard let historySnapshot = loadHabitHistorySnapshot(for: object, habitID: id, report: &report) else {
             report.append(
                 area: "notification",
                 entityName: object.entityName,
@@ -924,8 +918,6 @@ final class PillNotificationService {
             )
             return nil
         }
-        let completedDays = Set(completionEntries.compactMap { $0.1.countsAsCompletion ? $0.0 : nil })
-        let skippedDays = Set(completionEntries.compactMap { !$0.1.countsAsCompletion ? $0.0 : nil })
         let activeStartDate = ActiveCycleStartDate.value(
             for: object,
             fallbackStartDate: startDate,
@@ -942,8 +934,9 @@ final class PillNotificationService {
             scheduleHistory: scheduleHistory,
             reminderEnabled: reminderEnabled,
             reminderTime: reminderTime,
-            completedDays: completedDays,
-            skippedDays: skippedDays
+            completedDays: [],
+            skippedDays: [],
+            historySnapshot: historySnapshot
         )
     }
 
@@ -987,29 +980,47 @@ final class PillNotificationService {
         }
     }
 
-    private func loadHabitCompletionEntries(
+    private func loadHabitHistorySnapshot(
         for object: NSManagedObject,
+        habitID: UUID,
         report: inout IntegrityReportBuilder
-    ) -> [(Date, CompletionSource)]? {
-        NotificationConfigurationSupport.loadHistoryEntries(
-            for: object,
-            relationshipKey: "completions",
-            invalidEntryMessage: "Habit completion row is missing required fields or has invalid sourceRaw.",
-            calendar: calendar,
-            report: &report
+    ) -> CoreDataHistoryBucketSnapshot? {
+        CoreDataHistoryBucketSupport.validatedSnapshot(
+            from: object,
+            bucketRelationshipKey: "historyBuckets",
+            rangeRelationshipKey: "historyRanges",
+            rangeOwnerKey: "habitID",
+            ownerID: habitID,
+            legacyRelationshipKey: "completions",
+            area: "notification",
+            invalidBucketMessage: "Habit history bucket row is missing required fields or has overlapping masks.",
+            invalidRangeMessage: "Habit history range row is missing required fields or has invalid schedule/count.",
+            invalidLegacyMessage: "Habit completion row is missing required fields or has invalid sourceRaw.",
+            report: &report,
+            legacySourceToState: habitBucketState(from:),
+            calendar: calendar
         )
     }
 
-    private func loadPillIntakeEntries(
+    private func loadPillHistorySnapshot(
         for object: NSManagedObject,
+        pillID: UUID,
         report: inout IntegrityReportBuilder
-    ) -> [(Date, PillCompletionSource)]? {
-        NotificationConfigurationSupport.loadHistoryEntries(
-            for: object,
-            relationshipKey: "intakes",
-            invalidEntryMessage: "Pill intake row is missing required fields or has invalid sourceRaw.",
-            calendar: calendar,
-            report: &report
+    ) -> CoreDataHistoryBucketSnapshot? {
+        CoreDataHistoryBucketSupport.validatedSnapshot(
+            from: object,
+            bucketRelationshipKey: "historyBuckets",
+            rangeRelationshipKey: "historyRanges",
+            rangeOwnerKey: "pillID",
+            ownerID: pillID,
+            legacyRelationshipKey: "intakes",
+            area: "notification",
+            invalidBucketMessage: "Pill history bucket row is missing required fields or has overlapping masks.",
+            invalidRangeMessage: "Pill history range row is missing required fields or has invalid schedule/count.",
+            invalidLegacyMessage: "Pill intake row is missing required fields or has invalid sourceRaw.",
+            report: &report,
+            legacySourceToState: bucketState(from:),
+            calendar: calendar
         )
     }
 
@@ -1022,13 +1033,11 @@ final class PillNotificationService {
         guard
             let startDate = pill.dateValue(forKey: "startDate"),
             let schedules = loadPillSchedules(for: pill, pillID: pillID, report: &report),
-            let intakeEntries = loadPillIntakeEntries(for: pill, report: &report)
+            let historySnapshot = loadPillHistorySnapshot(for: pill, pillID: pillID, report: &report)
         else {
             throw report.makeError(operation: "notification.pill.autoArchive")
         }
 
-        let takenDays = Set(intakeEntries.compactMap { $0.1.countsAsIntake ? $0.0 : nil })
-        let skippedDays = Set(intakeEntries.compactMap { !$0.1.countsAsIntake ? $0.0 : nil })
         let activeStartDate = ActiveCycleStartDate.value(
             for: pill,
             fallbackStartDate: startDate,
@@ -1038,16 +1047,83 @@ final class PillNotificationService {
             startDate: activeStartDate,
             endDate: pill.dateValue(forKey: "endDate"),
             schedules: schedules,
-            positiveDays: takenDays,
-            skippedDays: skippedDays,
+            isFinalized: {
+                switch historySnapshot.state(on: $0, calendar: calendar) {
+                case .positive, .skipped:
+                    return true
+                case .archived, nil:
+                    return false
+                }
+            },
             calendar: calendar
         ) else {
             return
         }
 
+        let now = clock.now()
         pill.setValue(true, forKey: "isArchived")
-        pill.setValue(clock.now(), forKey: "updatedAt")
+        pill.setValue(now, forKey: "archivedAt")
+        pill.setValue(now, forKey: "updatedAt")
         overdueAnchorStore.clearAnchorDay(for: .pill, id: pillID)
+    }
+
+    private func bucketState(for source: PillCompletionSource) -> CoreDataHistoryBucketState {
+        if source == .archived { return .archived }
+        if source.countsAsSkipped { return .skipped }
+        return .positive
+    }
+
+    private func bucketState(from sourceRaw: String) -> CoreDataHistoryBucketState? {
+        guard let source = PillCompletionSource(rawValue: sourceRaw) else { return nil }
+        return bucketState(for: source)
+    }
+
+    private func habitBucketState(from sourceRaw: String) -> CoreDataHistoryBucketState? {
+        guard let source = CompletionSource(rawValue: sourceRaw) else { return nil }
+        if source == .archived { return .archived }
+        if source.countsAsSkipped { return .skipped }
+        return .positive
+    }
+
+    private func pillHistoryBucketState(
+        pillID: UUID,
+        on localDate: Date,
+        context: NSManagedObjectContext
+    ) throws -> CoreDataHistoryBucketState? {
+        try CoreDataHistoryBucketSupport.state(
+            ownerID: pillID,
+            localDate: localDate,
+            bucketEntityName: "PillHistoryBucket",
+            ownerKey: "pillID",
+            legacyEntityName: "PillIntake",
+            legacySourceToState: bucketState(from:),
+            in: context,
+            calendar: calendar
+        )
+    }
+
+    @discardableResult
+    private func setPillHistoryBucketState(
+        for pill: NSManagedObject,
+        pillID: UUID,
+        on localDate: Date,
+        state: CoreDataHistoryBucketState,
+        context: NSManagedObjectContext
+    ) throws -> Bool {
+        try CoreDataHistoryBucketSupport.setState(
+            owner: pill,
+            ownerID: pillID,
+            localDate: localDate,
+            state: state,
+            bucketEntityName: "PillHistoryBucket",
+            ownerKey: "pillID",
+            ownerRelationshipKey: "pill",
+            legacyEntityName: "PillIntake",
+            rangeEntityName: "PillHistoryRange",
+            in: context,
+            calendar: calendar,
+            now: clock.now()
+        )
     }
 
     private func notificationIdentifierPrefix(for pillID: UUID) -> String {
@@ -1088,34 +1164,6 @@ final class PillNotificationService {
         let normalizedDate = calendar.startOfDay(for: localDate)
 
         let mutationResult = storeContext.performWrite { context in
-            let fetchRequest = NSFetchRequest<NSManagedObject>(entityName: "PillIntake")
-            fetchRequest.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
-                NSPredicate(format: "pillID == %@", pillID as CVarArg),
-                NSPredicate(format: "localDate == %@", normalizedDate as CVarArg),
-            ])
-            fetchRequest.fetchLimit = 1
-
-            if let existing = try context.fetch(fetchRequest).first {
-                guard
-                    let sourceRaw = existing.value(forKey: "sourceRaw") as? String,
-                    let existingSource = PillCompletionSource(rawValue: sourceRaw)
-                else {
-                    throw PillNotificationMutationError.invalidStoredIntakeSource
-                }
-
-                if existingSource == .skipped {
-                    existing.setValue(source.rawValue, forKey: "sourceRaw")
-                    existing.setValue(clock.now(), forKey: "createdAt")
-                    if let pill = existing.value(forKey: "pill") as? NSManagedObject {
-                        try applyAutomaticArchiveIfNeeded(for: pill, pillID: pillID)
-                    }
-                    try context.save()
-                    return NotificationMutationOutcome.mutated
-                }
-
-                return NotificationMutationOutcome.noChange
-            }
-
             let pillRequest = NSFetchRequest<NSManagedObject>(entityName: "Pill")
             pillRequest.predicate = NSPredicate(format: "id == %@", pillID as CVarArg)
             pillRequest.fetchLimit = 1
@@ -1124,13 +1172,25 @@ final class PillNotificationService {
                 return NotificationMutationOutcome.noChange
             }
 
-            let intake = NSEntityDescription.insertNewObject(forEntityName: "PillIntake", into: context)
-            intake.setValue(UUID(), forKey: "id")
-            intake.setValue(pillID, forKey: "pillID")
-            intake.setValue(normalizedDate, forKey: "localDate")
-            intake.setValue(source.rawValue, forKey: "sourceRaw")
-            intake.setValue(clock.now(), forKey: "createdAt")
-            intake.setValue(pill, forKey: "pill")
+            let existingState = try pillHistoryBucketState(
+                pillID: pillID,
+                on: normalizedDate,
+                context: context
+            )
+            switch existingState {
+            case .skipped, .none:
+                break
+            case .positive, .archived:
+                return NotificationMutationOutcome.noChange
+            }
+
+            _ = try setPillHistoryBucketState(
+                for: pill,
+                pillID: pillID,
+                on: normalizedDate,
+                state: bucketState(for: source),
+                context: context
+            )
             try applyAutomaticArchiveIfNeeded(for: pill, pillID: pillID)
 
             try context.save()
@@ -1157,24 +1217,6 @@ final class PillNotificationService {
         let normalizedDate = calendar.startOfDay(for: localDate)
 
         let mutationResult = storeContext.performWrite { context in
-            let fetchRequest = NSFetchRequest<NSManagedObject>(entityName: "PillIntake")
-            fetchRequest.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
-                NSPredicate(format: "pillID == %@", pillID as CVarArg),
-                NSPredicate(format: "localDate == %@", normalizedDate as CVarArg),
-            ])
-            fetchRequest.fetchLimit = 1
-
-            if let existing = try context.fetch(fetchRequest).first {
-                guard
-                    let sourceRaw = existing.value(forKey: "sourceRaw") as? String,
-                    PillCompletionSource(rawValue: sourceRaw) != nil
-                else {
-                    throw PillNotificationMutationError.invalidStoredIntakeSource
-                }
-
-                return NotificationMutationOutcome.noChange
-            }
-
             let pillRequest = NSFetchRequest<NSManagedObject>(entityName: "Pill")
             pillRequest.predicate = NSPredicate(format: "id == %@", pillID as CVarArg)
             pillRequest.fetchLimit = 1
@@ -1183,13 +1225,22 @@ final class PillNotificationService {
                 return NotificationMutationOutcome.noChange
             }
 
-            let intake = NSEntityDescription.insertNewObject(forEntityName: "PillIntake", into: context)
-            intake.setValue(UUID(), forKey: "id")
-            intake.setValue(pillID, forKey: "pillID")
-            intake.setValue(normalizedDate, forKey: "localDate")
-            intake.setValue(PillCompletionSource.skipped.rawValue, forKey: "sourceRaw")
-            intake.setValue(clock.now(), forKey: "createdAt")
-            intake.setValue(pill, forKey: "pill")
+            let existingState = try pillHistoryBucketState(
+                pillID: pillID,
+                on: normalizedDate,
+                context: context
+            )
+            guard existingState == nil else {
+                return NotificationMutationOutcome.noChange
+            }
+
+            _ = try setPillHistoryBucketState(
+                for: pill,
+                pillID: pillID,
+                on: normalizedDate,
+                state: .skipped,
+                context: context
+            )
             try applyAutomaticArchiveIfNeeded(for: pill, pillID: pillID)
 
             try context.save()
@@ -1312,6 +1363,7 @@ struct PillReminderConfiguration {
     let reminderTime: ReminderTime?
     let takenDays: Set<Date>
     let skippedDays: Set<Date>
+    let historySnapshot: CoreDataHistoryBucketSnapshot?
 
     init(
         id: UUID,
@@ -1325,7 +1377,8 @@ struct PillReminderConfiguration {
         reminderEnabled: Bool,
         reminderTime: ReminderTime?,
         takenDays: Set<Date>,
-        skippedDays: Set<Date>
+        skippedDays: Set<Date>,
+        historySnapshot: CoreDataHistoryBucketSnapshot? = nil
     ) {
         self.id = id
         self.name = name
@@ -1339,5 +1392,34 @@ struct PillReminderConfiguration {
         self.reminderTime = reminderTime
         self.takenDays = takenDays
         self.skippedDays = skippedDays
+        self.historySnapshot = historySnapshot
+    }
+
+    func historyState(on day: Date, calendar: Calendar = .autoupdatingCurrent) -> CoreDataHistoryBucketState? {
+        if let historySnapshot {
+            return historySnapshot.state(on: day, calendar: calendar)
+        }
+
+        let normalizedDay = calendar.startOfDay(for: day)
+        if takenDays.contains(normalizedDay) { return .positive }
+        if skippedDays.contains(normalizedDay) { return .skipped }
+        return nil
+    }
+
+    func hasTakenState(on day: Date, calendar: Calendar = .autoupdatingCurrent) -> Bool {
+        historyState(on: day, calendar: calendar) == .positive
+    }
+
+    func hasSkippedState(on day: Date, calendar: Calendar = .autoupdatingCurrent) -> Bool {
+        historyState(on: day, calendar: calendar) == .skipped
+    }
+
+    func hasFinalizedState(on day: Date, calendar: Calendar = .autoupdatingCurrent) -> Bool {
+        switch historyState(on: day, calendar: calendar) {
+        case .positive, .skipped:
+            return true
+        case .archived, nil:
+            return false
+        }
     }
 }

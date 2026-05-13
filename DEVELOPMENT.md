@@ -53,7 +53,7 @@ This rule is mandatory for local test runs and documentation examples.
 - Keep screen state small and move reusable side-effect sequences into coordinators or services.
 - Do not change backup schema casually without updating restore handling, validation, and tests.
 - Backup payloads include app appearance settings; preserve legacy decode behavior for backups without those settings.
-- Keep shared schedule UI in `AppDesign.swift`; Create and active Details should use the shared pushed Repeat editor, while Recently Deleted read-only Details should use the same visual layout with all editing controls disabled.
+- Keep shared schedule UI in `AppDesign.swift`; Create and active Details should use the shared pushed Repeat editor, while Archive read-only Details should use the same visual layout with all editing controls disabled until Restore Draft is opened.
 - Keep Apply From out of the customer-facing Details UI. If Repeat changes, the hidden schedule version `effectiveFrom` is resolved in shared persistence logic from `max(today, startDate)` and must remain documented with schedule versioning tests.
 - Keep Schedule picker/popover protection shared through `AppSchedulePresentationGuard` and `appExclusiveTouchScope()`. Create and active Details must not grow separate picker-blocking state, and native compact `DatePicker` controls should stay native unless the product explicitly chooses a different visual pattern.
 - Do not attach the Time-row touch-down guard to Start Date. Start Date relies on the exclusive-touch scope only; an extra gesture can prevent the native compact date picker from opening.
