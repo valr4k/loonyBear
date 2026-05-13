@@ -14,6 +14,7 @@ This file describes the behavioral rules that are currently implemented in code.
 - Completing a Habit on a day that was previously skipped overwrites the skipped state with a positive state.
 - Clearing today removes the stored row for today.
 - Habit name must not be empty.
+- Habit name fields use the shared `Name` placeholder and word-capitalization input behavior.
 - At least one schedule day must be selected.
 - The app allows at most 20 Habits.
 - Habit name, schedule, end-date, create-limit, and unexpected action errors are shown with dismissible floating warning banners instead of inline form banners.
@@ -95,6 +96,8 @@ This file describes the behavioral rules that are currently implemented in code.
 
 - Pills are shown in one ordered dashboard list that is later split into `Today` and `Pending` sections in the UI.
 - Pill name and dosage must not be empty.
+- Pill name fields use the shared `Name` placeholder and word-capitalization input behavior.
+- Pill description fields use the optional `Add notes…` placeholder.
 - A valid Repeat rule must be selected. `Repeat = Never` is valid for Pills.
 - The app allows at most 20 Pills.
 - Pill name, dosage, schedule, end-date, create-limit, and unexpected action errors are shown with dismissible floating warning banners instead of inline form banners.
@@ -176,6 +179,7 @@ This file describes the behavioral rules that are currently implemented in code.
 
 - Events live on a separate `Events` tab between `My Habits` and `Settings`.
 - Events are not Habits or Pills and do not participate in reminders, notifications, overdue state, badge count, history review, Archive, Restore, widgets, or streak calculation.
+- Event name fields use the shared `Name` placeholder and word-capitalization input behavior.
 - The Events dashboard has one global empty state when no Events exist:
   - `No Events Yet`
   - `Create your first event to get started.`
@@ -248,6 +252,7 @@ This file describes the behavioral rules that are currently implemented in code.
 - `Active From` can be the archive date, any later date, today, or a future date.
 - In Restore Draft, End Repeat defaults to `Never` and End Date is cleared. The read-only archived screen still shows the stored historical End Repeat/End Date until Restore Draft starts.
 - The Restore Draft screen uses the normal `Save` action. When Save succeeds, the app saves the draft edits, sets `isArchived = false`, clears `archivedAt`, writes `activeFrom`, and inserts a new schedule version effective from Active From.
+- Before writing the new Restore gap, Restore removes archived history states on and after Active From. This prevents stale future Archived days from an earlier Restore attempt from staying inside the new active cycle.
 - Restore writes `archived` history states from `archivedAt` through the day before Active From. If Active From is the archive day, this gap is empty and no archived states are created.
 - Restore writes archived gap rows only into empty days. Existing Completed/Taken/Skipped rows in the archive gap are preserved and continue to count normally.
 - Archived history states never count as Completed, Taken, or Skipped, and they are never editable.

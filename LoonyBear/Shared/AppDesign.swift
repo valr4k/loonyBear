@@ -268,7 +268,7 @@ enum AppCopy {
     static let pillHistoryCountsEveryDay = "History counts every day from the start date."
     static let habitHistoryFollowsSchedule = "History follows schedule from start date."
     static let habitHistoryCountsEveryDay = "History counts every day from the start date."
-    static let pillDescriptionPlaceholder = "(optional)"
+    static let pillDescriptionPlaceholder = "Add notes…"
 
     static func overdueScheduledDayEditMessage(actionLabel: String) -> String {
         "Mark each overdue day as \(actionLabel) or Skipped."

@@ -296,7 +296,7 @@ Meaning:
   - cold history from `startDate` through the day before the editable window is stored as at most one schedule-aware `HabitHistoryRange` or `PillHistoryRange`
   - editable-window history from `max(startDate, today - 29 days)` through yesterday is stored in monthly bucket masks
 - This keeps old generated history compact while keeping recent days individually editable.
-- Restore archived-gap writes use upsert semantics that preserve existing completed/taken/skipped/archived bucket states. Only empty days become archived.
+- Restore removes archived history states on and after Active From before writing the new active cycle. Restore archived-gap writes then use upsert semantics that preserve existing completed/taken/skipped/archived states inside the archive gap. Only empty days become archived.
 - Skipped days are stored explicitly, not inferred.
 - Legacy `HabitCompletion` and `PillIntake` rows are read only as compatibility fallback. Bucket state has priority over legacy rows for the same owner/day; range state is used only when there is no bucket or legacy day state.
 - Positive bucket history stores the fact that a day was completed/taken, not the old day-level provenance source. When positive bucket days are projected back into domain models they use the manual-edit compatibility source.
@@ -352,6 +352,7 @@ Both Habit and Pill backup payloads include `endDate`, `isArchived`, `archivedAt
 Current backups use `schemaVersion = 3` and store Habit/Pill history as monthly bucket payloads plus schedule-aware range payloads. Legacy v1 backups with day-level HabitCompletion/PillIntake payloads are accepted and restored into buckets. Legacy v2 backups without range payloads remain valid; missing range arrays default to empty.
 Habit and Pill history bucket payloads can contain archived bits. Archived bucket days are restored as stored inactive-history facts and do not count as completed/taken or skipped.
 Habit and Pill history range payloads can contain positive, skipped, or archived states, but current create-time generation writes positive ranges only. Restore validates range owner IDs, date order, count, and schedule payload before applying the archive.
+The range-count and range-payload validation helpers are pure value helpers and are intentionally available from nonisolated service code so Backup restore validation can run without crossing into the main actor.
 Schedule backup payloads include `scheduleKind` and `intervalDays` for interval and one-time repeat support.
 Event backup payloads include `id`, `name`, `mode`, `date`, `sortOrder`, timestamps, and `version`.
 `BackupAppSettings` stores the selected appearance mode and app tint. Legacy backups without this optional settings payload remain valid and do not overwrite the current appearance settings during restore.

@@ -222,6 +222,7 @@ Validation rules:
 - Start Date uses the native compact system date picker with no app-level selectable range
 - optional End Date must pass `EndDateValidationSupport` against the initial schedule version whose `effectiveFrom` is the selected `startDate`
 - form validation and unexpected action failures are surfaced through the shared bottom floating warning banner; the old inline validation banner component is not used
+- the Habit name input uses the shared `Name` placeholder and word capitalization
 
 Repository-level create rule:
 - maximum number of habits is `20`
@@ -261,6 +262,7 @@ Performance rule:
 - `CoreDataInitialHistoryPlanner` writes at most one cold range before the editable window and then delegates the recent editable window to `CoreDataInitialHistoryBucketPlanner`
 - for example, 500 years of daily initial history creates one cold range for the old period plus a small number of monthly bucket rows for the current editable window
 - read paths answer "what happened on this day?" by checking bucket state first, legacy compatibility rows second, and range state last
+- `CoreDataHistoryRangeCalculator` and `CoreDataHistoryRangeSupport.isValidPayload(...)` are pure value-based helpers and are declared `nonisolated` because backup validation calls them from nonisolated service code while the app target uses MainActor default isolation
 
 ### 5.6 Habit Reconciliation
 `reconcilePastDays(today:)`:
@@ -361,6 +363,8 @@ Create form validation rules:
 - Start Date uses the native compact system date picker with no app-level selectable range
 - optional End Date must pass `EndDateValidationSupport` against the initial schedule version whose `effectiveFrom` is the selected `startDate`; Pill `Repeat = Never` disables and clears End Date
 - form validation and unexpected action failures are surfaced through the shared bottom floating warning banner; the old inline validation banner component is not used
+- the Pill name input uses the shared `Name` placeholder and word capitalization
+- the optional Pill description input uses the shared `Add notes…` placeholder
 
 Repository-level create rule:
 - maximum number of pills is `20`
@@ -394,6 +398,7 @@ Performance rule:
 - a very long historical range therefore creates one range row for the old generated period plus a small number of monthly bucket rows for recent editable days
 - manual `takenDays` passed in the draft remain explicit day writes because they come from user-editable form state and are expected to stay small
 - read paths answer "what happened on this day?" by checking bucket state first, legacy compatibility rows second, and range state last
+- `CoreDataHistoryRangeCalculator` and `CoreDataHistoryRangeSupport.isValidPayload(...)` are pure value-based helpers and are declared `nonisolated` because backup validation calls them from nonisolated service code while the app target uses MainActor default isolation
 
 ### 6.6 Pill Reconciliation
 `reconcilePastDays(today:)`:
@@ -539,6 +544,7 @@ Rules:
 - Restore Draft may choose a future `Active From`; future restored Pills return to Pending, while future restored Habits return to Build/Quit without today action/status until `Active From`
 - Restore Draft defaults End Repeat to `Never` and clears End Date inside the draft only; the read-only archived screen still shows the stored historical End Repeat/End Date before Restore Draft starts
 - when Restore succeeds, the app saves the draft edits, sets `isArchived = false`, clears `archivedAt`, writes `activeFrom`, and inserts a new schedule version effective from `Active From`
+- before writing the new Restore gap, Restore removes archived history states on and after `Active From`; this clears stale future Archived days left by an earlier restore-then-archive cycle
 - Restore writes `archived` history states from `archivedAt` through the day before `Active From`; if `Active From` equals `archivedAt`, the archived gap is empty
 - Restore writes archived gap states only into empty days; existing completed/taken/skipped states in that gap are preserved and keep their original meaning
 - archived history states never count as completed/taken or skipped, never contribute to streaks/totals, never create overdue/review state, and are never editable
@@ -766,6 +772,8 @@ Validation includes:
 - valid interval day ranges and one-time schedule kinds
 - valid completion and intake source values
 - valid optional `archivedAt` dates when present
+- valid monthly history bucket masks and bucket counts
+- valid history range owner identifiers, date ordering, stored counts, and embedded schedule payloads
 - foreign key existence for schedules, completions, and intakes
 - duplicate identifier detection across all backup entity arrays
 - valid Event mode values and required Event fields
@@ -909,6 +917,9 @@ Defined in `LoonyBear/Shared/AppDesign.swift`.
 
 Behavior:
 - centered name/dosage fields use the UIKit-backed centered text field wrapper
+- Habit, Pill, and Event name inputs use the shared `Name` placeholder
+- Habit, Pill, and Event name inputs use word capitalization so each typed word starts with a capital letter when the active keyboard supports it
+- Pill description inputs use the shared optional placeholder `Add notes…`
 - the wrapper uses the app tint only for the caret through `tintColor`
 - keyboard return uses `UIReturnKeyType.default`; the app does not force `.done` or a custom keyboard action key
 - pressing Return resigns first responder through the text field delegate
@@ -1030,6 +1041,7 @@ Defined in `LoonyBear/Features/MyEvents/EventEditorViews.swift`.
 Add new Event:
 - sheet title: `Add new Event`.
 - first block contains `Name`.
+- the name field uses the shared `Name` placeholder and word capitalization.
 - second block title: `Timing`.
 - Timing rows:
   - `Mode`
@@ -1135,7 +1147,7 @@ Archive page behavior:
 - `Restore` dismisses the read-only Archive sheet and opens a separate Restore Draft sheet; the stored item remains archived until the Restore Draft sheet is saved
 - Restore Draft re-enables editable fields, shows Start Date read-only, shows `Active From` directly under Start Date, defaults End Repeat to Never, and clears End Date in the draft
 - Restore Draft `Active From` defaults to today and uses `max(archivedAt, today - 29 days)` as its minimum allowed date
-- Restore Draft uses the normal top-right `Save` action. Save stores the draft, writes archived gap rows only for empty days, starts a new schedule version at `Active From`, clears `isArchived`/`archivedAt`, and returns the item to the active dashboards
+- Restore Draft uses the normal top-right `Save` action. Save stores the draft, removes archived history states on and after `Active From`, writes archived gap rows only for empty days, starts a new schedule version at `Active From`, clears `isArchived`/`archivedAt`, and returns the item to the active dashboards
 - if the user changes away from the owning tab while the read-only Archive sheet is dismissing, any pending Restore Draft handoff is cleared so the Restore Draft cannot appear on the wrong tab/context
 
 ### 13.5 Reminder Time UI
@@ -1173,7 +1185,6 @@ Behavior:
 - when `On Date` is selected, a date row appears below the options row with the same compact capsule display
 - Create screens use today at start-of-day as the fallback date when `On Date` is selected from an empty End Date, so the default is not coupled to the selected Start Date
 - active Details screens pass the same today fallback through `AppEditScheduleSection.defaultEndDateFallback`
-- the date row uses the native compact system date picker
 - the date row uses the native compact system date picker without an app-level selectable range
 - End Date validity is centralized in `EndDateValidationSupport`: `nil` is valid, one-time Pill repeat can opt out of End Date validation, selected dates before the lower bound are invalid, and selected dates at or after the lower bound must contain at least one scheduled day in the active schedule preview window
 - invalid End Date state disables Save and shows a dismissible, reason-specific floating warning: `End date can’t be in the past.` when the selected date is before local today, or `End date must include at least one scheduled day.` when the selected date is today/later but contains no scheduled day in the active schedule preview window; closing the warning does not make disabled Save re-show it, but changing form inputs that produce a new invalid state can show it again

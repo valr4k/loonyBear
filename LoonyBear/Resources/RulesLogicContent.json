@@ -59,7 +59,7 @@
         },
         {
           "title": "Creating a Habit",
-          "body": "Add new Habit includes type, name, start date, reminder toggle, reminder time, Repeat, End Repeat, and End Date. Repeat opens a pushed editor with Days and Interval sections. Days supports weekday combinations. Interval is Every N days, limited to 2 through 5 days. Weekday summaries are Daily, Weekdays, Weekends, Weekly on Mon style labels for one selected weekday, or abbreviated day lists such as Mon, Wed, Fri for other combinations. Use schedule for history is no longer shown; new Habits use schedule-based history generation. The save button is enabled only when the habit name is not empty, the schedule rule is valid, and any selected End Date includes at least one scheduled day. Name, schedule, end-date, hard-limit, and unexpected action errors are shown as dismissible floating warning banners."
+          "body": "Add new Habit includes type, name, start date, reminder toggle, reminder time, Repeat, End Repeat, and End Date. The name field uses the shared Name placeholder and word capitalization. Repeat opens a pushed editor with Days and Interval sections. Days supports weekday combinations. Interval is Every N days, limited to 2 through 5 days. Weekday summaries are Daily, Weekdays, Weekends, Weekly on Mon style labels for one selected weekday, or abbreviated day lists such as Mon, Wed, Fri for other combinations. Use schedule for history is no longer shown; new Habits use schedule-based history generation. The save button is enabled only when the habit name is not empty, the schedule rule is valid, and any selected End Date is not in the past and includes at least one scheduled day. Name, schedule, end-date, hard-limit, and unexpected action errors are shown as dismissible floating warning banners."
         },
         {
           "title": "Habit start date range",
@@ -84,7 +84,7 @@
       "items": [
         {
           "title": "How Habit history is stored",
-          "body": "Habit history is stored in monthly HabitHistoryBucket rows. Each bucket belongs to one Habit and one local calendar month, keyed by yearMonthKey. The bucket stores completed, skipped, and archived days as separate bit masks. A day is completed when its bit is in the positive mask. A day is skipped when its bit is in the skipped mask. A day is archived when its bit is in the archived mask written by Restore for an inactive Archive gap. Restore writes archived bits only into empty days, so existing Completed or Skipped states are preserved. Archived days do not count as completed or skipped and are never editable. A day is empty only when it has no bucket bit and no valid legacy fallback row. Legacy HabitCompletion rows are accepted only for old local data, old backups, corruption tests, and migration fallback; bucket state wins if both exist for the same day."
+          "body": "Habit history is stored in monthly HabitHistoryBucket rows plus schedule-aware HabitHistoryRange rows. Buckets hold editable and recent history. Each bucket belongs to one Habit and one local calendar month, keyed by yearMonthKey, and stores completed, skipped, and archived days as separate bit masks. Ranges hold cold generated history before the editable window without creating one database row per day. A day is completed when its bucket bit is in the positive mask or, if no bucket/legacy day exists, a valid range contains that day. A day is skipped when its bit is in the skipped mask. A day is archived when its bit is in the archived mask written by Restore for an inactive Archive gap. Restore first removes archived states on and after Active From, then writes archived bits only into empty days in the archive gap, so existing Completed or Skipped states are preserved. Archived days do not count as completed or skipped and are never editable. A day is empty only when it has no bucket bit, no valid legacy fallback row, and no valid matching range state. Legacy HabitCompletion rows are accepted only for old local data, old backups, corruption tests, and migration fallback; bucket state wins if both exist for the same day, and range state is used last."
         },
         {
           "title": "Habit history modes",
@@ -92,7 +92,7 @@
         },
         {
           "title": "Habit auto-fill on create",
-          "body": "When a Habit is created, the repository generates completed history from the start date up to yesterday using schedule-based history generation. Only days matching the schedule rule are generated. Today is not prefilled."
+          "body": "When a Habit is created, the repository generates completed history from the start date up to yesterday using schedule-based history generation. Only days matching the schedule rule are generated. Today is not prefilled. Cold generated history before the editable window is stored as a schedule-aware range, while generated days inside the editable window are stored in monthly buckets so they can still be edited individually."
         },
         {
           "title": "Habit reconciliation",
@@ -129,7 +129,7 @@
         },
         {
           "title": "Creating an Event",
-          "body": "Add new Event contains a Name block and a Timing block. Timing has Mode and Date. Mode opens a popover with Countdown and Count Up. Date uses the native compact system date picker. Countdown defaults to today. Count Up defaults to today."
+          "body": "Add new Event contains a Name block and a Timing block. The name field uses the shared Name placeholder and word capitalization. Timing has Mode and Date. Mode opens a popover with Countdown and Count Up. Date uses the native compact system date picker. Countdown defaults to today. Count Up defaults to today."
         },
         {
           "title": "Event validation",
@@ -141,7 +141,7 @@
         },
         {
           "title": "Event Details and Delete",
-          "body": "Tapping an Event card opens Event Details. Event Details can edit name, mode, and date. Delete is permanent and uses the confirmation Delete this Event? / This Event will be permanently deleted. Events do not use Archive, Restore, reminders, overdue, badge count, history review, or auto-delete."
+          "body": "Tapping an Event card opens Event Details. Event Details can edit name, mode, and date. Delete is permanent and uses the confirmation Delete this Event? / This Event will be permanently deleted. Events do not use Archive, Restore, reminders, overdue, badge count, history review, or auto-delete. For persistence and backup compatibility, user-facing Count Up is stored with the raw mode value elapsed."
         }
       ]
     },
@@ -170,7 +170,7 @@
         },
         {
           "title": "Creating a Pill",
-          "body": "Add new Pill includes name, dosage, start date, reminder toggle, reminder time, Repeat, End Repeat, End Date, and an optional description. Repeat opens a pushed editor with Days and Interval sections. Days supports weekday combinations. Interval includes Never for one-time Pills and Every N days, limited to 2 through 5 days. Weekday summaries are Daily, Weekdays, Weekends, Weekly on Mon style labels for one selected weekday, or abbreviated day lists such as Mon, Wed, Fri for other combinations. Use schedule for history is no longer shown; new Pills use schedule-based history generation. Save is enabled only when the pill name is not empty, the dosage is not empty, the schedule rule is valid, and any selected End Date includes at least one scheduled day. Name, dosage, schedule, end-date, hard-limit, and unexpected action errors are shown as dismissible floating warning banners."
+          "body": "Add new Pill includes name, dosage, start date, reminder toggle, reminder time, Repeat, End Repeat, End Date, and an optional description. The name field uses the shared Name placeholder and word capitalization. The optional description field uses the Add notes… placeholder. Repeat opens a pushed editor with Days and Interval sections. Days supports weekday combinations. Interval includes Never for one-time Pills and Every N days, limited to 2 through 5 days. Weekday summaries are Daily, Weekdays, Weekends, Weekly on Mon style labels for one selected weekday, or abbreviated day lists such as Mon, Wed, Fri for other combinations. Use schedule for history is no longer shown; new Pills use schedule-based history generation. Save is enabled only when the pill name is not empty, the dosage is not empty, the schedule rule is valid, and any selected End Date is not in the past and includes at least one scheduled day. Name, dosage, schedule, end-date, hard-limit, and unexpected action errors are shown as dismissible floating warning banners."
         },
         {
           "title": "Pill start date range",
@@ -191,7 +191,7 @@
       "items": [
         {
           "title": "How Pill history is stored",
-          "body": "Pill history is stored in monthly PillHistoryBucket rows. Each bucket belongs to one Pill and one local calendar month, keyed by yearMonthKey. The bucket stores taken, skipped, and archived days as separate bit masks. A day is taken when its bit is in the positive mask. A day is skipped when its bit is in the skipped mask. A day is archived when its bit is in the archived mask written by Restore for an inactive Archive gap. Restore writes archived bits only into empty days, so existing Taken or Skipped states are preserved. Archived days do not count as taken or skipped and are never editable. A day is empty only when it has no bucket bit and no valid legacy fallback row. Legacy PillIntake rows are accepted only for old local data, old backups, corruption tests, and migration fallback; bucket state wins if both exist for the same day."
+          "body": "Pill history is stored in monthly PillHistoryBucket rows plus schedule-aware PillHistoryRange rows. Buckets hold editable and recent history. Each bucket belongs to one Pill and one local calendar month, keyed by yearMonthKey, and stores taken, skipped, and archived days as separate bit masks. Ranges hold cold generated history before the editable window without creating one database row per day. A day is taken when its bucket bit is in the positive mask or, if no bucket/legacy day exists, a valid range contains that day. A day is skipped when its bit is in the skipped mask. A day is archived when its bit is in the archived mask written by Restore for an inactive Archive gap. Restore first removes archived states on and after Active From, then writes archived bits only into empty days in the archive gap, so existing Taken or Skipped states are preserved. Archived days do not count as taken or skipped and are never editable. A day is empty only when it has no bucket bit, no valid legacy fallback row, and no valid matching range state. Legacy PillIntake rows are accepted only for old local data, old backups, corruption tests, and migration fallback; bucket state wins if both exist for the same day, and range state is used last."
         },
         {
           "title": "Pill history modes",
@@ -199,11 +199,11 @@
         },
         {
           "title": "Pill prefilled taken history on create",
-          "body": "When a new Pill is created, the repository generates taken history from the start date up to yesterday using schedule-based history generation. Only days matching the schedule rule are generated."
+          "body": "When a new Pill is created, the repository generates taken history from the start date up to yesterday using schedule-based history generation. Only days matching the schedule rule are generated. Cold generated history before the editable window is stored as a schedule-aware range, while generated days inside the editable window are stored in monthly buckets so they can still be edited individually."
         },
         {
           "title": "What repository create does for Pills",
-          "body": "When the Pill is saved, the repository writes every generated taken day into monthly PillHistoryBucket rows. Today is not prefilled."
+          "body": "When the Pill is saved, the repository writes generated taken history from startDate through yesterday. Cold generated history before the editable window is stored as one schedule-aware PillHistoryRange, while generated days inside the editable window are stored in monthly PillHistoryBucket rows. Today is not prefilled."
         },
         {
           "title": "Pill reconciliation",
@@ -318,7 +318,7 @@
         },
         {
           "title": "What backup includes",
-          "body": "Backup includes Habits, Habit schedule rules, Habit completions, Habit ordering, Pills, Pill schedule rules, Pill intakes, reminder settings, stored history modes, optional End Date values, stored Archive/isArchived state, archivedAt dates, archived history sources, Events, and app appearance settings."
+          "body": "Backup includes Habits, Habit schedule rules, Habit monthly history buckets, Habit schedule-aware history ranges, legacy Habit completions for old backup compatibility, Habit ordering, Pills, Pill schedule rules, Pill monthly history buckets, Pill schedule-aware history ranges, legacy Pill intakes for old backup compatibility, reminder settings, stored history modes, optional End Date values, stored Archive/isArchived state, archivedAt dates, archived history sources, Events, and app appearance settings."
         },
         {
           "title": "Restore safety snapshot",
@@ -326,7 +326,7 @@
         },
         {
           "title": "Restore validation",
-          "body": "Restore validates schema version, app appearance settings when present, history mode values, schedule rules including interval and one-time kinds, source values, and duplicate identifiers before replacing the store."
+          "body": "Restore validates schema version, app appearance settings when present, history mode values, schedule rules including interval and one-time kinds, source values, monthly bucket masks and counts, schedule-aware range owner IDs, date order, counts, schedule payloads, and duplicate identifiers before replacing the store."
         },
         {
           "title": "What restore does after success",
@@ -439,15 +439,15 @@
       "items": [
         {
           "title": "Create Habit validations",
-          "body": "CreateHabitUseCase requires a non-empty trimmed name and a valid schedule rule. CoreDataHabitRepository also enforces a hard limit of 20 habits. Create Habit also validates optional End Date before Save: the selected date must include at least one scheduled day from the active lower bound through End Date. Create Habit presents form validation, hard-limit errors, end-date errors, and unexpected action failures with the shared dismissible floating warning banner."
+          "body": "CreateHabitUseCase requires a non-empty trimmed name and a valid schedule rule. CoreDataHabitRepository also enforces a hard limit of 20 habits. Create Habit also validates optional End Date before Save: the selected date must not be in the past and must include at least one scheduled day from the active lower bound through End Date. Create Habit presents form validation, hard-limit errors, end-date errors, and unexpected action failures with the shared dismissible floating warning banner."
         },
         {
           "title": "Habit create storage",
-          "body": "Habit creation inserts a Habit row, inserts the first HabitScheduleVersion row, stores schedule-based historyModeRaw, stores optional End Date, sets isArchived to false, clears archivedAt, and writes generated initial completed days into monthly HabitHistoryBucket rows from startDate through yesterday."
+          "body": "Habit creation inserts a Habit row, inserts the first HabitScheduleVersion row, stores schedule-based historyModeRaw, stores optional End Date, sets isArchived to false, clears archivedAt, and writes generated initial completed history from startDate through yesterday by splitting it into one cold schedule-aware HabitHistoryRange before the editable window plus monthly HabitHistoryBucket rows inside the editable window."
         },
         {
           "title": "Habit create autofill source",
-          "body": "Habit create history generation writes completed bucket bits. Only days matching the schedule rule are generated. Today is not prefilled. Bucketed positive history stores the completed fact, not the old day-level source provenance; projected domain completions use the manual-edit compatibility source."
+          "body": "Habit create history generation writes completed facts. Only days matching the schedule rule are generated. Today is not prefilled. Cold generated history stores its schedule payload and count in a range row; editable generated history stores completed bucket bits. Bucketed positive history stores the completed fact, not the old day-level source provenance; projected domain completions use the manual-edit compatibility source."
         },
         {
           "title": "Habit update behavior",
@@ -468,15 +468,15 @@
       "items": [
         {
           "title": "Create Pill validations",
-          "body": "Create Pill requires a non-empty trimmed name, a non-empty trimmed dosage, and a valid schedule rule. CoreDataPillRepository also enforces a hard limit of 20 pills. Create Pill also validates optional End Date before Save unless Repeat is Never: the selected date must include at least one scheduled day from the active lower bound through End Date. Repeat Never clears and ignores End Date. Create Pill presents form validation, hard-limit errors, end-date errors, and unexpected action failures with the shared dismissible floating warning banner."
+          "body": "Create Pill requires a non-empty trimmed name, a non-empty trimmed dosage, and a valid schedule rule. CoreDataPillRepository also enforces a hard limit of 20 pills. Create Pill also validates optional End Date before Save unless Repeat is Never: the selected date must not be in the past and must include at least one scheduled day from the active lower bound through End Date. Repeat Never clears and ignores End Date. Create Pill presents form validation, hard-limit errors, end-date errors, and unexpected action failures with the shared dismissible floating warning banner."
         },
         {
           "title": "Create Pill day generation",
-          "body": "During repository create, initial takenDays are generated from startDate through yesterday. Generation includes only days matching the schedule rule. Today is not prefilled."
+          "body": "During repository create, initial taken history is generated from startDate through yesterday. Generation includes only days matching the schedule rule. Today is not prefilled. Cold generated history before the editable window is written as one schedule-aware PillHistoryRange, while editable-window generated history is written into monthly PillHistoryBucket rows."
         },
         {
           "title": "Pill create storage",
-          "body": "Pill creation inserts a Pill row, inserts the first PillScheduleVersion row, stores schedule-based historyModeRaw, stores optional End Date, sets isArchived to false, clears archivedAt, and writes generated taken days into monthly PillHistoryBucket rows. Today is not prefilled. Bucketed positive history stores the taken fact, not separate day-level source provenance; projected domain intakes use the manual-edit compatibility source."
+          "body": "Pill creation inserts a Pill row, inserts the first PillScheduleVersion row, stores schedule-based historyModeRaw, stores optional End Date, sets isArchived to false, clears archivedAt, and writes generated taken history from startDate through yesterday by splitting it into one cold schedule-aware PillHistoryRange before the editable window plus monthly PillHistoryBucket rows inside the editable window. Today is not prefilled. Bucketed positive history stores the taken fact, not separate day-level source provenance; projected domain intakes use the manual-edit compatibility source."
         },
         {
           "title": "Pill update behavior",
@@ -526,11 +526,11 @@
       "items": [
         {
           "title": "Backup schema and files",
-          "body": "Backup schemaVersion is 2. The main backup file is LoonyBear.json.gz. The previous backup file is LoonyBear.previous.json.gz. The restore snapshot file is LoonyBear.restore-snapshot.json.gz. Current backups store Habit and Pill history as monthly bucket payloads. New builds can restore older v1 backups that do not contain bucket history, scheduleKind, intervalDays, End Date, Archive/isArchived state, archivedAt, or archived history sources; old day-level history payloads are restored into buckets. Restoring new backups into older app builds is not supported."
+          "body": "Backup schemaVersion is 3. The main backup file is LoonyBear.json.gz. The previous backup file is LoonyBear.previous.json.gz. The restore snapshot file is LoonyBear.restore-snapshot.json.gz. Current backups store Habit and Pill history as monthly bucket payloads plus schedule-aware range payloads. New builds can restore older v1 backups that do not contain bucket history, range history, scheduleKind, intervalDays, End Date, Archive/isArchived state, archivedAt, archived history sources, Events, or app settings; old day-level history payloads are restored into buckets. Legacy v2 backups without range payloads remain valid and default missing range arrays to empty. Restoring new backups into older app builds is not supported."
         },
         {
           "title": "Backup payload contents",
-          "body": "BackupArchive contains habits with End Date, Archive/isArchived state, archivedAt, habit schedule versions with schedule kind, weekday mask, and interval days, habit monthly history buckets including archived masks, habit ordering, optional app settings, pills with End Date, Archive/isArchived state, archivedAt, pill schedule versions with schedule kind, weekday mask, and interval days, pill monthly history buckets including archived masks, and Events. Schedule kind can represent weekly, custom interval days, or one-time Pill rules. BackupHabit and BackupPill both carry stored historyMode values. BackupEvent carries name, mode, date, sort order, timestamps, and version. BackupAppSettings carries appearanceMode and appTint."
+          "body": "BackupArchive contains habits with End Date, Archive/isArchived state, archivedAt, habit schedule versions with schedule kind, weekday mask, and interval days, habit monthly history buckets including archived masks, habit schedule-aware history ranges, habit ordering, optional app settings, pills with End Date, Archive/isArchived state, archivedAt, pill schedule versions with schedule kind, weekday mask, and interval days, pill monthly history buckets including archived masks, pill schedule-aware history ranges, and Events. Schedule kind can represent weekly, custom interval days, or one-time Pill rules. BackupHabit and BackupPill both carry stored historyMode values. BackupEvent carries name, mode, date, sort order, timestamps, and version. BackupAppSettings carries appearanceMode and appTint."
         },
         {
           "title": "Backup file state",
@@ -538,7 +538,7 @@
         },
         {
           "title": "Restore safety and validation",
-          "body": "Restore first attempts to create a compressed snapshot of the current store. If snapshot payload creation fails with a DataIntegrityError, restore continues. If snapshot encoding, compression, or file writing fails, restore aborts. Restore validates schema version, app settings when present, history modes, reminder times, schedule rules including interval and one-time kinds, source values, foreign key references, and duplicate identifiers before replacing the store."
+          "body": "Restore first attempts to create a compressed snapshot of the current store. If snapshot payload creation fails with a DataIntegrityError, restore continues. If snapshot encoding, compression, or file writing fails, restore aborts. Restore validates schema version, app settings when present, history modes, reminder times, schedule rules including interval and one-time kinds, source values, monthly bucket masks and counts, history range owner IDs, date order, counts, schedule payloads, foreign key references, and duplicate identifiers before replacing the store."
         },
         {
           "title": "Reliability layer",

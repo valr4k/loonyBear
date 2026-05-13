@@ -44,7 +44,9 @@ The current app supports:
 - active Pill Details and Habit Details sheets that replace the older separate Edit/Details split
 - read-only item Details for archived items, plus Restore Draft flows and permanent delete
 - Events tab between Habits and Settings, with permanent delete only and no reminder/history/archive behavior
+- optimized Habit/Pill history storage using monthly buckets plus schedule-aware cold history ranges for very old generated history
 - scheduled-day dots in Habit and Pill history calendars
+- unified `Name` inputs with word capitalization and `Add notes…` optional description placeholders
 - native compact date/time pickers with shared Schedule presentation safety for simultaneous picker/popover/navigation taps, including a window-level touch-down guard that avoids stealing scroll gestures
 - portrait-only orientation on iPhone
 - Rules & Logic in-app reference content
