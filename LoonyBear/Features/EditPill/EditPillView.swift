@@ -416,7 +416,7 @@ struct EditPillView: View {
         Button {
             isShowingArchiveConfirmation = true
         } label: {
-            Label("Archive", systemImage: "tray.badge")
+            Label("Archive", systemImage: "tray.and.arrow.down")
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(AppMaterialCapsuleActionButtonStyle())
@@ -432,7 +432,7 @@ struct EditPillView: View {
                 beginRestore()
             }
         } label: {
-            Label("Restore", systemImage: "arrow.uturn.backward")
+            Label("Restore", systemImage: "tray.and.arrow.up")
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(AppMaterialCapsuleActionButtonStyle())
