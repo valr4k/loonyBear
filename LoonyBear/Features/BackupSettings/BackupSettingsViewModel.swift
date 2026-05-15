@@ -17,7 +17,7 @@ final class BackupSettingsViewModel: ObservableObject {
     private let notificationService: NotificationService
     private let pillNotificationService: PillNotificationService
     private let minimumLoadingDuration: Duration = .seconds(1)
-    private var isEnablingAutoBackupWithoutFolder = false
+    private var isAwaitingAutoBackupFolderSelection = false
 
     init(
         service: BackupService,
@@ -46,14 +46,18 @@ final class BackupSettingsViewModel: ObservableObject {
         do {
             status = try service.loadStatus()
             if status.requiresFolderReselection {
+                autoBackupService.setEnabled(false)
                 showBanner(
                     title: "Backup Folder Unavailable",
                     message: "The previously selected folder is no longer accessible. Select a new backup location.",
                     style: .failure
                 )
+            } else if !status.hasUsableFolder {
+                autoBackupService.setEnabled(false)
             }
         } catch {
-            isEnablingAutoBackupWithoutFolder = false
+            isAwaitingAutoBackupFolderSelection = false
+            autoBackupService.setEnabled(false)
             showBanner(title: "Backup Failed", message: Self.createFailureMessage(for: error), style: .failure)
         }
     }
@@ -66,18 +70,18 @@ final class BackupSettingsViewModel: ObservableObject {
         do {
             try service.saveFolderBookmark(for: url)
             status = try service.loadStatus()
-            if isEnablingAutoBackupWithoutFolder {
+            if isAwaitingAutoBackupFolderSelection, status.hasUsableFolder {
                 autoBackupService.setEnabled(true)
             }
-            isEnablingAutoBackupWithoutFolder = false
+            isAwaitingAutoBackupFolderSelection = false
         } catch {
             showBanner(title: "Backup Failed", message: Self.createFailureMessage(for: error), style: .failure)
         }
     }
 
     func folderPickerDidDismiss() {
-        guard isEnablingAutoBackupWithoutFolder else { return }
-        isEnablingAutoBackupWithoutFolder = false
+        guard isAwaitingAutoBackupFolderSelection else { return }
+        isAwaitingAutoBackupFolderSelection = false
         autoBackupService.setEnabled(false)
     }
 
@@ -86,14 +90,16 @@ final class BackupSettingsViewModel: ObservableObject {
             if status.hasUsableFolder {
                 autoBackupService.setEnabled(true)
             } else if status.hasSelectedFolder {
-                autoBackupService.setEnabled(true)
+                isAwaitingAutoBackupFolderSelection = true
+                autoBackupService.setEnabled(false)
                 promptFolderReselection()
             } else {
-                isEnablingAutoBackupWithoutFolder = true
+                isAwaitingAutoBackupFolderSelection = true
+                autoBackupService.setEnabled(false)
                 chooseFolder()
             }
         } else {
-            isEnablingAutoBackupWithoutFolder = false
+            isAwaitingAutoBackupFolderSelection = false
             autoBackupService.setEnabled(false)
         }
     }
@@ -175,6 +181,7 @@ final class BackupSettingsViewModel: ObservableObject {
     func confirmRestoreBackup() async -> Bool {
         guard !isPerformingOperation else { return false }
 
+        let autoBackupToken = autoBackupService.beginExternalBackup()
         isRestoringBackup = true
         let start = ContinuousClock.now
         await Task.yield()
@@ -186,10 +193,17 @@ final class BackupSettingsViewModel: ObservableObject {
             notificationService.rescheduleAllNotifications()
             pillNotificationService.rescheduleAllNotifications()
             status = updatedStatus
+            autoBackupService.completeExternalBackup(
+                autoBackupToken,
+                succeeded: true,
+                clearsDirtyRegardless: true,
+                schedulesPendingDirty: false
+            )
             await finishLoading(startedAt: start, kind: .restore)
             showBanner(title: "Restore Complete", message: "Backup restored successfully.", style: .success)
             return true
         case .failure(let message):
+            autoBackupService.completeExternalBackup(autoBackupToken, succeeded: false)
             await finishLoading(startedAt: start, kind: .restore)
             showBanner(title: "Restore Failed", message: message, style: .failure)
             return false

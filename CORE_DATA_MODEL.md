@@ -74,6 +74,7 @@ Meaning:
 - masks for the same day must not overlap
 - count fields are denormalized mirrors of the corresponding mask bit counts
 - count fields are validated against masks during protected read and backup restore paths
+- masks are validated against the actual days in `yearMonthKey`; impossible bits such as February 31 or April 31 are invalid and must never be normalized into a later month
 
 ### `HabitHistoryRange`
 Purpose:
@@ -194,6 +195,7 @@ Meaning:
 - masks for the same day must not overlap
 - count fields are denormalized mirrors of the corresponding mask bit counts
 - count fields are validated against masks during protected read and backup restore paths
+- masks are validated against the actual days in `yearMonthKey`; impossible bits such as February 31 or April 31 are invalid and must never be normalized into a later month
 
 ### `PillHistoryRange`
 Purpose:
@@ -350,11 +352,11 @@ Backup serializes and restores:
 Both Habit and Pill backup payloads include stored `historyMode`.
 Both Habit and Pill backup payloads include `endDate`, `isArchived`, `archivedAt`, and stored `historyMode`.
 Current backups use `schemaVersion = 3` and store Habit/Pill history as monthly bucket payloads plus schedule-aware range payloads. Legacy v1 backups with day-level HabitCompletion/PillIntake payloads are accepted and restored into buckets. Legacy v2 backups without range payloads remain valid; missing range arrays default to empty.
-Habit and Pill history bucket payloads can contain archived bits. Archived bucket days are restored as stored inactive-history facts and do not count as completed/taken or skipped.
+Habit and Pill history bucket payloads can contain archived bits. Archived bucket days are restored as stored inactive-history facts and do not count as completed/taken or skipped. Bucket payload masks are validated against the actual month represented by `yearMonthKey`; payloads with impossible day bits, overlapping masks, or mismatched counts are rejected during restore and the current local store is left unchanged.
 Habit and Pill history range payloads can contain positive, skipped, or archived states, but current create-time generation writes positive ranges only. Restore validates range owner IDs, date order, count, and schedule payload before applying the archive.
 The range-count and range-payload validation helpers are pure value helpers and are intentionally available from nonisolated service code so Backup restore validation can run without crossing into the main actor.
 Schedule backup payloads include `scheduleKind` and `intervalDays` for interval and one-time repeat support.
 Event backup payloads include `id`, `name`, `mode`, `date`, `sortOrder`, timestamps, and `version`.
 `BackupAppSettings` stores the selected appearance mode and app tint. Legacy backups without this optional settings payload remain valid and do not overwrite the current appearance settings during restore.
 
-Auto Backup does not add Core Data entities and does not change the backup archive schema. Its enabled flag, dirty flag, and dirty generation are local `UserDefaults` values, so restoring a backup does not overwrite the user's Auto Backup preference.
+Auto Backup does not add Core Data entities and does not change the backup archive schema. Its enabled flag, dirty flag, and dirty generation are local `UserDefaults` values, so restoring a backup does not overwrite the user's Auto Backup preference. Auto Backup still requires a usable selected folder; if the folder is missing or inaccessible, the local enabled flag is turned off until the user chooses a usable folder again.

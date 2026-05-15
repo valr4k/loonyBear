@@ -1685,10 +1685,18 @@ final class BackupService {
         skippedCount: Int,
         archivedCount: Int
     ) -> Bool {
-        guard isValidYearMonthKey(yearMonthKey) else { return false }
-        guard isValidHistoryMask(positiveMask),
-              isValidHistoryMask(skippedMask),
-              isValidHistoryMask(archivedMask) else { return false }
+        guard
+            isValidYearMonthKey(yearMonthKey),
+            let storageYearMonthKey = Int32(exactly: yearMonthKey),
+            let validMonthBitsMask = CoreDataHistoryBucketSupport.validDayBitsMask(
+                forYearMonthKey: storageYearMonthKey
+            )
+        else {
+            return false
+        }
+        guard isValidHistoryMask(positiveMask, validMonthBitsMask: validMonthBitsMask),
+              isValidHistoryMask(skippedMask, validMonthBitsMask: validMonthBitsMask),
+              isValidHistoryMask(archivedMask, validMonthBitsMask: validMonthBitsMask) else { return false }
         guard positiveMask & skippedMask == 0,
               positiveMask & archivedMask == 0,
               skippedMask & archivedMask == 0 else { return false }
@@ -1726,9 +1734,8 @@ final class BackupService {
         return yearMonthKey > 0 && (1...12).contains(month)
     }
 
-    private nonisolated func isValidHistoryMask(_ mask: Int64) -> Bool {
-        let validDayMask = (Int64(1) << 31) - 1
-        return mask >= 0 && (mask & ~validDayMask) == 0
+    private nonisolated func isValidHistoryMask(_ mask: Int64, validMonthBitsMask: Int64) -> Bool {
+        mask >= 0 && (mask & ~validMonthBitsMask) == 0
     }
 
     private nonisolated func habitBucketState(from sourceRaw: String) -> CoreDataHistoryBucketState? {

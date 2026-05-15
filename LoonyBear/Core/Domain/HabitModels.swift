@@ -87,7 +87,7 @@ struct ReminderTime: Codable, Equatable {
     }
 }
 
-struct WeekdaySet: OptionSet, Codable, Hashable {
+nonisolated struct WeekdaySet: OptionSet, Codable, Hashable {
     let rawValue: Int
 
     nonisolated static let monday = WeekdaySet(rawValue: 1 << 0)

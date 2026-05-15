@@ -775,6 +775,7 @@ Validation includes:
 - valid completion and intake source values
 - valid optional `archivedAt` dates when present
 - valid monthly history bucket masks and bucket counts
+- monthly history bucket mask bits must fit the actual calendar month represented by `yearMonthKey`; impossible day bits such as February 31 are invalid and are not allowed to normalize into a later month
 - valid history range owner identifiers, date ordering, stored counts, and embedded schedule payloads
 - foreign key existence for schedules, completions, and intakes
 - duplicate identifier detection across all backup entity arrays
@@ -835,12 +836,13 @@ Published runtime state:
 
 Enable/disable behavior:
 - the Backup screen owns the visible `Auto Backup` toggle row
-- the app never silently toggles Auto Backup on or off
+- Auto Backup is user-controlled for normal on/off intent, but it cannot remain enabled without a usable selected folder
 - when the user turns Auto Backup on and `BackupStatus` has a usable folder, `AutoBackupService.setEnabled(true)` is called
-- when the user turns Auto Backup on without a selected folder, `BackupSettingsViewModel` opens the system folder picker and keeps a pending enable flag
-- if folder selection succeeds while pending, Auto Backup is enabled
+- when the user turns Auto Backup on without a selected folder, `BackupSettingsViewModel` opens the system folder picker, stores a pending folder-selection intent, and keeps Auto Backup disabled until a usable folder is chosen
+- when the user turns Auto Backup on with a remembered but unavailable folder, `BackupSettingsViewModel` shows the folder-unavailable flow, prompts reselection, stores the same pending folder-selection intent, and keeps Auto Backup disabled until a usable folder is chosen
+- if folder selection succeeds while pending and the resulting status has a usable folder, Auto Backup is enabled
 - if folder selection is cancelled while pending, Auto Backup remains disabled
-- if the remembered folder later becomes unavailable, Auto Backup remains in the user's chosen state; backup attempts fail silently, dirty remains true, and the Backup screen continues to show the folder-unavailable banner from normal status loading
+- if the remembered folder later becomes unavailable during screen load, startup, foreground, background, or a debounced backup attempt, Auto Backup is disabled and the Backup screen can show the folder-unavailable banner through normal status loading
 - turning Auto Backup off cancels any pending debounce task but does not create, restore, or delete backup files
 
 Dirty marking:
@@ -853,7 +855,7 @@ Dirty marking:
 Automatic backup trigger rules:
 - Auto Backup must be enabled
 - dirty state must be true
-- the selected backup folder must resolve successfully through the existing `BackupService.createBackup()` path
+- the selected backup folder must be usable before the backup starts; if the bookmark no longer resolves, Auto Backup is disabled and the backup is skipped
 - no auto backup may already be running
 - no manual backup may currently be registered as an external backup operation
 
@@ -875,6 +877,12 @@ Manual backup coordination:
 - if new changes arrive during manual backup, dirty remains true and Auto Backup is scheduled again after the manual backup completes
 - failed manual backup does not clear dirty state
 
+Manual restore coordination:
+- `BackupSettingsViewModel.confirmRestoreBackup()` also wraps restore with `beginExternalBackup()` and `completeExternalBackup(...)`
+- a successful restore clears dirty state regardless of the dirty generation that existed before or during restore
+- successful restore does not schedule an immediate Auto Backup of the restored store; the restored backup is treated as the current backup baseline until the next real app mutation
+- failed restore does not clear dirty state
+
 Automatic backup completion:
 - Auto Backup captures the dirty generation at start
 - on success, dirty clears only if the generation still matches
@@ -894,7 +902,9 @@ Out of scope by design:
 - no new backup archive format
 
 Tests:
-- `LoonyBearTests/BackupSettingsViewModelTests.swift` covers enabling Auto Backup without a folder, picker cancellation, and successful folder selection enabling the toggle
+- `LoonyBearTests/BackupSettingsViewModelTests.swift` covers enabling Auto Backup without a folder, unavailable remembered folders, picker cancellation, successful folder selection enabling the toggle, startup disabling when the folder is unavailable, and successful restore clearing dirty without scheduling immediate Auto Backup
+- `LoonyBearTests/BackupServiceTests.swift` covers backup restore rejection for monthly bucket masks that contain impossible day bits for their `yearMonthKey`
+- `LoonyBearTests/StartupHealthCheckTests.swift` covers startup integrity failures for stored Habit/Pill history buckets with impossible month-day bits
 
 ## 11. Reliability Support
 
@@ -1389,7 +1399,7 @@ The startup health check validates:
 - enum-backed stored values such as habit type, history mode, and history source
 - reminder hour/minute fields when reminders are enabled
 - latest schedule weekday masks
-- monthly history bucket masks/counts and overlapping bucket state
+- monthly history bucket masks/counts, overlapping bucket state, and impossible month-day bits for the stored `yearMonthKey`
 - history range owner IDs, date order, schedule payloads, and stored counts
 - duplicate legacy HabitCompletion and PillIntake rows for the same owner/day before migration
 - valid legacy daily history rows, then migrates them into monthly buckets

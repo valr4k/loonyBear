@@ -290,4 +290,96 @@ struct StartupHealthCheckTests {
             #expect(error.report.issues.contains { $0.area == "startup.pillHistoryRanges" })
         }
     }
+
+    @Test
+    func startupHealthCheckFailsOnHistoryBucketsWithImpossibleMonthDays() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let now = Date(timeIntervalSince1970: 0)
+        let impossibleFebruaryThirtyFirstMask = Int64(1) << 30
+
+        let habitID = UUID()
+        let habit = NSEntityDescription.insertNewObject(forEntityName: "Habit", into: context)
+        habit.setValue(habitID, forKey: "id")
+        habit.setValue(HabitType.build.rawValue, forKey: "typeRaw")
+        habit.setValue("Walk", forKey: "name")
+        habit.setValue(Int32(0), forKey: "sortOrder")
+        habit.setValue(now, forKey: "startDate")
+        habit.setValue(HabitHistoryMode.scheduleBased.rawValue, forKey: "historyModeRaw")
+        habit.setValue(false, forKey: "reminderEnabled")
+        habit.setValue(now, forKey: "createdAt")
+        habit.setValue(now, forKey: "updatedAt")
+        habit.setValue(Int32(1), forKey: "version")
+
+        let habitSchedule = NSEntityDescription.insertNewObject(forEntityName: "HabitScheduleVersion", into: context)
+        habitSchedule.setValue(UUID(), forKey: "id")
+        habitSchedule.setValue(habitID, forKey: "habitID")
+        habitSchedule.setValue(Int16(WeekdaySet.daily.rawValue), forKey: "weekdayMask")
+        habitSchedule.setValue(now, forKey: "effectiveFrom")
+        habitSchedule.setValue(now, forKey: "createdAt")
+        habitSchedule.setValue(Int32(1), forKey: "version")
+        habitSchedule.setValue(habit, forKey: "habit")
+
+        let habitBucket = NSEntityDescription.insertNewObject(forEntityName: "HabitHistoryBucket", into: context)
+        habitBucket.setValue(UUID(), forKey: "id")
+        habitBucket.setValue(habitID, forKey: "habitID")
+        habitBucket.setValue(Int32(202602), forKey: "yearMonthKey")
+        habitBucket.setValue(impossibleFebruaryThirtyFirstMask, forKey: "positiveMask")
+        habitBucket.setValue(Int64(0), forKey: "skippedMask")
+        habitBucket.setValue(Int64(0), forKey: "archivedMask")
+        habitBucket.setValue(Int32(1), forKey: "positiveCount")
+        habitBucket.setValue(Int32(0), forKey: "skippedCount")
+        habitBucket.setValue(Int32(0), forKey: "archivedCount")
+        habitBucket.setValue(now, forKey: "createdAt")
+        habitBucket.setValue(now, forKey: "updatedAt")
+        habitBucket.setValue(habit, forKey: "habit")
+
+        let pillID = UUID()
+        let pill = NSEntityDescription.insertNewObject(forEntityName: "Pill", into: context)
+        pill.setValue(pillID, forKey: "id")
+        pill.setValue("Vitamin", forKey: "name")
+        pill.setValue("1 pill", forKey: "dosage")
+        pill.setValue(Int32(0), forKey: "sortOrder")
+        pill.setValue(now, forKey: "startDate")
+        pill.setValue(PillHistoryMode.scheduleBased.rawValue, forKey: "historyModeRaw")
+        pill.setValue(false, forKey: "reminderEnabled")
+        pill.setValue(now, forKey: "createdAt")
+        pill.setValue(now, forKey: "updatedAt")
+        pill.setValue(Int32(1), forKey: "version")
+
+        let pillSchedule = NSEntityDescription.insertNewObject(forEntityName: "PillScheduleVersion", into: context)
+        pillSchedule.setValue(UUID(), forKey: "id")
+        pillSchedule.setValue(pillID, forKey: "pillID")
+        pillSchedule.setValue(Int16(WeekdaySet.daily.rawValue), forKey: "weekdayMask")
+        pillSchedule.setValue(now, forKey: "effectiveFrom")
+        pillSchedule.setValue(now, forKey: "createdAt")
+        pillSchedule.setValue(Int32(1), forKey: "version")
+        pillSchedule.setValue(pill, forKey: "pill")
+
+        let pillBucket = NSEntityDescription.insertNewObject(forEntityName: "PillHistoryBucket", into: context)
+        pillBucket.setValue(UUID(), forKey: "id")
+        pillBucket.setValue(pillID, forKey: "pillID")
+        pillBucket.setValue(Int32(202602), forKey: "yearMonthKey")
+        pillBucket.setValue(impossibleFebruaryThirtyFirstMask, forKey: "positiveMask")
+        pillBucket.setValue(Int64(0), forKey: "skippedMask")
+        pillBucket.setValue(Int64(0), forKey: "archivedMask")
+        pillBucket.setValue(Int32(1), forKey: "positiveCount")
+        pillBucket.setValue(Int32(0), forKey: "skippedCount")
+        pillBucket.setValue(Int32(0), forKey: "archivedCount")
+        pillBucket.setValue(now, forKey: "createdAt")
+        pillBucket.setValue(now, forKey: "updatedAt")
+        pillBucket.setValue(pill, forKey: "pill")
+
+        try context.save()
+
+        do {
+            try AppStartupHealthCheck.run(
+                makeContext: persistence.makeBackgroundContext
+            )
+            Issue.record("Expected startup health check to fail for corrupted history bucket rows.")
+        } catch let error as DataIntegrityError {
+            #expect(error.report.issues.contains { $0.area == "startup.habitHistoryBuckets" })
+            #expect(error.report.issues.contains { $0.area == "startup.pillHistoryBuckets" })
+        }
+    }
 }

@@ -330,16 +330,18 @@ This file describes the behavioral rules that are currently implemented in code.
 - Settings shows the Backup destination with the subtitle `Manual and automatic backups`.
 - `Last backup` uses the same color as its cloud status icon: green when a readable backup exists and red when it does not.
 - `Last backup` uses `03 May at 22:35` style date formatting.
-- `Auto Backup` is an explicit user toggle. The app never silently turns it on or off.
+- `Auto Backup` is an explicit user toggle for normal user intent, but it cannot remain On without a usable backup folder.
 - Turning `Auto Backup` on with a usable folder selected enables automatic backups immediately.
 - Turning `Auto Backup` on without a selected folder opens the folder picker. If the user chooses a folder successfully, Auto Backup becomes On. If the picker is cancelled, Auto Backup remains Off.
-- If the remembered folder later becomes unavailable, Auto Backup remains in the user's chosen On/Off state. Automatic backup attempts cannot complete until the folder is available again.
+- Turning `Auto Backup` on with a remembered but unavailable folder prompts the user to choose the folder again. Auto Backup remains Off until a usable folder is selected.
+- If the remembered folder later becomes unavailable, Auto Backup turns Off during Backup screen loading, app startup, foreground/background checks, or the next attempted automatic backup.
 - Auto Backup writes the same backup files with the same schema and rotation as manual Create Backup.
 - Auto Backup runs only when Auto Backup is On, the selected folder is accessible, data is dirty, and no other backup operation is already running.
 - Auto Backup waits 20 seconds after an important data change; another change inside that window resets the timer.
 - Auto Backup also checks for pending dirty data at app startup, foreground, and background.
 - Auto Backup failures are silent outside the Backup screen. Dirty state remains pending and is retried later.
 - Successful manual or automatic backup clears dirty state only when no newer change happened while the backup was running.
+- Successful Restore Backup clears pending Auto Backup dirty state and does not immediately create a new automatic backup of the restored store. Auto Backup resumes after the next real app change.
 - Manual Create Backup remains available regardless of the Auto Backup toggle and has priority over automatic backup.
 - Backup actions are full-width capsule buttons. Create Backup uses the primary label color, and Restore Backup stays system red.
 - Create Backup and Restore Backup confirmations use system alerts, not popover confirmation dialogs. Alert action labels are shortened to `Backup` and `Restore`.

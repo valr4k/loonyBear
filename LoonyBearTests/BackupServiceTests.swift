@@ -1033,6 +1033,91 @@ struct BackupServiceTests {
     }
 
     @Test
+    func restoreArchiveRejectsHistoryBucketsWithImpossibleMonthDaysAndPreservesExistingData() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let habitRepository = CoreDataHabitRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let pillRepository = CoreDataPillRepository(
+            context: context,
+            makeWriteContext: persistence.makeBackgroundContext
+        )
+        let service = makeBackupService(context: context, persistence: persistence)
+
+        var habitDraft = CreateHabitDraft()
+        habitDraft.name = "Existing Habit"
+        habitDraft.startDate = TestSupport.makeDate(2026, 4, 1)
+        habitDraft.scheduleDays = .daily
+        _ = try habitRepository.createHabit(from: habitDraft)
+
+        var pillDraft = PillDraft()
+        pillDraft.name = "Existing Pill"
+        pillDraft.dosage = "1 tablet"
+        pillDraft.startDate = TestSupport.makeDate(2026, 4, 1)
+        pillDraft.scheduleDays = .daily
+        _ = try pillRepository.createPill(from: pillDraft)
+
+        let archive = makeValidArchive()
+        let now = TestSupport.makeDate(2026, 4, 1)
+        let impossibleFebruaryThirtyFirstMask = Int64(1) << 30
+        let invalidArchive = BackupArchive(
+            schemaVersion: 3,
+            exportedAt: archive.exportedAt,
+            habits: archive.habits,
+            scheduleVersions: archive.scheduleVersions,
+            completionRecords: archive.completionRecords,
+            habitHistoryBuckets: [
+                BackupHabitHistoryBucket(
+                    id: UUID(),
+                    habitId: archive.habits[0].id,
+                    yearMonthKey: 202602,
+                    positiveMask: impossibleFebruaryThirtyFirstMask,
+                    skippedMask: 0,
+                    archivedMask: 0,
+                    positiveCount: 1,
+                    skippedCount: 0,
+                    archivedCount: 0,
+                    createdAt: now,
+                    updatedAt: now
+                ),
+            ],
+            ordering: archive.ordering,
+            pills: archive.pills,
+            pillScheduleVersions: archive.pillScheduleVersions,
+            pillIntakeRecords: archive.pillIntakeRecords,
+            pillHistoryBuckets: [
+                BackupPillHistoryBucket(
+                    id: UUID(),
+                    pillId: archive.pills[0].id,
+                    yearMonthKey: 202602,
+                    positiveMask: impossibleFebruaryThirtyFirstMask,
+                    skippedMask: 0,
+                    archivedMask: 0,
+                    positiveCount: 1,
+                    skippedCount: 0,
+                    archivedCount: 0,
+                    createdAt: now,
+                    updatedAt: now
+                ),
+            ]
+        )
+
+        do {
+            try service.restoreArchive(invalidArchive)
+            Issue.record("Expected impossible history bucket day to fail restore validation.")
+        } catch let error as DataIntegrityError {
+            #expect(error.operation == "restoreArchive")
+            #expect(error.report.issues.contains { $0.entityName == "BackupHabitHistoryBucket" })
+            #expect(error.report.issues.contains { $0.entityName == "BackupPillHistoryBucket" })
+        }
+
+        #expect(try habitRepository.fetchDashboardHabits().count == 1)
+        #expect(try pillRepository.fetchDashboardPills().count == 1)
+    }
+
+    @Test
     func restoreArchiveAcceptsAutoFillHabitCompletionSource() throws {
         let persistence = PersistenceController(inMemory: true)
         let context = persistence.container.viewContext

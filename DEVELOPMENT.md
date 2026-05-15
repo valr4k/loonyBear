@@ -58,7 +58,10 @@ This rule is mandatory for local test runs and documentation examples.
 - Auto Backup state is intentionally local `UserDefaults` state, not backup payload state. The persisted keys are `backup_auto_enabled`, `backup_auto_dirty`, and `backup_auto_dirty_generation`.
 - Auto Backup dirty state should be marked at successful mutation boundaries, not from every UI keystroke. `AppStateWriteCoordinator` is the default write boundary; notification action mutations are covered by store-change notifications; app appearance and tint changes mark dirty directly.
 - Manual backup must be wrapped with `AutoBackupService.beginExternalBackup()` / `completeExternalBackup(...)` so a successful manual backup clears pending dirty state only if no newer changes arrived during the manual backup.
+- Manual restore must also be wrapped as an external backup operation, but a successful restore clears pre-restore dirty state without scheduling an immediate Auto Backup for the restored store. Restore is the source of truth at that moment; Auto Backup should resume only after the next real mutation.
+- Auto Backup cannot remain enabled without a usable backup folder. Enabling without a folder or with an unavailable remembered folder must prompt folder selection/reselection and keep the persisted toggle off until a usable folder is selected. Startup, foreground, background, and debounced backup checks must disable Auto Backup if the selected folder is no longer usable.
 - Keep `CoreDataHistoryRangeCalculator` and `CoreDataHistoryRangeSupport.isValidPayload(...)` pure and `nonisolated`. The app target uses MainActor default isolation, while `BackupService` validates range payloads from nonisolated code.
+- Monthly history bucket masks must be validated against the actual days in `yearMonthKey`, not against a generic 31-day mask. February 31, April 31, invalid months, and non-round-tripping `Calendar` dates are corrupted history/backup data and must fail integrity validation instead of normalizing into another month.
 - Keep shared schedule UI in `AppDesign.swift`; Create and active Details should use the shared pushed Repeat editor, while Archive read-only Details should use the same visual layout with all editing controls disabled until Restore Draft is opened.
 - Restore Draft must clear archived history states on and after Active From before writing the new archive gap, then write archived states only into empty gap days. This prevents stale future Archived days from a previous restore attempt while still preserving real completed/taken/skipped states.
 - Keep Apply From out of the customer-facing Details UI. If Repeat changes, the hidden schedule version `effectiveFrom` is resolved in shared persistence logic from `max(today, startDate)` and must remain documented with schedule versioning tests.
@@ -84,6 +87,8 @@ High-priority tests include:
 - real-device Schedule interaction QA: two-finger Time + End Repeat, Start Date + End Repeat, Date + Time, Repeat + End Repeat, and vertical scrolling starting on the Time capsule and End Repeat value
 - reminder aggregation and snooze behavior
 - backup rotation and restore fallback behavior
+- Auto Backup folder availability behavior: enabling without a folder, enabling with an unavailable remembered folder, picker cancellation, usable folder selection, startup/foreground/background disabling, and no immediate Auto Backup after successful manual restore
+- monthly history bucket validation for real month days, including impossible days such as February 31 in protected reads, startup health checks, and backup restore
 
 ## Suggested CLI Validation Order
 

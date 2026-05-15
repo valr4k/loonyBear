@@ -132,6 +132,78 @@ struct BackupSettingsViewModelTests {
         #expect(autoBackupService.isEnabled)
         #expect(viewModel.status.hasUsableFolder)
     }
+
+    @Test
+    func enablingAutoBackupWithUnavailableStoredFolderRequiresReselectionAndCancelKeepsItOff() throws {
+        let fixture = try makeFixture()
+        let viewModel = fixture.viewModel
+        let autoBackupService = fixture.autoBackupService
+        fixture.defaults.set(Data("broken-bookmark".utf8), forKey: "backup_folder_bookmark")
+        fixture.defaults.set("Missing Backups", forKey: "backup_folder_name")
+
+        viewModel.load()
+
+        #expect(viewModel.status.hasSelectedFolder)
+        #expect(!viewModel.status.hasUsableFolder)
+        #expect(!autoBackupService.isEnabled)
+
+        viewModel.setAutoBackupEnabled(true)
+
+        #expect(viewModel.isShowingFolderPicker)
+        #expect(!autoBackupService.isEnabled)
+
+        viewModel.folderPickerDidDismiss()
+
+        #expect(!autoBackupService.isEnabled)
+    }
+
+    @Test
+    func autoBackupStartupDisablesStoredEnabledStateWhenFolderIsUnavailable() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let defaults = try #require(UserDefaults(suiteName: "BackupSettingsViewModelTests.\(UUID().uuidString)"))
+        defaults.set(true, forKey: AutoBackupService.enabledKey)
+        defaults.set(Data("broken-bookmark".utf8), forKey: "backup_folder_bookmark")
+        defaults.set("Missing Backups", forKey: "backup_folder_name")
+        let backupService = BackupService(
+            context: persistence.container.viewContext,
+            makeWorkContext: persistence.makeBackgroundContext,
+            defaults: defaults,
+            compressionService: CompressionService()
+        )
+        let autoBackupService = AutoBackupService(
+            backupService: backupService,
+            defaults: defaults,
+            debounceDuration: .seconds(60)
+        )
+
+        #expect(autoBackupService.isEnabled)
+
+        autoBackupService.handleStartup()
+
+        #expect(!autoBackupService.isEnabled)
+        #expect(!defaults.bool(forKey: AutoBackupService.enabledKey))
+    }
+
+    @Test
+    func completingExternalRestoreClearsDirtyChangesCreatedDuringRestoreWithoutSchedulingBackup() throws {
+        let fixture = try makeFixture()
+        let autoBackupService = fixture.autoBackupService
+
+        autoBackupService.markDirty(reason: "before-restore")
+        let token = autoBackupService.beginExternalBackup()
+        autoBackupService.markDirty(reason: "restore-store-change")
+
+        #expect(autoBackupService.isDirty)
+
+        autoBackupService.completeExternalBackup(
+            token,
+            succeeded: true,
+            clearsDirtyRegardless: true,
+            schedulesPendingDirty: false
+        )
+
+        #expect(!autoBackupService.isDirty)
+    }
 }
 
 private extension BackupSettingsViewModelTests {
@@ -169,7 +241,8 @@ private extension BackupSettingsViewModelTests {
         return BackupSettingsViewModelFixture(
             viewModel: viewModel,
             backupService: backupService,
-            autoBackupService: autoBackupService
+            autoBackupService: autoBackupService,
+            defaults: defaults
         )
     }
 }
@@ -178,4 +251,5 @@ private struct BackupSettingsViewModelFixture {
     let viewModel: BackupSettingsViewModel
     let backupService: BackupService
     let autoBackupService: AutoBackupService
+    let defaults: UserDefaults
 }

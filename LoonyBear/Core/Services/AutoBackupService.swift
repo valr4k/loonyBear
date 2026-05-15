@@ -45,10 +45,11 @@ final class AutoBackupService: ObservableObject {
     }
 
     func setEnabled(_ enabled: Bool) {
-        isEnabled = enabled
-        defaults.set(enabled, forKey: Self.enabledKey)
+        let resolvedEnabled = enabled && hasUsableBackupFolder()
+        isEnabled = resolvedEnabled
+        defaults.set(resolvedEnabled, forKey: Self.enabledKey)
 
-        if enabled {
+        if resolvedEnabled {
             scheduleDebouncedBackup(reason: "auto-backup-enabled")
         } else {
             debounceTask?.cancel()
@@ -65,16 +66,19 @@ final class AutoBackupService: ObservableObject {
     }
 
     func handleStartup() {
+        guard ensureUsableBackupFolder() else { return }
         runBackupIfNeeded(reason: "startup")
     }
 
     func handleForeground() {
+        guard ensureUsableBackupFolder() else { return }
         runBackupIfNeeded(reason: "foreground")
     }
 
     func handleBackground() {
         debounceTask?.cancel()
         debounceTask = nil
+        guard ensureUsableBackupFolder() else { return }
         runBackupIfNeeded(reason: "background")
     }
 
@@ -85,13 +89,22 @@ final class AutoBackupService: ObservableObject {
         return AutoBackupToken(dirtyGeneration: dirtyGeneration)
     }
 
-    func completeExternalBackup(_ token: AutoBackupToken, succeeded: Bool) {
+    func completeExternalBackup(
+        _ token: AutoBackupToken,
+        succeeded: Bool,
+        clearsDirtyRegardless: Bool = false,
+        schedulesPendingDirty: Bool = true
+    ) {
         activeExternalBackupCount = max(0, activeExternalBackupCount - 1)
 
         guard succeeded else { return }
 
-        clearDirtyIfUnchanged(since: token.dirtyGeneration)
-        if isDirty {
+        if clearsDirtyRegardless {
+            clearDirty()
+        } else {
+            clearDirtyIfUnchanged(since: token.dirtyGeneration)
+        }
+        if isDirty, schedulesPendingDirty {
             scheduleDebouncedBackup(reason: "external-backup-completed")
         }
     }
@@ -120,6 +133,7 @@ final class AutoBackupService: ObservableObject {
     private func scheduleDebouncedBackup(reason: String) {
         guard isEnabled, isDirty else { return }
         guard !isBackingUp, activeExternalBackupCount == 0 else { return }
+        guard ensureUsableBackupFolder() else { return }
 
         debounceTask?.cancel()
         let debounceDuration = self.debounceDuration
@@ -137,6 +151,7 @@ final class AutoBackupService: ObservableObject {
     private func runBackupIfNeeded(reason: String) {
         guard isEnabled, isDirty else { return }
         guard !isBackingUp, activeExternalBackupCount == 0 else { return }
+        guard ensureUsableBackupFolder() else { return }
 
         debounceTask?.cancel()
         debounceTask = nil
@@ -169,8 +184,30 @@ final class AutoBackupService: ObservableObject {
 
     private func clearDirtyIfUnchanged(since generationAtStart: Int) {
         guard dirtyGeneration == generationAtStart else { return }
+        clearDirty()
+    }
+
+    private func clearDirty() {
         isDirty = false
         persistDirtyState()
+    }
+
+    private func ensureUsableBackupFolder() -> Bool {
+        guard isEnabled else { return false }
+        guard hasUsableBackupFolder() else {
+            setEnabled(false)
+            ReliabilityLog.info("backup.auto.disabled reason=folder-unavailable")
+            return false
+        }
+        return true
+    }
+
+    private func hasUsableBackupFolder() -> Bool {
+        do {
+            return try backupService.loadStatus().hasUsableFolder
+        } catch {
+            return false
+        }
     }
 
     private func persistDirtyState() {

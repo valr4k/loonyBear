@@ -1397,7 +1397,7 @@ enum CoreDataHistorySupport {
     }
 }
 
-enum CoreDataHistoryBucketState: Equatable {
+nonisolated enum CoreDataHistoryBucketState: Equatable {
     case positive
     case skipped
     case archived
@@ -2627,9 +2627,36 @@ enum CoreDataHistoryBucketSupport {
     ) -> Date? {
         let year = Int(yearMonthKey / 100)
         let month = Int(yearMonthKey % 100)
-        guard (1...12).contains(month), (1...31).contains(day) else { return nil }
-        return calendar.date(from: DateComponents(year: year, month: month, day: day))
-            .map { calendar.startOfDay(for: $0) }
+        guard year > 0, (1...12).contains(month), (1...31).contains(day) else { return nil }
+        guard
+            let date = calendar.date(from: DateComponents(year: year, month: month, day: day))
+                .map({ calendar.startOfDay(for: $0) })
+        else {
+            return nil
+        }
+
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
+        guard components.year == year, components.month == month, components.day == day else {
+            return nil
+        }
+        return date
+    }
+
+    nonisolated static func validDayBitsMask(forYearMonthKey yearMonthKey: Int32) -> Int64? {
+        let year = Int(yearMonthKey / 100)
+        let month = Int(yearMonthKey % 100)
+        guard year > 0, (1...12).contains(month) else { return nil }
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        guard
+            let monthDate = calendar.date(from: DateComponents(year: year, month: month, day: 1)),
+            let dayRange = calendar.range(of: .day, in: .month, for: monthDate)
+        else {
+            return nil
+        }
+
+        return Int64((UInt64(1) << UInt64(dayRange.count)) - UInt64(1))
     }
 
     static func bit(
@@ -2917,7 +2944,8 @@ enum CoreDataHistoryBucketSupport {
         var didChange = false
 
         for (yearMonthKey, rawMask) in plan.masksByYearMonth where rawMask != 0 {
-            let mask = rawMask & validBitsMask
+            guard let validMonthBitsMask = validDayBitsMask(forYearMonthKey: yearMonthKey) else { continue }
+            let mask = rawMask & validMonthBitsMask
             guard mask != 0 else { continue }
 
             let bucket = try fetchOrCreateBucket(
@@ -3252,13 +3280,16 @@ enum CoreDataHistoryBucketSupport {
         let positiveMask = bucket.int64Value(forKey: "positiveMask")
         let skippedMask = bucket.int64Value(forKey: "skippedMask")
         let archivedMask = bucket.int64Value(forKey: "archivedMask")
+        guard let validMonthBitsMask = validDayBitsMask(forYearMonthKey: bucket.int32Value(forKey: "yearMonthKey")) else {
+            return false
+        }
         guard
             positiveMask >= 0,
             skippedMask >= 0,
             archivedMask >= 0,
-            positiveMask & ~validBitsMask == 0,
-            skippedMask & ~validBitsMask == 0,
-            archivedMask & ~validBitsMask == 0,
+            positiveMask & ~validMonthBitsMask == 0,
+            skippedMask & ~validMonthBitsMask == 0,
+            archivedMask & ~validMonthBitsMask == 0,
             positiveMask & skippedMask == 0,
             positiveMask & archivedMask == 0,
             skippedMask & archivedMask == 0
