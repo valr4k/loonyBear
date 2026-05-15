@@ -36,6 +36,7 @@ extension Notification.Name {
     static let habitStoreDidChange = Notification.Name("habit_store_did_change")
     static let pillStoreDidChange = Notification.Name("pill_store_did_change")
     static let eventStoreDidChange = Notification.Name("event_store_did_change")
+    static let backupStatusDidChange = Notification.Name("backup_status_did_change")
     static let openMyHabitsTab = Notification.Name("open_my_habits_tab")
     static let openMyPillsTab = Notification.Name("open_my_pills_tab")
 }

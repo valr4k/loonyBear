@@ -54,6 +54,10 @@ This rule is mandatory for local test runs and documentation examples.
 - Do not change backup schema casually without updating restore handling, validation, and tests.
 - Backup payloads include app appearance settings; preserve legacy decode behavior for backups without those settings.
 - Backup payloads currently use schema version 3. Habit/Pill history is serialized as monthly bucket payloads plus schedule-aware range payloads; legacy daily payloads remain compatibility inputs only.
+- Auto Backup must reuse the manual backup format and writer. Do not introduce a second auto-backup file name, schema, or rotation path.
+- Auto Backup state is intentionally local `UserDefaults` state, not backup payload state. The persisted keys are `backup_auto_enabled`, `backup_auto_dirty`, and `backup_auto_dirty_generation`.
+- Auto Backup dirty state should be marked at successful mutation boundaries, not from every UI keystroke. `AppStateWriteCoordinator` is the default write boundary; notification action mutations are covered by store-change notifications; app appearance and tint changes mark dirty directly.
+- Manual backup must be wrapped with `AutoBackupService.beginExternalBackup()` / `completeExternalBackup(...)` so a successful manual backup clears pending dirty state only if no newer changes arrived during the manual backup.
 - Keep `CoreDataHistoryRangeCalculator` and `CoreDataHistoryRangeSupport.isValidPayload(...)` pure and `nonisolated`. The app target uses MainActor default isolation, while `BackupService` validates range payloads from nonisolated code.
 - Keep shared schedule UI in `AppDesign.swift`; Create and active Details should use the shared pushed Repeat editor, while Archive read-only Details should use the same visual layout with all editing controls disabled until Restore Draft is opened.
 - Restore Draft must clear archived history states on and after Active From before writing the new archive gap, then write archived states only into empty gap days. This prevents stale future Archived days from a previous restore attempt while still preserving real completed/taken/skipped states.

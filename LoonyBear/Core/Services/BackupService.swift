@@ -43,6 +43,7 @@ final class BackupService {
     private let compressionService: CompressionService
     private let snapshotWriter: SnapshotWriter
     private let archiveWriter: ArchiveWriter
+    private let operationLock = NSLock()
     private let bookmarkKey = "backup_folder_bookmark"
     private let folderNameKey = "backup_folder_name"
     private let lastCreatedBackupFingerprintKey = "backup_last_created_fingerprint"
@@ -116,6 +117,9 @@ final class BackupService {
     }
 
     func createBackup() throws {
+        operationLock.lock()
+        defer { operationLock.unlock() }
+
         ReliabilityLog.info("backup.create started")
         guard let folderURL = try resolveFolderURL() else {
             ReliabilityLog.error("backup.create failed: folder not selected")
@@ -154,6 +158,9 @@ final class BackupService {
     }
 
     func restoreBackup() throws {
+        operationLock.lock()
+        defer { operationLock.unlock() }
+
         ReliabilityLog.info("backup.restore started")
         guard let folderURL = try resolveFolderURL() else {
             ReliabilityLog.error("backup.restore failed: folder not selected")

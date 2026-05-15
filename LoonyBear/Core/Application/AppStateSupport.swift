@@ -24,8 +24,11 @@ final class AppStateWriteCoordinator {
         writeQueue = queue
     }
 
-    func performWriteOperation<T>(_ operation: @escaping () throws -> T) async throws -> T {
-        try await withCheckedThrowingContinuation { continuation in
+    func performWriteOperation<T>(
+        marksDataDirty: Bool = true,
+        _ operation: @escaping () throws -> T
+    ) async throws -> T {
+        let result: T = try await withCheckedThrowingContinuation { continuation in
             writeQueue.addOperation {
                 do {
                     continuation.resume(returning: try operation())
@@ -34,6 +37,10 @@ final class AppStateWriteCoordinator {
                 }
             }
         }
+        if marksDataDirty {
+            AutoBackupService.shared.markDirty(reason: "app-state-write")
+        }
+        return result
     }
 
     func performMutation(
@@ -86,9 +93,10 @@ final class AppStateWriteCoordinator {
         var reconciliationErrorMessage: String?
 
         do {
-            let finalizedDays = try await performWriteOperation(operation)
+            let finalizedDays = try await performWriteOperation(marksDataDirty: false, operation)
             if finalizedDays > 0 {
                 ReliabilityLog.info("\(logPrefix) finalized \(finalizedDays) day(s)")
+                AutoBackupService.shared.markDirty(reason: "\(logPrefix)-finalized")
             }
         } catch {
             reconciliationErrorMessage = UserFacingErrorMessage.text(for: error)

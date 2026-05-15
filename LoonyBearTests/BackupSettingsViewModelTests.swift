@@ -18,6 +18,11 @@ struct BackupSettingsViewModelTests {
             defaults: defaults,
             compressionService: CompressionService()
         )
+        let autoBackupService = AutoBackupService(
+            backupService: backupService,
+            defaults: defaults,
+            debounceDuration: .seconds(60)
+        )
         let notificationService = NotificationService(
             context: context,
             makeWriteContext: persistence.makeBackgroundContext
@@ -28,6 +33,7 @@ struct BackupSettingsViewModelTests {
         )
         let viewModel = BackupSettingsViewModel(
             service: backupService,
+            autoBackupService: autoBackupService,
             notificationService: notificationService,
             pillNotificationService: pillNotificationService
         )
@@ -89,6 +95,43 @@ struct BackupSettingsViewModelTests {
         #expect(!viewModel.createBackup())
         #expect(viewModel.isShowingFolderPicker)
     }
+
+    @Test
+    func enablingAutoBackupWithoutFolderOpensPickerAndCancelKeepsItOff() throws {
+        let fixture = try makeFixture()
+        let viewModel = fixture.viewModel
+        let autoBackupService = fixture.autoBackupService
+
+        viewModel.load()
+
+        viewModel.setAutoBackupEnabled(true)
+
+        #expect(viewModel.isShowingFolderPicker)
+        #expect(!autoBackupService.isEnabled)
+
+        viewModel.folderPickerDidDismiss()
+
+        #expect(!autoBackupService.isEnabled)
+    }
+
+    @Test
+    func enablingAutoBackupWithoutFolderTurnsOnAfterFolderSelection() throws {
+        let fixture = try makeFixture()
+        let viewModel = fixture.viewModel
+        let autoBackupService = fixture.autoBackupService
+        let folderURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: folderURL)
+        }
+
+        viewModel.load()
+        viewModel.setAutoBackupEnabled(true)
+        viewModel.didPickFolder(folderURL)
+
+        #expect(autoBackupService.isEnabled)
+        #expect(viewModel.status.hasUsableFolder)
+    }
 }
 
 private extension BackupSettingsViewModelTests {
@@ -102,6 +145,11 @@ private extension BackupSettingsViewModelTests {
             defaults: defaults,
             compressionService: CompressionService()
         )
+        let autoBackupService = AutoBackupService(
+            backupService: backupService,
+            defaults: defaults,
+            debounceDuration: .seconds(60)
+        )
         let notificationService = NotificationService(
             context: context,
             makeWriteContext: persistence.makeBackgroundContext
@@ -113,15 +161,21 @@ private extension BackupSettingsViewModelTests {
 
         let viewModel = BackupSettingsViewModel(
             service: backupService,
+            autoBackupService: autoBackupService,
             notificationService: notificationService,
             pillNotificationService: pillNotificationService
         )
 
-        return BackupSettingsViewModelFixture(viewModel: viewModel, backupService: backupService)
+        return BackupSettingsViewModelFixture(
+            viewModel: viewModel,
+            backupService: backupService,
+            autoBackupService: autoBackupService
+        )
     }
 }
 
 private struct BackupSettingsViewModelFixture {
     let viewModel: BackupSettingsViewModel
     let backupService: BackupService
+    let autoBackupService: AutoBackupService
 }

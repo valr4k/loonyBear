@@ -14,6 +14,7 @@ struct ContentView: View {
     private let badgeService: AppBadgeService
     private let lifecycleRefreshCoordinator: AppLifecycleRefreshCoordinator
     private let startupHealthCheckCoordinator: AppStartupHealthCheckCoordinator
+    private let autoBackupService = AutoBackupService.shared
     private let minuteTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
     init(
@@ -50,6 +51,7 @@ struct ContentView: View {
                     refreshBadgeFromDashboards(forceApply: true)
                 }
                 didLoadInitialState = true
+                autoBackupService.handleStartup()
                 Task {
                     await startupHealthCheckCoordinator.runIfNeeded()
                 }
@@ -82,15 +84,26 @@ struct ContentView: View {
                 refreshBadgeFromDashboards(forceApply: true)
             }
             .onChange(of: scenePhase) { _, newPhase in
-                guard didLoadInitialState, newPhase == .active else { return }
-                currentTime = Date()
-                Task {
-                    await lifecycleRefreshCoordinator.perform {
-                        await appState.handleAppDidBecomeActive()
-                        await pillAppState.handleAppDidBecomeActive()
-                        eventAppState.refreshDashboard()
-                        refreshBadgeFromDashboards(forceApply: true)
+                guard didLoadInitialState else { return }
+
+                switch newPhase {
+                case .active:
+                    currentTime = Date()
+                    Task {
+                        await lifecycleRefreshCoordinator.perform {
+                            await appState.handleAppDidBecomeActive()
+                            await pillAppState.handleAppDidBecomeActive()
+                            eventAppState.refreshDashboard()
+                            refreshBadgeFromDashboards(forceApply: true)
+                        }
                     }
+                    autoBackupService.handleForeground()
+                case .background:
+                    autoBackupService.handleBackground()
+                case .inactive:
+                    break
+                @unknown default:
+                    break
                 }
             }
     }

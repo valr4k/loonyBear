@@ -38,9 +38,11 @@ struct LoonyBearApp: App {
             }
             .onChange(of: appTintRawValue) { _, _ in
                 configureTabBarAppearance()
+                AutoBackupService.shared.markDirty(reason: "settings-tint")
             }
             .onChange(of: appearanceModeRawValue) { _, _ in
                 configureTabBarAppearance()
+                AutoBackupService.shared.markDirty(reason: "settings-appearance")
             }
         }
     }

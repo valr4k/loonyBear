@@ -298,7 +298,11 @@
       "items": [
         {
           "title": "What Backup screen shows",
-          "body": "Backup shows Last backup, Total size, and Folder. Last backup uses the same color as its cloud status icon, green when a readable backup exists and red when it does not, and dates use 03 May at 22:35 style formatting. Create Backup and Restore Backup are full-width capsule buttons; Create uses the primary label color and Restore stays system red. Create and Restore confirmations use system alerts instead of popover confirmation dialogs; alert actions use short labels: Backup and Restore. Backup feedback uses dismissible floating banners that auto-hide after 4 seconds or clear when leaving the Backup screen. The Home Screen app icon exposes a Create Backup quick action; choosing it opens Settings > Backup only, and backup creation still starts only after the user taps Create Backup on the Backup screen."
+          "body": "Settings shows Backup with the subtitle Manual and automatic backups. Backup shows Last backup, Total size, Folder, and Auto Backup. Last backup uses the same color as its cloud status icon, green when a readable backup exists and red when it does not, and dates use 03 May at 22:35 style formatting. Auto Backup is a user-controlled toggle with the clock.arrow.trianglehead.clockwise.rotate.90.path.dotted icon; the app never silently turns it on or off. Create Backup and Restore Backup are full-width capsule buttons; Create uses the primary label color and Restore stays system red. Create and Restore confirmations use system alerts instead of popover confirmation dialogs; alert actions use short labels: Backup and Restore. Backup feedback uses dismissible floating banners that auto-hide after 4 seconds or clear when leaving the Backup screen. The Home Screen app icon exposes a Create Backup quick action; choosing it opens Settings > Backup only, and backup creation still starts only after the user taps Create Backup on the Backup screen."
+        },
+        {
+          "title": "Auto Backup",
+          "body": "Auto Backup reuses the normal backup writer, file names, schema, rotation, and selected folder. If Auto Backup is turned on with no folder selected, the folder picker opens; choosing a folder enables Auto Backup, while cancelling keeps it off. If the remembered folder later becomes unavailable, Auto Backup stays in the user's chosen On or Off state, but automatic backups cannot complete until the folder is available again. Auto Backup runs only when it is On, data is dirty, the selected folder is accessible, and no backup or restore operation is already running. Data changes wait 20 seconds before an automatic backup; another change resets the timer. Startup, foreground, and background also check for pending dirty data. Automatic backup failures stay silent outside the Backup screen and keep dirty data pending for a later retry."
         },
         {
           "title": "Folder with an existing backup",
@@ -526,7 +530,7 @@
       "items": [
         {
           "title": "Backup schema and files",
-          "body": "Backup schemaVersion is 3. The main backup file is LoonyBear.json.gz. The previous backup file is LoonyBear.previous.json.gz. The restore snapshot file is LoonyBear.restore-snapshot.json.gz. Current backups store Habit and Pill history as monthly bucket payloads plus schedule-aware range payloads. New builds can restore older v1 backups that do not contain bucket history, range history, scheduleKind, intervalDays, End Date, Archive/isArchived state, archivedAt, archived history sources, Events, or app settings; old day-level history payloads are restored into buckets. Legacy v2 backups without range payloads remain valid and default missing range arrays to empty. Restoring new backups into older app builds is not supported."
+          "body": "Backup schemaVersion is 3. The main backup file is LoonyBear.json.gz. The previous backup file is LoonyBear.previous.json.gz. The restore snapshot file is LoonyBear.restore-snapshot.json.gz. Current backups store Habit and Pill history as monthly bucket payloads plus schedule-aware range payloads. Auto Backup does not add a new file name, schema, Core Data entity, or archive format; it writes the same backup as manual Create Backup. New builds can restore older v1 backups that do not contain bucket history, range history, scheduleKind, intervalDays, End Date, Archive/isArchived state, archivedAt, archived history sources, Events, or app settings; old day-level history payloads are restored into buckets. Legacy v2 backups without range payloads remain valid and default missing range arrays to empty. Restoring new backups into older app builds is not supported."
         },
         {
           "title": "Backup payload contents",
@@ -535,6 +539,10 @@
         {
           "title": "Backup file state",
           "body": "BackupStatus includes a fileState: none, available, created, restored, or unreadable. Readable backup files are fingerprinted from their compressed data using SHA-256. Successful create stores the last created fingerprint; successful restore stores the last restored fingerprint."
+        },
+        {
+          "title": "Auto Backup service",
+          "body": "AutoBackupService stores backup_auto_enabled, backup_auto_dirty, and backup_auto_dirty_generation in UserDefaults. AppStateWriteCoordinator marks dirty after successful UI writes, notification action mutations are covered through habit, pill, and event store-change notifications, and backed-up Settings changes mark dirty directly. Dirty state survives app restart. Successful manual or automatic backup clears dirty only when no newer change happened while that backup was running. BackupService serializes create and restore with an operation lock, so manual backup, automatic backup, and restore do not write files in parallel."
         },
         {
           "title": "Restore safety and validation",

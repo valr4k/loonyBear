@@ -748,6 +748,8 @@ Constants:
 - moves old primary backup to `.previous` if present
 - writes the new primary backup atomically
 
+`BackupService` owns an operation lock around `createBackup()` and `restoreBackup()`. The lock is intentionally inside the service, not only in UI code, so manual backup, Auto Backup, and restore cannot write or replace backup files in parallel.
+
 ### 10.4 Backup Restore Flow
 `restoreBackup()`:
 - resolves security-scoped folder URL
@@ -785,8 +787,10 @@ Status rows:
 - `Last backup`
 - `Total size`
 - `Folder`
+- `Auto Backup`
 
 UI behavior:
+- Settings lists Backup under the App section with subtitle `Manual and automatic backups`
 - `Last backup` uses the same color as the cloud status icon
 - `Last backup` dates use `03 May at 22:35` style formatting
 - green means a readable backup exists
@@ -795,6 +799,7 @@ UI behavior:
 - the shared action style keeps a capsule shape, uses `.ultraThinMaterial`, adds a `systemGray4` base only in light mode, and uses a clear base in dark mode
 - `Create Backup` uses the primary label color
 - `Restore Backup` and destructive Delete actions stay system red
+- the `Auto Backup` toggle row uses SF Symbol `clock.arrow.trianglehead.clockwise.rotate.90.path.dotted`
 - create and restore confirmation prompts use system alerts instead of popover-style confirmation dialogs; action labels are shortened to `Backup` and `Restore`
 - the Home Screen `Create Backup` quick action is dynamic after first launch and routes only to Settings > Backup
 - Folder selection only grants access and reloads backup metadata; it never applies the backup automatically
@@ -810,6 +815,86 @@ UI behavior:
 - all Backup banners are dismissible overlays pinned near the bottom of the visible screen; they auto-hide after 4 seconds and clear when leaving the Backup screen
 - successful create/restore still records the fingerprint, and success feedback is shown as green floating banners: `Backup Created` and `Restore Complete`
 - successful restore refreshes dashboards, rebuilds notifications, shows the green restore success banner, and clears the restore-needed notice for that fingerprint
+
+### 10.7 Auto Backup
+Defined in `LoonyBear/Core/Services/AutoBackupService.swift`.
+
+Auto Backup is an optional convenience layer over the existing manual backup writer. It does not introduce a new backup file, backup folder, archive schema, Core Data entity, or restore path.
+
+Persisted local state:
+- `backup_auto_enabled`
+- `backup_auto_dirty`
+- `backup_auto_dirty_generation`
+
+These values are stored in `UserDefaults`. They are local app preferences/state and are not part of `BackupArchive`.
+
+Published runtime state:
+- `isEnabled`
+- `isDirty`
+- `isBackingUp`
+
+Enable/disable behavior:
+- the Backup screen owns the visible `Auto Backup` toggle row
+- the app never silently toggles Auto Backup on or off
+- when the user turns Auto Backup on and `BackupStatus` has a usable folder, `AutoBackupService.setEnabled(true)` is called
+- when the user turns Auto Backup on without a selected folder, `BackupSettingsViewModel` opens the system folder picker and keeps a pending enable flag
+- if folder selection succeeds while pending, Auto Backup is enabled
+- if folder selection is cancelled while pending, Auto Backup remains disabled
+- if the remembered folder later becomes unavailable, Auto Backup remains in the user's chosen state; backup attempts fail silently, dirty remains true, and the Backup screen continues to show the folder-unavailable banner from normal status loading
+- turning Auto Backup off cancels any pending debounce task but does not create, restore, or delete backup files
+
+Dirty marking:
+- `AppStateWriteCoordinator.performWriteOperation(...)` marks dirty after successful app-state mutations by default
+- `performReconciliation(...)` opts out of the default dirty mark and marks dirty only when it actually finalized one or more days
+- `AutoBackupService` observes `.habitStoreDidChange`, `.pillStoreDidChange`, and `.eventStoreDidChange`; this covers mutations that happen outside the current UI flow, including notification action writes
+- Settings changes that are included in backups mark dirty directly: app tint and appearance mode
+- dirty state persists across app restarts
+
+Automatic backup trigger rules:
+- Auto Backup must be enabled
+- dirty state must be true
+- the selected backup folder must resolve successfully through the existing `BackupService.createBackup()` path
+- no auto backup may already be running
+- no manual backup may currently be registered as an external backup operation
+
+Debounce:
+- normal mutation-triggered auto backup waits 20 seconds
+- another mutation during the debounce window cancels the previous task and starts a new 20-second wait
+- background lifecycle attempts skip the debounce and call `runBackupIfNeeded(reason: "background")`
+
+Lifecycle hooks:
+- `ContentView` calls `AutoBackupService.handleStartup()` after initial app state loading
+- scene phase `.active` calls `handleForeground()`
+- scene phase `.background` calls `handleBackground()`
+- scene phase `.inactive` does not trigger backup
+
+Manual backup coordination:
+- `BackupSettingsViewModel.confirmCreateBackup()` wraps the manual backup with `beginExternalBackup()` and `completeExternalBackup(...)`
+- while an external backup is active, Auto Backup does not start
+- a successful manual backup clears dirty state only if the dirty generation has not changed since that manual backup began
+- if new changes arrive during manual backup, dirty remains true and Auto Backup is scheduled again after the manual backup completes
+- failed manual backup does not clear dirty state
+
+Automatic backup completion:
+- Auto Backup captures the dirty generation at start
+- on success, dirty clears only if the generation still matches
+- on success, `.backupStatusDidChange` is posted so the Backup screen can reload status if it is visible
+- on failure, the error is logged through `ReliabilityLog`, dirty remains true, and no dashboard/banner UI is shown
+
+Concurrency:
+- `AutoBackupService` blocks overlapping auto backups with `isBackingUp`
+- `activeExternalBackupCount` blocks Auto Backup while manual backup is running
+- `BackupService.operationLock` is the final service-level guard for create/restore file operations
+
+Out of scope by design:
+- no BackgroundTasks integration
+- no Home Screen quick action for toggling Auto Backup
+- no app icon badge or toolbar badge for Auto Backup state
+- no hardcoded backup folder path
+- no new backup archive format
+
+Tests:
+- `LoonyBearTests/BackupSettingsViewModelTests.swift` covers enabling Auto Backup without a folder, picker cancellation, and successful folder selection enabling the toggle
 
 ## 11. Reliability Support
 

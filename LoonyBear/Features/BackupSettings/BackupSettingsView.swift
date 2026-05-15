@@ -4,6 +4,7 @@ struct BackupSettingsView: View {
     @EnvironmentObject private var appState: HabitAppState
     @EnvironmentObject private var pillAppState: PillAppState
     @EnvironmentObject private var eventAppState: EventAppState
+    @ObservedObject private var autoBackupService = AutoBackupService.shared
     @StateObject private var viewModel: BackupSettingsViewModel
     @State private var isShowingCreateBackupConfirmation = false
     @State private var isShowingRestoreBackupConfirmation = false
@@ -54,6 +55,9 @@ struct BackupSettingsView: View {
         .onChange(of: viewModel.banner?.id) { _, _ in
             _ = presentViewModelBannerIfNeeded()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .backupStatusDidChange)) { _ in
+            viewModel.load()
+        }
         .onDisappear {
             dismissVisibleBanner()
         }
@@ -86,7 +90,7 @@ struct BackupSettingsView: View {
         } message: {
             Text("This will replace current app data with the selected backup.")
         }
-        .sheet(isPresented: $viewModel.isShowingFolderPicker) {
+        .sheet(isPresented: $viewModel.isShowingFolderPicker, onDismiss: viewModel.folderPickerDidDismiss) {
             FolderPickerView { url in
                 viewModel.didPickFolder(url)
                 viewModel.isShowingFolderPicker = false
@@ -128,6 +132,17 @@ struct BackupSettingsView: View {
                 valueColor: viewModel.status.hasUsableFolder ? nil : .red,
                 isTappable: true,
                 action: viewModel.chooseFolder
+            )
+
+            AppSectionDivider(inset: 52)
+
+            BackupToggleInfoRow(
+                icon: "clock.arrow.trianglehead.clockwise.rotate.90.path.dotted",
+                title: "Auto Backup",
+                isOn: Binding(
+                    get: { autoBackupService.isEnabled },
+                    set: { viewModel.setAutoBackupEnabled($0) }
+                )
             )
         }
     }
@@ -268,6 +283,28 @@ private struct BackupInfoRow: View {
 
     private var appTint: AppTint {
         AppTint.stored(rawValue: appTintRawValue)
+    }
+}
+
+private struct BackupToggleInfoRow: View {
+    let icon: String
+    let title: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        HStack(spacing: 14) {
+            AppListIcon(symbol: icon)
+
+            Text(title)
+                .foregroundStyle(.primary)
+
+            Spacer()
+
+            Toggle(title, isOn: $isOn)
+                .labelsHidden()
+        }
+        .padding(.horizontal, AppLayout.rowHorizontalPadding)
+        .padding(.vertical, AppLayout.rowVerticalPadding)
     }
 }
 

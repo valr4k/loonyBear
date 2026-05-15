@@ -356,3 +356,5 @@ The range-count and range-payload validation helpers are pure value helpers and 
 Schedule backup payloads include `scheduleKind` and `intervalDays` for interval and one-time repeat support.
 Event backup payloads include `id`, `name`, `mode`, `date`, `sortOrder`, timestamps, and `version`.
 `BackupAppSettings` stores the selected appearance mode and app tint. Legacy backups without this optional settings payload remain valid and do not overwrite the current appearance settings during restore.
+
+Auto Backup does not add Core Data entities and does not change the backup archive schema. Its enabled flag, dirty flag, and dirty generation are local `UserDefaults` values, so restoring a backup does not overwrite the user's Auto Backup preference.

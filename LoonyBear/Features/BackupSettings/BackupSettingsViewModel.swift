@@ -13,16 +13,20 @@ final class BackupSettingsViewModel: ObservableObject {
     @Published private(set) var isRestoringBackup = false
 
     private let service: BackupService
+    private let autoBackupService: AutoBackupService
     private let notificationService: NotificationService
     private let pillNotificationService: PillNotificationService
     private let minimumLoadingDuration: Duration = .seconds(1)
+    private var isEnablingAutoBackupWithoutFolder = false
 
     init(
         service: BackupService,
+        autoBackupService: AutoBackupService? = nil,
         notificationService: NotificationService,
         pillNotificationService: PillNotificationService
     ) {
         self.service = service
+        self.autoBackupService = autoBackupService ?? .shared
         self.notificationService = notificationService
         self.pillNotificationService = pillNotificationService
     }
@@ -49,6 +53,7 @@ final class BackupSettingsViewModel: ObservableObject {
                 )
             }
         } catch {
+            isEnablingAutoBackupWithoutFolder = false
             showBanner(title: "Backup Failed", message: Self.createFailureMessage(for: error), style: .failure)
         }
     }
@@ -61,8 +66,35 @@ final class BackupSettingsViewModel: ObservableObject {
         do {
             try service.saveFolderBookmark(for: url)
             status = try service.loadStatus()
+            if isEnablingAutoBackupWithoutFolder {
+                autoBackupService.setEnabled(true)
+            }
+            isEnablingAutoBackupWithoutFolder = false
         } catch {
             showBanner(title: "Backup Failed", message: Self.createFailureMessage(for: error), style: .failure)
+        }
+    }
+
+    func folderPickerDidDismiss() {
+        guard isEnablingAutoBackupWithoutFolder else { return }
+        isEnablingAutoBackupWithoutFolder = false
+        autoBackupService.setEnabled(false)
+    }
+
+    func setAutoBackupEnabled(_ enabled: Bool) {
+        if enabled {
+            if status.hasUsableFolder {
+                autoBackupService.setEnabled(true)
+            } else if status.hasSelectedFolder {
+                autoBackupService.setEnabled(true)
+                promptFolderReselection()
+            } else {
+                isEnablingAutoBackupWithoutFolder = true
+                chooseFolder()
+            }
+        } else {
+            isEnablingAutoBackupWithoutFolder = false
+            autoBackupService.setEnabled(false)
         }
     }
 
@@ -120,6 +152,7 @@ final class BackupSettingsViewModel: ObservableObject {
     func confirmCreateBackup() async {
         guard !isPerformingOperation else { return }
 
+        let autoBackupToken = autoBackupService.beginExternalBackup()
         isCreatingBackup = true
         let start = ContinuousClock.now
         await Task.yield()
@@ -129,9 +162,11 @@ final class BackupSettingsViewModel: ObservableObject {
         switch result {
         case .success(let updatedStatus):
             status = updatedStatus
+            autoBackupService.completeExternalBackup(autoBackupToken, succeeded: true)
             await finishLoading(startedAt: start, kind: .create)
             showBanner(title: "Backup Created", message: "Backup saved to the selected folder.", style: .success)
         case .failure(let message):
+            autoBackupService.completeExternalBackup(autoBackupToken, succeeded: false)
             await finishLoading(startedAt: start, kind: .create)
             showBanner(title: "Backup Failed", message: message, style: .failure)
         }

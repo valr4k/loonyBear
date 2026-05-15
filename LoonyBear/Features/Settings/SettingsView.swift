@@ -51,7 +51,7 @@ struct SettingsView: View {
                         settingsRow(
                             icon: "arrow.trianglehead.2.clockwise.rotate.90.icloud",
                             title: "Backup",
-                            subtitle: "Manual backup and restore"
+                            subtitle: "Manual and automatic backups"
                         )
                     }
                     .buttonStyle(.plain)

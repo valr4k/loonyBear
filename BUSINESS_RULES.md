@@ -326,12 +326,25 @@ This file describes the behavioral rules that are currently implemented in code.
 - Legacy backups without app settings keep the current theme mode and app tint unchanged.
 - If snapshot payload creation fails because the local store is corrupted, restore can continue.
 - If snapshot writing fails, restore aborts.
-- Backup screen shows `Last backup`, `Total size`, and `Folder`.
+- Backup screen shows `Last backup`, `Total size`, `Folder`, and `Auto Backup`.
+- Settings shows the Backup destination with the subtitle `Manual and automatic backups`.
 - `Last backup` uses the same color as its cloud status icon: green when a readable backup exists and red when it does not.
 - `Last backup` uses `03 May at 22:35` style date formatting.
+- `Auto Backup` is an explicit user toggle. The app never silently turns it on or off.
+- Turning `Auto Backup` on with a usable folder selected enables automatic backups immediately.
+- Turning `Auto Backup` on without a selected folder opens the folder picker. If the user chooses a folder successfully, Auto Backup becomes On. If the picker is cancelled, Auto Backup remains Off.
+- If the remembered folder later becomes unavailable, Auto Backup remains in the user's chosen On/Off state. Automatic backup attempts cannot complete until the folder is available again.
+- Auto Backup writes the same backup files with the same schema and rotation as manual Create Backup.
+- Auto Backup runs only when Auto Backup is On, the selected folder is accessible, data is dirty, and no other backup operation is already running.
+- Auto Backup waits 20 seconds after an important data change; another change inside that window resets the timer.
+- Auto Backup also checks for pending dirty data at app startup, foreground, and background.
+- Auto Backup failures are silent outside the Backup screen. Dirty state remains pending and is retried later.
+- Successful manual or automatic backup clears dirty state only when no newer change happened while the backup was running.
+- Manual Create Backup remains available regardless of the Auto Backup toggle and has priority over automatic backup.
 - Backup actions are full-width capsule buttons. Create Backup uses the primary label color, and Restore Backup stays system red.
 - Create Backup and Restore Backup confirmations use system alerts, not popover confirmation dialogs. Alert action labels are shortened to `Backup` and `Restore`.
 - The Home Screen app icon exposes a dynamic `Create Backup` quick action after the app has launched. It opens Settings > Backup only; it does not start backup creation.
+- Auto Backup has no Home Screen quick action, app icon badge, toolbar badge, or dashboard banner.
 - Choosing a folder does not restore data automatically.
 - Backup screen derives its action notice from the actual selected folder state, not from a temporary screen session flag.
 - Each readable backup file is fingerprinted from its compressed data.
