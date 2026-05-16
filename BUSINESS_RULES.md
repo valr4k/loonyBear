@@ -330,13 +330,17 @@ This file describes the behavioral rules that are currently implemented in code.
 - Settings shows the Backup destination with the subtitle `Manual and automatic backups`.
 - `Last backup` uses the same color as its cloud status icon: green when a readable backup exists and red when it does not.
 - `Last backup` uses `03 May at 22:35` style date formatting.
-- `Auto Backup` is an explicit user toggle for normal user intent, but it cannot remain On without a usable backup folder.
-- Turning `Auto Backup` on with a usable folder selected enables automatic backups immediately.
-- Turning `Auto Backup` on without a selected folder opens the folder picker. If the user chooses a folder successfully, Auto Backup becomes On. If the picker is cancelled, Auto Backup remains Off.
-- Turning `Auto Backup` on with a remembered but unavailable folder prompts the user to choose the folder again. Auto Backup remains Off until a usable folder is selected.
-- If the remembered folder later becomes unavailable, Auto Backup turns Off during Backup screen loading, app startup, foreground/background checks, or the next attempted automatic backup.
+- `Auto Backup` is an explicit user toggle for normal user intent, but it cannot remain On without a trusted backup destination.
+- A trusted destination is a usable selected folder with no backup file yet, a backup file last created by this app install, or a backup file last restored by this app install.
+- A readable backup file that has not been restored by this app install is not trusted for Auto Backup. This prevents Auto Backup from overwriting a backup the user has not explicitly accepted as the current baseline.
+- An unreadable/corrupt backup file is not trusted for Auto Backup.
+- Turning `Auto Backup` on with a trusted destination enables automatic backups immediately.
+- Turning `Auto Backup` on without a selected folder opens the folder picker. If the user chooses an empty/trusted folder successfully, Auto Backup becomes On. If the picker is cancelled, Auto Backup remains Off.
+- Turning `Auto Backup` on with a remembered but unavailable folder prompts the user to choose the folder again. Auto Backup remains Off until a trusted destination is selected.
+- Turning `Auto Backup` on with a readable-but-unrestored or unreadable backup keeps Auto Backup Off and shows an informational banner: `Create or restore a backup before turning on Auto Backup.`
+- If destination trust is later lost, Auto Backup turns Off during Backup screen loading, app startup, foreground/background checks, or the next attempted automatic backup.
 - Auto Backup writes the same backup files with the same schema and rotation as manual Create Backup.
-- Auto Backup runs only when Auto Backup is On, the selected folder is accessible, data is dirty, and no other backup operation is already running.
+- Auto Backup runs only when Auto Backup is On, the selected destination is trusted, data is dirty, and no other backup operation is already running.
 - Auto Backup waits 20 seconds after an important data change; another change inside that window resets the timer.
 - Auto Backup also checks for pending dirty data at app startup, foreground, and background.
 - Auto Backup failures are silent outside the Backup screen. Dirty state remains pending and is retried later.

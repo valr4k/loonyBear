@@ -60,6 +60,11 @@ struct BackupSettingsViewModelTests {
         #expect(!viewModel.canRestoreBackup)
         #expect(viewModel.createBackup())
         #expect(!viewModel.restoreBackup())
+
+        viewModel.setAutoBackupEnabled(true)
+
+        #expect(!autoBackupService.isEnabled)
+        #expect(viewModel.banner?.message == "Create or restore a backup before turning on Auto Backup.")
     }
 
     @Test
@@ -134,6 +139,32 @@ struct BackupSettingsViewModelTests {
     }
 
     @Test
+    func enablingAutoBackupWithAvailableBackupKeepsItOff() throws {
+        let fixture = try makeFixture()
+        let viewModel = fixture.viewModel
+        let autoBackupService = fixture.autoBackupService
+        let folderURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: folderURL)
+        }
+
+        try fixture.backupService.saveFolderBookmark(for: folderURL)
+        try fixture.backupService.createBackup()
+        fixture.defaults.removeObject(forKey: "backup_last_created_fingerprint")
+        viewModel.load()
+
+        #expect(viewModel.status.fileState == .available)
+        #expect(!viewModel.status.allowsAutomaticBackup)
+        #expect(!viewModel.canCreateBackup)
+
+        viewModel.setAutoBackupEnabled(true)
+
+        #expect(!autoBackupService.isEnabled)
+        #expect(viewModel.banner?.message == "Create or restore a backup before turning on Auto Backup.")
+    }
+
+    @Test
     func enablingAutoBackupWithUnavailableStoredFolderRequiresReselectionAndCancelKeepsItOff() throws {
         let fixture = try makeFixture()
         let viewModel = fixture.viewModel
@@ -170,6 +201,41 @@ struct BackupSettingsViewModelTests {
             defaults: defaults,
             compressionService: CompressionService()
         )
+        let autoBackupService = AutoBackupService(
+            backupService: backupService,
+            defaults: defaults,
+            debounceDuration: .seconds(60)
+        )
+
+        #expect(autoBackupService.isEnabled)
+
+        autoBackupService.handleStartup()
+
+        #expect(!autoBackupService.isEnabled)
+        #expect(!defaults.bool(forKey: AutoBackupService.enabledKey))
+    }
+
+    @Test
+    func autoBackupStartupDisablesStoredEnabledStateWhenBackupIsAvailableButNotTrusted() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let defaults = try #require(UserDefaults(suiteName: "BackupSettingsViewModelTests.\(UUID().uuidString)"))
+        defaults.set(true, forKey: AutoBackupService.enabledKey)
+        let backupService = BackupService(
+            context: persistence.container.viewContext,
+            makeWorkContext: persistence.makeBackgroundContext,
+            defaults: defaults,
+            compressionService: CompressionService()
+        )
+        let folderURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: folderURL)
+        }
+
+        try backupService.saveFolderBookmark(for: folderURL)
+        try backupService.createBackup()
+        defaults.removeObject(forKey: "backup_last_created_fingerprint")
+
         let autoBackupService = AutoBackupService(
             backupService: backupService,
             defaults: defaults,

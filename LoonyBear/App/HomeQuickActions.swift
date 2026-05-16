@@ -48,13 +48,12 @@ enum HomeQuickActions {
         }
     }
 
+    @MainActor
     @discardableResult
     static func handle(_ shortcutItem: UIApplicationShortcutItem) -> Bool {
         guard let action = action(for: shortcutItem) else { return false }
 
-        Task { @MainActor in
-            HomeQuickActionCenter.shared.request(action)
-        }
+        HomeQuickActionCenter.shared.request(action)
 
         return true
     }

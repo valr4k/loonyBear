@@ -3,6 +3,7 @@ import UIKit
 
 @testable import LoonyBear
 
+@MainActor
 @Suite(.serialized)
 struct HomeQuickActionTests {
     @Test
@@ -37,9 +38,8 @@ struct HomeQuickActionTests {
         #expect(HomeQuickActionRouter.route(for: nil) == nil)
     }
 
-    @MainActor
     @Test
-    func handleCreateBackupShortcutPublishesNavigationIntent() async {
+    func handleCreateBackupShortcutPublishesNavigationIntent() {
         HomeQuickActionCenter.shared.consume(.createBackup)
         let shortcutItem = UIApplicationShortcutItem(
             type: HomeQuickActions.createBackupType,
@@ -47,13 +47,11 @@ struct HomeQuickActionTests {
         )
 
         #expect(HomeQuickActions.handle(shortcutItem))
-        await Task.yield()
 
         #expect(HomeQuickActionCenter.shared.pendingAction == .createBackup)
         HomeQuickActionCenter.shared.consume(.createBackup)
     }
 
-    @MainActor
     @Test
     func consumeCreateBackupShortcutClearsNavigationIntent() {
         HomeQuickActionCenter.shared.request(.createBackup)

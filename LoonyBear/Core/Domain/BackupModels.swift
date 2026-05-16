@@ -496,6 +496,10 @@ struct BackupStatus: Equatable {
         hasSelectedFolder && !requiresFolderReselection
     }
 
+    var allowsAutomaticBackup: Bool {
+        hasUsableFolder && fileState.allowsAutomaticBackup
+    }
+
     static let empty = BackupStatus(
         folderName: "Choose folder",
         latestBackupText: "No backups yet",
@@ -513,4 +517,13 @@ enum BackupFileState: Equatable {
     case created
     case restored
     case unreadable
+
+    var allowsAutomaticBackup: Bool {
+        switch self {
+        case .none, .created, .restored:
+            return true
+        case .available, .unreadable:
+            return false
+        }
+    }
 }

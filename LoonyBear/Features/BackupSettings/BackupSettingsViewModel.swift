@@ -52,7 +52,7 @@ final class BackupSettingsViewModel: ObservableObject {
                     message: "The previously selected folder is no longer accessible. Select a new backup location.",
                     style: .failure
                 )
-            } else if !status.hasUsableFolder {
+            } else if !status.allowsAutomaticBackup {
                 autoBackupService.setEnabled(false)
             }
         } catch {
@@ -70,7 +70,13 @@ final class BackupSettingsViewModel: ObservableObject {
         do {
             try service.saveFolderBookmark(for: url)
             status = try service.loadStatus()
-            if isAwaitingAutoBackupFolderSelection, status.hasUsableFolder {
+            if isAwaitingAutoBackupFolderSelection {
+                guard status.allowsAutomaticBackup else {
+                    autoBackupService.setEnabled(false)
+                    showAutoBackupUnavailableBanner()
+                    isAwaitingAutoBackupFolderSelection = false
+                    return
+                }
                 autoBackupService.setEnabled(true)
             }
             isAwaitingAutoBackupFolderSelection = false
@@ -87,12 +93,16 @@ final class BackupSettingsViewModel: ObservableObject {
 
     func setAutoBackupEnabled(_ enabled: Bool) {
         if enabled {
-            if status.hasUsableFolder {
+            if status.allowsAutomaticBackup {
                 autoBackupService.setEnabled(true)
             } else if status.hasSelectedFolder {
-                isAwaitingAutoBackupFolderSelection = true
                 autoBackupService.setEnabled(false)
-                promptFolderReselection()
+                if status.requiresFolderReselection {
+                    isAwaitingAutoBackupFolderSelection = true
+                    promptFolderReselection()
+                } else {
+                    showAutoBackupUnavailableBanner()
+                }
             } else {
                 isAwaitingAutoBackupFolderSelection = true
                 autoBackupService.setEnabled(false)
@@ -217,6 +227,14 @@ final class BackupSettingsViewModel: ObservableObject {
             style: .failure
         )
         isShowingFolderPicker = true
+    }
+
+    private func showAutoBackupUnavailableBanner() {
+        showBanner(
+            title: "Auto Backup Unavailable",
+            message: "Create or restore a backup before turning on Auto Backup.",
+            style: .info
+        )
     }
 
     private func showBanner(title: String, message: String, style: BackupBannerStyle) {

@@ -805,6 +805,8 @@ UI behavior:
 - the Home Screen `Create Backup` quick action is dynamic after first launch and routes only to Settings > Backup
 - Folder selection only grants access and reloads backup metadata; it never applies the backup automatically
 - `BackupStatus.fileState` describes the selected folder as `none`, `available`, `created`, `restored`, or `unreadable`
+- `BackupStatus.allowsAutomaticBackup` is true only when the folder is usable and `fileState.allowsAutomaticBackup` is true
+- `BackupFileState.allowsAutomaticBackup` is true for `.none`, `.created`, and `.restored`; it is false for `.available` and `.unreadable`
 - readable backup files are fingerprinted from their compressed file data using SHA-256
 - after a successful create, the current fingerprint is stored as the last created backup fingerprint
 - after a successful restore, the current fingerprint is stored as the last restored backup fingerprint
@@ -836,13 +838,21 @@ Published runtime state:
 
 Enable/disable behavior:
 - the Backup screen owns the visible `Auto Backup` toggle row
-- Auto Backup is user-controlled for normal on/off intent, but it cannot remain enabled without a usable selected folder
-- when the user turns Auto Backup on and `BackupStatus` has a usable folder, `AutoBackupService.setEnabled(true)` is called
-- when the user turns Auto Backup on without a selected folder, `BackupSettingsViewModel` opens the system folder picker, stores a pending folder-selection intent, and keeps Auto Backup disabled until a usable folder is chosen
-- when the user turns Auto Backup on with a remembered but unavailable folder, `BackupSettingsViewModel` shows the folder-unavailable flow, prompts reselection, stores the same pending folder-selection intent, and keeps Auto Backup disabled until a usable folder is chosen
-- if folder selection succeeds while pending and the resulting status has a usable folder, Auto Backup is enabled
+- Auto Backup is user-controlled for normal on/off intent, but it cannot remain enabled without a trusted selected destination
+- a trusted destination means `BackupStatus.allowsAutomaticBackup == true`: the selected folder is usable and the current backup file state is `.none`, `.created`, or `.restored`
+- `.none` is trusted because there is no existing backup file to overwrite
+- `.created` is trusted because this app install created the current backup fingerprint
+- `.restored` is trusted because the user explicitly restored the current backup fingerprint and accepted it as the baseline
+- `.available` is not trusted because a readable backup exists but has not been created/restored by this app install; Auto Backup must not overwrite it silently
+- `.unreadable` is not trusted because the current backup file is corrupt or cannot be decoded
+- when the user turns Auto Backup on and `BackupStatus.allowsAutomaticBackup` is true, `AutoBackupService.setEnabled(true)` is called
+- when the user turns Auto Backup on without a selected folder, `BackupSettingsViewModel` opens the system folder picker, stores a pending folder-selection intent, and keeps Auto Backup disabled until a trusted destination is chosen
+- when the user turns Auto Backup on with a remembered but unavailable folder, `BackupSettingsViewModel` shows the folder-unavailable flow, prompts reselection, stores the same pending folder-selection intent, and keeps Auto Backup disabled until a trusted destination is chosen
+- when the user turns Auto Backup on with a selected folder whose file state is `.available` or `.unreadable`, `BackupSettingsViewModel` keeps Auto Backup disabled and shows `Create or restore a backup before turning on Auto Backup.`
+- if folder selection succeeds while pending and the resulting status allows automatic backup, Auto Backup is enabled
+- if folder selection succeeds while pending but the resulting status is `.available` or `.unreadable`, Auto Backup remains disabled and the same informational banner is shown
 - if folder selection is cancelled while pending, Auto Backup remains disabled
-- if the remembered folder later becomes unavailable during screen load, startup, foreground, background, or a debounced backup attempt, Auto Backup is disabled and the Backup screen can show the folder-unavailable banner through normal status loading
+- if the remembered folder later becomes unavailable, unreadable, or readable-but-unrestored during screen load, startup, foreground, background, or a debounced backup attempt, Auto Backup is disabled
 - turning Auto Backup off cancels any pending debounce task but does not create, restore, or delete backup files
 
 Dirty marking:
@@ -855,7 +865,7 @@ Dirty marking:
 Automatic backup trigger rules:
 - Auto Backup must be enabled
 - dirty state must be true
-- the selected backup folder must be usable before the backup starts; if the bookmark no longer resolves, Auto Backup is disabled and the backup is skipped
+- the selected backup destination must still be trusted before the backup starts; if the bookmark no longer resolves, the backup becomes unreadable, or a readable-but-unrestored backup is present, Auto Backup is disabled and the backup is skipped
 - no auto backup may already be running
 - no manual backup may currently be registered as an external backup operation
 
@@ -902,7 +912,7 @@ Out of scope by design:
 - no new backup archive format
 
 Tests:
-- `LoonyBearTests/BackupSettingsViewModelTests.swift` covers enabling Auto Backup without a folder, unavailable remembered folders, picker cancellation, successful folder selection enabling the toggle, startup disabling when the folder is unavailable, and successful restore clearing dirty without scheduling immediate Auto Backup
+- `LoonyBearTests/BackupSettingsViewModelTests.swift` covers enabling Auto Backup without a folder, unavailable remembered folders, picker cancellation, successful trusted folder selection enabling the toggle, readable-but-unrestored backups keeping the toggle off, unreadable backups keeping the toggle off, startup disabling when trust is lost, and successful restore clearing dirty without scheduling immediate Auto Backup
 - `LoonyBearTests/BackupServiceTests.swift` covers backup restore rejection for monthly bucket masks that contain impossible day bits for their `yearMonthKey`
 - `LoonyBearTests/StartupHealthCheckTests.swift` covers startup integrity failures for stored Habit/Pill history buckets with impossible month-day bits
 

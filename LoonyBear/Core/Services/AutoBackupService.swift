@@ -45,7 +45,7 @@ final class AutoBackupService: ObservableObject {
     }
 
     func setEnabled(_ enabled: Bool) {
-        let resolvedEnabled = enabled && hasUsableBackupFolder()
+        let resolvedEnabled = enabled && canWriteAutomaticBackup()
         isEnabled = resolvedEnabled
         defaults.set(resolvedEnabled, forKey: Self.enabledKey)
 
@@ -66,19 +66,19 @@ final class AutoBackupService: ObservableObject {
     }
 
     func handleStartup() {
-        guard ensureUsableBackupFolder() else { return }
+        guard ensureCanWriteAutomaticBackup() else { return }
         runBackupIfNeeded(reason: "startup")
     }
 
     func handleForeground() {
-        guard ensureUsableBackupFolder() else { return }
+        guard ensureCanWriteAutomaticBackup() else { return }
         runBackupIfNeeded(reason: "foreground")
     }
 
     func handleBackground() {
         debounceTask?.cancel()
         debounceTask = nil
-        guard ensureUsableBackupFolder() else { return }
+        guard ensureCanWriteAutomaticBackup() else { return }
         runBackupIfNeeded(reason: "background")
     }
 
@@ -133,7 +133,7 @@ final class AutoBackupService: ObservableObject {
     private func scheduleDebouncedBackup(reason: String) {
         guard isEnabled, isDirty else { return }
         guard !isBackingUp, activeExternalBackupCount == 0 else { return }
-        guard ensureUsableBackupFolder() else { return }
+        guard ensureCanWriteAutomaticBackup() else { return }
 
         debounceTask?.cancel()
         let debounceDuration = self.debounceDuration
@@ -151,7 +151,7 @@ final class AutoBackupService: ObservableObject {
     private func runBackupIfNeeded(reason: String) {
         guard isEnabled, isDirty else { return }
         guard !isBackingUp, activeExternalBackupCount == 0 else { return }
-        guard ensureUsableBackupFolder() else { return }
+        guard ensureCanWriteAutomaticBackup() else { return }
 
         debounceTask?.cancel()
         debounceTask = nil
@@ -192,19 +192,19 @@ final class AutoBackupService: ObservableObject {
         persistDirtyState()
     }
 
-    private func ensureUsableBackupFolder() -> Bool {
+    private func ensureCanWriteAutomaticBackup() -> Bool {
         guard isEnabled else { return false }
-        guard hasUsableBackupFolder() else {
+        guard canWriteAutomaticBackup() else {
             setEnabled(false)
-            ReliabilityLog.info("backup.auto.disabled reason=folder-unavailable")
+            ReliabilityLog.info("backup.auto.disabled reason=backup-not-trusted")
             return false
         }
         return true
     }
 
-    private func hasUsableBackupFolder() -> Bool {
+    private func canWriteAutomaticBackup() -> Bool {
         do {
-            return try backupService.loadStatus().hasUsableFolder
+            return try backupService.loadStatus().allowsAutomaticBackup
         } catch {
             return false
         }
