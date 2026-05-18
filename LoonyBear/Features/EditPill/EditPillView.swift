@@ -20,6 +20,7 @@ struct EditPillView: View {
     private let historySnapshot: CoreDataHistoryBucketSnapshot
     @FocusState private var focusedField: Field?
     @State private var draft: EditPillDraft
+    @State private var discardBaselineDraft: EditPillDraft
     @State private var pendingScheduleRule: ScheduleRule?
     @State private var displayedMonth: Date
     @State private var validationMessage: String?
@@ -32,13 +33,13 @@ struct EditPillView: View {
     @State private var isShowingDeleteConfirmation = false
     @State private var isShowingArchiveConfirmation = false
     @State private var isShowingRestoreConfirmation = false
+    @State private var isShowingDiscardConfirmation = false
     @State private var isShowingNotificationSettingsAlert = false
     @State private var isHistoryWarningDismissed = false
     @State private var isScheduleWarningDismissed = false
     @State private var isEndDateWarningDismissed = false
     @State private var isArchived: Bool
     @State private var isRestoreMode = false
-    @State private var didHandleSaveTouchDown = false
 
     private enum Field: Hashable {
         case description
@@ -88,6 +89,7 @@ struct EditPillView: View {
             initialDraft.endDate = nil
         }
         _draft = State(initialValue: initialDraft)
+        _discardBaselineDraft = State(initialValue: initialDraft)
         _displayedMonth = State(initialValue: startsInRestoreMode
             ? Self.month(containing: today)
             : Self.initialDisplayedMonth(startDate: details.startDate))
@@ -153,30 +155,35 @@ struct EditPillView: View {
                 if showsCloseButton {
                     ToolbarItem(placement: .cancellationAction) {
                         Button {
-                            dismiss()
+                            close()
                         } label: {
                             AppToolbarIconLabel("Close", systemName: "xmark")
                         }
                         .appAccentTint()
+                        .confirmationDialog(
+                            AppCopy.discardChangesTitle,
+                            isPresented: $isShowingDiscardConfirmation,
+                            titleVisibility: .visible
+                        ) {
+                            Button(AppCopy.discardChangesAction, role: .destructive) {
+                                dismiss()
+                            }
+                        } message: {
+                            Text(AppCopy.discardChangesMessage)
+                        }
                     }
                 }
 
                 if !isEditingDisabled {
                     ToolbarItem(placement: .confirmationAction) {
                         Button {
-                            handleSaveButtonAction()
+                            save()
                         } label: {
                             AppToolbarIconLabel("Save", systemName: "checkmark")
                         }
                         .appToolbarActionTint(isDisabled: isSaveDisabled)
                         .fontWeight(.semibold)
                         .disabled(isSaveDisabled)
-                        .simultaneousGesture(
-                            LongPressGesture(minimumDuration: 0)
-                                .onEnded { _ in
-                                    handleSaveTouchDown()
-                                }
-                        )
                         .confirmationDialog(
                             "You can continue with your previous progress or start from scratch.",
                             isPresented: $isShowingRestoreConfirmation,
@@ -508,6 +515,15 @@ struct EditPillView: View {
         draft.scheduleRule != originalScheduleRule
     }
 
+    private var hasUnsavedChanges: Bool {
+        draft != discardBaselineDraft || stagedScheduleHasChanges
+    }
+
+    private var stagedScheduleHasChanges: Bool {
+        guard let pendingScheduleRule else { return false }
+        return pendingScheduleRule != draft.scheduleRule
+    }
+
     private var shouldUseScheduleEffectiveFrom: Bool {
         !isRestoreMode && hasScheduleChanged
     }
@@ -749,7 +765,11 @@ struct EditPillView: View {
     }
 
     private var isSaveDisabled: Bool {
-        !isFormValid || hasMissingPastDays || isSaving
+        if isRestoreMode {
+            return isSaving
+        }
+
+        return !isFormValid || hasMissingPastDays || isSaving
     }
 
     private func beginRestore() {
@@ -767,25 +787,16 @@ struct EditPillView: View {
         isScheduleWarningDismissed = false
         isEndDateWarningDismissed = false
         displayedMonth = month(containing: today)
+        discardBaselineDraft = draft
     }
 
-    private func handleSaveTap() {
-        save()
-    }
-
-    private func handleSaveTouchDown() {
-        guard !isSaveDisabled else { return }
-        didHandleSaveTouchDown = true
-        handleSaveTap()
-    }
-
-    private func handleSaveButtonAction() {
-        guard !didHandleSaveTouchDown else {
-            didHandleSaveTouchDown = false
+    private func close() {
+        guard hasUnsavedChanges else {
+            dismiss()
             return
         }
 
-        handleSaveTap()
+        isShowingDiscardConfirmation = true
     }
 
     private func save() {
@@ -920,10 +931,11 @@ struct EditPillView: View {
     }
 
     private func prepareRestorePillConfirmation() {
-        if !isRestoreMode {
-            applyPendingScheduleRuleIfNeeded()
-        }
+        guard !isShowingRestoreConfirmation else { return }
+        isShowingRestoreConfirmation = true
+    }
 
+    private func confirmRestorePill(historyMode: RestoreHistoryMode) {
         guard isFormValid else {
             if !draft.scheduleRule.isValidSelection {
                 isScheduleWarningDismissed = false
@@ -936,10 +948,6 @@ struct EditPillView: View {
             return
         }
 
-        isShowingRestoreConfirmation = true
-    }
-
-    private func confirmRestorePill(historyMode: RestoreHistoryMode) {
         restorePill(savedDraft: normalizedDraft(), historyMode: historyMode)
     }
 

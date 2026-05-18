@@ -7,8 +7,10 @@ struct CreateEventView: View {
     @EnvironmentObject private var eventAppState: EventAppState
 
     @State private var draft = EventDraft()
+    @State private var discardBaselineDraft = EventDraft()
     @State private var isValidationWarningDismissed = false
     @State private var isSaving = false
+    @State private var isShowingDiscardConfirmation = false
     @StateObject private var presentationGuard = EventTimingPresentationGuard()
 
     var body: some View {
@@ -35,11 +37,22 @@ struct CreateEventView: View {
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button {
-                    dismiss()
+                    close()
                 } label: {
                     AppToolbarIconLabel("Close", systemName: "xmark")
                 }
                 .appAccentTint()
+                .confirmationDialog(
+                    AppCopy.discardChangesTitle,
+                    isPresented: $isShowingDiscardConfirmation,
+                    titleVisibility: .visible
+                ) {
+                    Button(AppCopy.discardChangesAction, role: .destructive) {
+                        dismiss()
+                    }
+                } message: {
+                    Text(AppCopy.discardChangesMessage)
+                }
             }
 
             ToolbarItem(placement: .confirmationAction) {
@@ -73,6 +86,10 @@ struct CreateEventView: View {
 
     private var validationMessage: String? {
         EventValidation.validationMessage(mode: draft.mode, date: draft.date)
+    }
+
+    private var hasUnsavedChanges: Bool {
+        draft != discardBaselineDraft
     }
 
     @ViewBuilder
@@ -133,6 +150,15 @@ struct CreateEventView: View {
             }
         }
     }
+
+    private func close() {
+        guard hasUnsavedChanges else {
+            dismiss()
+            return
+        }
+
+        isShowingDiscardConfirmation = true
+    }
 }
 
 struct EditEventView: View {
@@ -140,13 +166,17 @@ struct EditEventView: View {
     @EnvironmentObject private var eventAppState: EventAppState
 
     @State private var draft: EditEventDraft
+    @State private var discardBaselineDraft: EditEventDraft
     @State private var isValidationWarningDismissed = false
     @State private var isSaving = false
     @State private var isShowingDeleteConfirmation = false
+    @State private var isShowingDiscardConfirmation = false
     @StateObject private var presentationGuard = EventTimingPresentationGuard()
 
     init(details: EventDetailsProjection) {
-        _draft = State(initialValue: EditEventDraft(details: details))
+        let initialDraft = EditEventDraft(details: details)
+        _draft = State(initialValue: initialDraft)
+        _discardBaselineDraft = State(initialValue: initialDraft)
     }
 
     var body: some View {
@@ -174,11 +204,22 @@ struct EditEventView: View {
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button {
-                    dismiss()
+                    close()
                 } label: {
                     AppToolbarIconLabel("Close", systemName: "xmark")
                 }
                 .appAccentTint()
+                .confirmationDialog(
+                    AppCopy.discardChangesTitle,
+                    isPresented: $isShowingDiscardConfirmation,
+                    titleVisibility: .visible
+                ) {
+                    Button(AppCopy.discardChangesAction, role: .destructive) {
+                        dismiss()
+                    }
+                } message: {
+                    Text(AppCopy.discardChangesMessage)
+                }
             }
 
             ToolbarItem(placement: .confirmationAction) {
@@ -220,6 +261,10 @@ struct EditEventView: View {
 
     private var validationMessage: String? {
         EventValidation.validationMessage(mode: draft.mode, date: draft.date)
+    }
+
+    private var hasUnsavedChanges: Bool {
+        draft != discardBaselineDraft
     }
 
     private var deleteButton: some View {
@@ -291,6 +336,15 @@ struct EditEventView: View {
                 }
             }
         }
+    }
+
+    private func close() {
+        guard hasUnsavedChanges else {
+            dismiss()
+            return
+        }
+
+        isShowingDiscardConfirmation = true
     }
 
     private func deleteEvent() {

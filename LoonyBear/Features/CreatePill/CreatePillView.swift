@@ -7,6 +7,7 @@ struct CreatePillView: View {
 
     @FocusState private var focusedField: Field?
     @State private var draft = PillDraft()
+    @State private var discardBaselineDraft = PillDraft()
     @State private var validationMessage: String?
     @State private var isValidationWarningDismissed = false
     @State private var createLimitWarningMessage: String?
@@ -17,8 +18,10 @@ struct CreatePillView: View {
     @State private var scheduleNoticeDismissTask: Task<Void, Never>?
     @State private var pendingScheduleRule: ScheduleRule?
     @State private var isSaving = false
+    @State private var hasInitializedDiscardBaseline = false
     @State private var isDismissingKeyboardForNonTextControl = false
     @State private var isShowingNotificationSettingsAlert = false
+    @State private var isShowingDiscardConfirmation = false
 
     private enum Field: Hashable {
         case description
@@ -51,11 +54,22 @@ struct CreatePillView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
-                        dismiss()
+                        close()
                     } label: {
                         AppToolbarIconLabel("Close", systemName: "xmark")
                     }
                     .appAccentTint()
+                    .confirmationDialog(
+                        AppCopy.discardChangesTitle,
+                        isPresented: $isShowingDiscardConfirmation,
+                        titleVisibility: .visible
+                    ) {
+                        Button(AppCopy.discardChangesAction, role: .destructive) {
+                            dismiss()
+                        }
+                    } message: {
+                        Text(AppCopy.discardChangesMessage)
+                    }
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
@@ -84,6 +98,7 @@ struct CreatePillView: View {
             }
             .onAppear {
                 applyPendingScheduleRuleIfNeeded()
+                initializeDiscardBaselineIfNeeded()
             }
             .onChange(of: draft.scheduleRule) { _, _ in
                 handleScheduleRuleChange()
@@ -233,6 +248,15 @@ struct CreatePillView: View {
             descriptionField: .description,
             isDismissingKeyboardForNonTextControl: isDismissingKeyboardForNonTextControl
         )
+    }
+
+    private var hasUnsavedChanges: Bool {
+        draft != discardBaselineDraft || stagedScheduleHasChanges
+    }
+
+    private var stagedScheduleHasChanges: Bool {
+        guard let pendingScheduleRule else { return false }
+        return pendingScheduleRule != draft.scheduleRule
     }
 
     @ViewBuilder
@@ -429,6 +453,21 @@ struct CreatePillView: View {
         withAnimation(.easeInOut(duration: 0.18)) {
             scheduleNoticeMessage = nil
         }
+    }
+
+    private func close() {
+        guard hasUnsavedChanges else {
+            dismiss()
+            return
+        }
+
+        isShowingDiscardConfirmation = true
+    }
+
+    private func initializeDiscardBaselineIfNeeded() {
+        guard !hasInitializedDiscardBaseline else { return }
+        discardBaselineDraft = draft
+        hasInitializedDiscardBaseline = true
     }
 
     private func stageScheduleRule(_ scheduleRule: ScheduleRule) {

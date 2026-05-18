@@ -5,6 +5,7 @@ struct CreateHabitView: View {
     @EnvironmentObject private var appState: HabitAppState
 
     @State private var draft = CreateHabitDraft()
+    @State private var discardBaselineDraft = CreateHabitDraft()
     @State private var validationMessage: String?
     @State private var isValidationWarningDismissed = false
     @State private var createLimitWarningMessage: String?
@@ -15,6 +16,7 @@ struct CreateHabitView: View {
     @State private var isSaving = false
     @State private var hasInitialized = false
     @State private var isShowingNotificationSettingsAlert = false
+    @State private var isShowingDiscardConfirmation = false
 
     var body: some View {
         AppScreen(backgroundStyle: .habits, topPadding: 8) {
@@ -36,11 +38,22 @@ struct CreateHabitView: View {
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button {
-                    dismiss()
+                    close()
                 } label: {
                     AppToolbarIconLabel("Close", systemName: "xmark")
                 }
                 .appAccentTint()
+                .confirmationDialog(
+                    AppCopy.discardChangesTitle,
+                    isPresented: $isShowingDiscardConfirmation,
+                    titleVisibility: .visible
+                ) {
+                    Button(AppCopy.discardChangesAction, role: .destructive) {
+                        dismiss()
+                    }
+                } message: {
+                    Text(AppCopy.discardChangesMessage)
+                }
             }
 
             ToolbarItem(placement: .confirmationAction) {
@@ -196,6 +209,15 @@ struct CreateHabitView: View {
         draft.name.isEmpty == false && draft.trimmedName.isEmpty
     }
 
+    private var hasUnsavedChanges: Bool {
+        draft != discardBaselineDraft || stagedScheduleHasChanges
+    }
+
+    private var stagedScheduleHasChanges: Bool {
+        guard let pendingScheduleRule else { return false }
+        return pendingScheduleRule != draft.scheduleRule
+    }
+
     @ViewBuilder
     private var floatingBottomBanners: some View {
         if shouldShowFloatingBottomBanners {
@@ -335,7 +357,17 @@ struct CreateHabitView: View {
         isCreateLimitWarningDismissed = false
         isScheduleWarningDismissed = false
         appState.clearCreateHabitError()
+        discardBaselineDraft = draft
         hasInitialized = true
+    }
+
+    private func close() {
+        guard hasUnsavedChanges else {
+            dismiss()
+            return
+        }
+
+        isShowingDiscardConfirmation = true
     }
 
     private func stageScheduleRule(_ scheduleRule: ScheduleRule) {
