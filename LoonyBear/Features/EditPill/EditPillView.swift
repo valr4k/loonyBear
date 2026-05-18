@@ -278,6 +278,11 @@ struct EditPillView: View {
             .animation(.easeInOut(duration: 0.18), value: isHistoryWarningDismissed)
             .animation(.easeInOut(duration: 0.18), value: isScheduleWarningDismissed)
             .animation(.easeInOut(duration: 0.18), value: isEndDateWarningDismissed)
+            .transaction { transaction in
+                if isShowingRestoreConfirmation || isShowingDiscardConfirmation {
+                    transaction.animation = nil
+                }
+            }
             .onDisappear {
                 scheduleNoticeDismissTask?.cancel()
             }
