@@ -609,7 +609,7 @@ private struct FakeHabitRepository: HabitRepository {
     func deleteHabit(id: UUID) throws { fatalError("Unused in tests") }
     func setHabitArchived(id: UUID, isArchived: Bool) throws { fatalError("Unused in tests") }
     func updateHabit(from draft: EditHabitDraft) throws { fatalError("Unused in tests") }
-    func restoreHabit(from draft: EditHabitDraft) throws { fatalError("Unused in tests") }
+    func restoreHabit(from draft: EditHabitDraft, historyMode: RestoreHistoryMode) throws { fatalError("Unused in tests") }
 }
 
 @MainActor
@@ -621,7 +621,7 @@ private struct FakePillRepository: PillRepository {
     func reconcilePastDays(today: Date) throws -> Int { 0 }
     func createPill(from draft: PillDraft) throws -> UUID { fatalError("Unused in tests") }
     func updatePill(from draft: EditPillDraft) throws { fatalError("Unused in tests") }
-    func restorePill(from draft: EditPillDraft) throws { fatalError("Unused in tests") }
+    func restorePill(from draft: EditPillDraft, historyMode: RestoreHistoryMode) throws { fatalError("Unused in tests") }
     func deletePill(id: UUID) throws { fatalError("Unused in tests") }
     func setPillArchived(id: UUID, isArchived: Bool) throws { fatalError("Unused in tests") }
     func markTakenToday(id: UUID) throws { fatalError("Unused in tests") }

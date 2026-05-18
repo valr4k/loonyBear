@@ -21,7 +21,7 @@ protocol PillRepository {
     func reconcilePastDays(today: Date) throws -> Int
     func createPill(from draft: PillDraft) throws -> UUID
     func updatePill(from draft: EditPillDraft) throws
-    func restorePill(from draft: EditPillDraft) throws
+    func restorePill(from draft: EditPillDraft, historyMode: RestoreHistoryMode) throws
     func deletePill(id: UUID) throws
     func setPillArchived(id: UUID, isArchived: Bool) throws
     func markTakenToday(id: UUID) throws
@@ -31,4 +31,10 @@ protocol PillRepository {
     func clearPillDayStateToday(id: UUID) throws
     func clearPillDayState(id: UUID, on day: Date) throws
     func movePills(from offsets: IndexSet, to destination: Int) throws
+}
+
+extension PillRepository {
+    func restorePill(from draft: EditPillDraft) throws {
+        try restorePill(from: draft, historyMode: .keepHistory)
+    }
 }

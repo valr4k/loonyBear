@@ -197,13 +197,16 @@ final class HabitAppState: ObservableObject {
         }
     }
 
-    func restoreHabit(from draft: EditHabitDraft) async throws {
+    func restoreHabit(
+        from draft: EditHabitDraft,
+        historyMode: RestoreHistoryMode = .keepHistory
+    ) async throws {
         try await writeCoordinator.performThrowingMutation(
             refresh: { self.refreshDashboard(animated: true) },
             setError: { self.actionErrorMessage = $0 },
             refreshOnFailure: true
         ) {
-            try self.repository.restoreHabit(from: draft)
+            try self.repository.restoreHabit(from: draft, historyMode: historyMode)
         }
 
         sideEffectCoordinator.handleArchiveChange(

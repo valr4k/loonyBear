@@ -467,7 +467,7 @@ struct CoreDataPillRepository: PillRepository {
         }
     }
 
-    func restorePill(from draft: EditPillDraft) throws {
+    func restorePill(from draft: EditPillDraft, historyMode: RestoreHistoryMode) throws {
         try repositoryContext.performWrite { context in
             guard let pill = try fetchPill(id: draft.id, in: context) else { return }
             guard pill.boolValue(forKey: "isArchived") else { return }
@@ -492,6 +492,47 @@ struct CoreDataPillRepository: PillRepository {
             pill.setValue(draft.reminderEnabled ? Int16(draft.reminderTime.hour) : nil, forKey: "reminderHour")
             pill.setValue(draft.reminderEnabled ? Int16(draft.reminderTime.minute) : nil, forKey: "reminderMinute")
             pill.setValue(now, forKey: "updatedAt")
+
+            if historyMode == .startFresh {
+                pill.setValue(activeFrom, forKey: "startDate")
+                deleteRelatedObjects(from: pill, relationshipKey: "historyBuckets", in: context)
+                deleteRelatedObjects(from: pill, relationshipKey: "historyRanges", in: context)
+                deleteRelatedObjects(from: pill, relationshipKey: "intakes", in: context)
+                deleteRelatedObjects(from: pill, relationshipKey: "scheduleVersions", in: context)
+
+                let scheduleID = UUID()
+                let schedule = NSEntityDescription.insertNewObject(forEntityName: "PillScheduleVersion", into: context)
+                schedule.setValue(scheduleID, forKey: "id")
+                schedule.setValue(draft.id, forKey: "pillID")
+                CoreDataScheduleSupport.apply(draft.scheduleRule, to: schedule)
+                schedule.setValue(activeFrom, forKey: "effectiveFrom")
+                schedule.setValue(now, forKey: "createdAt")
+                schedule.setValue(Int32(1), forKey: "version")
+                schedule.setValue(pill, forKey: "pill")
+
+                try context.save()
+
+                syncTodayOverdueAnchorAfterEdit(
+                    pillID: draft.id,
+                    startDate: activeFrom,
+                    endDate: draft.endDate,
+                    schedules: [
+                        PillScheduleVersion(
+                            id: scheduleID,
+                            pillID: draft.id,
+                            rule: draft.scheduleRule,
+                            effectiveFrom: activeFrom,
+                            createdAt: now,
+                            version: 1
+                        )
+                    ],
+                    reminderTime: draft.reminderEnabled ? draft.reminderTime : nil,
+                    positiveDays: [],
+                    skippedDays: [],
+                    now: now
+                )
+                return
+            }
 
             let scheduleRelationship = pill.mutableSetValue(forKey: "scheduleVersions")
             let nextVersion = CoreDataScheduleSupport.nextVersion(in: scheduleRelationship)
@@ -1012,6 +1053,15 @@ struct CoreDataPillRepository: PillRepository {
     private func restoreMinimumActiveFrom(archivedAt: Date, today: Date) -> Date {
         let editableStart = calendar.date(byAdding: .day, value: -29, to: today) ?? today
         return max(calendar.startOfDay(for: archivedAt), calendar.startOfDay(for: editableStart))
+    }
+
+    private func deleteRelatedObjects(
+        from owner: NSManagedObject,
+        relationshipKey: String,
+        in context: NSManagedObjectContext
+    ) {
+        let rows = (owner.mutableSetValue(forKey: relationshipKey).allObjects as? [NSManagedObject]) ?? []
+        rows.forEach(context.delete)
     }
 
     private func calendarDays(from start: Date, through end: Date) -> [Date] {

@@ -251,7 +251,11 @@ This file describes the behavioral rules that are currently implemented in code.
 - `Active From` minimum is `max(archivedAt, today - 29 days)`. This gives the user up to the normal 30-day editable window including today, but never allows Active From before the archive date.
 - `Active From` can be the archive date, any later date, today, or a future date.
 - In Restore Draft, End Repeat defaults to `Never` and End Date is cleared. The read-only archived screen still shows the stored historical End Repeat/End Date until Restore Draft starts.
-- The Restore Draft screen uses the normal `Save` action. When Save succeeds, the app saves the draft edits, sets `isArchived = false`, clears `archivedAt`, writes `activeFrom`, and inserts a new schedule version effective from Active From.
+- The Restore Draft screen uses the normal `Save` action. If the draft is valid, Save opens a system confirmation dialog titled `Restore Pill?` or `Restore Habit?` with the message `Keep your history or start fresh.` The dialog has two neutral actions and no explicit Cancel action:
+  - `Keep History`
+  - `Start Fresh`
+- `Keep History` preserves the old history and behaves like the original Restore flow: the app saves the draft edits, sets `isArchived = false`, clears `archivedAt`, writes `activeFrom`, inserts a new schedule version effective from Active From, and keeps previous Completed/Taken/Skipped/Archived history.
+- `Start Fresh` turns the Restore Draft into a new cycle: the app saves the draft edits, clears all old Completed/Taken/Skipped/Archived history, sets Start Date to Active From, sets `isArchived = false`, clears `archivedAt`, writes `activeFrom`, and inserts a new schedule version effective from the new Start Date. Streaks and totals restart from zero because the stored history is empty.
 - Before writing the new Restore gap, Restore removes archived history states on and after Active From. This prevents stale future Archived days from an earlier Restore attempt from staying inside the new active cycle.
 - Restore writes `archived` history states from `archivedAt` through the day before Active From. If Active From is the archive day, this gap is empty and no archived states are created.
 - Restore writes archived gap rows only into empty days. Existing Completed/Taken/Skipped rows in the archive gap are preserved and continue to count normally.

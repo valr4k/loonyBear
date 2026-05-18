@@ -26,12 +26,14 @@ struct EditHabitView: View {
     @State private var isSaving = false
     @State private var isShowingDeleteConfirmation = false
     @State private var isShowingArchiveConfirmation = false
+    @State private var isShowingRestoreConfirmation = false
     @State private var isShowingNotificationSettingsAlert = false
     @State private var isHistoryWarningDismissed = false
     @State private var isScheduleWarningDismissed = false
     @State private var isEndDateWarningDismissed = false
     @State private var isArchived: Bool
     @State private var isRestoreMode = false
+    @State private var pendingRestoreDraft: EditHabitDraft?
 
     init(
         details: HabitDetailsProjection,
@@ -145,6 +147,21 @@ struct EditHabitView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(archiveConfirmationMessage)
+        }
+        .confirmationDialog(
+            "Restore Habit?",
+            isPresented: $isShowingRestoreConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Keep History") {
+                confirmRestoreHabit(historyMode: .keepHistory)
+            }
+
+            Button("Start Fresh") {
+                confirmRestoreHabit(historyMode: .startFresh)
+            }
+        } message: {
+            Text("Keep your history or start fresh.")
         }
         .toolbar {
             if showsCloseButton {
@@ -765,7 +782,7 @@ struct EditHabitView: View {
 
     private func save() {
         guard !isRestoreMode else {
-            restoreHabit()
+            prepareRestoreHabitConfirmation()
             return
         }
 
@@ -884,7 +901,7 @@ struct EditHabitView: View {
         }
     }
 
-    private func restoreHabit() {
+    private func prepareRestoreHabitConfirmation() {
         applyPendingScheduleRuleIfNeeded()
 
         guard isFormValid else {
@@ -899,14 +916,26 @@ struct EditHabitView: View {
             return
         }
 
+        validationMessage = nil
+        historyValidationMessage = nil
+        pendingRestoreDraft = normalizedDraft()
+        isShowingRestoreConfirmation = true
+    }
+
+    private func confirmRestoreHabit(historyMode: RestoreHistoryMode) {
+        let savedDraft = pendingRestoreDraft ?? normalizedDraft()
+        pendingRestoreDraft = nil
+        restoreHabit(savedDraft: savedDraft, historyMode: historyMode)
+    }
+
+    private func restoreHabit(savedDraft: EditHabitDraft, historyMode: RestoreHistoryMode) {
         isSaving = true
         validationMessage = nil
         historyValidationMessage = nil
-        let savedDraft = normalizedDraft()
 
         Task {
             do {
-                try await appState.restoreHabit(from: savedDraft)
+                try await appState.restoreHabit(from: savedDraft, historyMode: historyMode)
                 isSaving = false
                 onSaveSuccess()
                 dismiss()

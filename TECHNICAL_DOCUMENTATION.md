@@ -543,7 +543,9 @@ Rules:
 - Restore Draft defaults `Active From` to today and bounds it to `max(archivedAt, today - 29 days)`, so the user can choose inside the current 30-day editable window but never before the archive day
 - Restore Draft may choose a future `Active From`; future restored Pills return to Pending, while future restored Habits return to Build/Quit without today action/status until `Active From`
 - Restore Draft defaults End Repeat to `Never` and clears End Date inside the draft only; the read-only archived screen still shows the stored historical End Repeat/End Date before Restore Draft starts
-- when Restore succeeds, the app saves the draft edits, sets `isArchived = false`, clears `archivedAt`, writes `activeFrom`, and inserts a new schedule version effective from `Active From`
+- Restore Draft uses the standard top-right `Save` control. If validation passes, Save opens a system confirmation dialog with title `Restore Pill?` or `Restore Habit?`, message `Keep your history or start fresh.`, and two neutral actions: `Keep History` and `Start Fresh`
+- `Keep History` saves the draft edits, sets `isArchived = false`, clears `archivedAt`, writes `activeFrom`, inserts a new schedule version effective from `Active From`, and preserves existing completed/taken/skipped/archived history
+- `Start Fresh` saves the draft edits, clears all old completed/taken/skipped/archived history from bucket, range, and legacy rows, sets `startDate = activeFrom`, sets `isArchived = false`, clears `archivedAt`, writes `activeFrom`, and inserts a new schedule version effective from the new start date; streaks and totals reset because no history remains
 - before writing the new Restore gap, Restore removes archived history states on and after `Active From`; this clears stale future Archived days left by an earlier restore-then-archive cycle
 - Restore writes `archived` history states from `archivedAt` through the day before `Active From`; if `Active From` equals `archivedAt`, the archived gap is empty
 - Restore writes archived gap states only into empty days; existing completed/taken/skipped states in that gap are preserved and keep their original meaning
@@ -1252,7 +1254,9 @@ Archive page behavior:
 - `Restore` dismisses the read-only Archive sheet and opens a separate Restore Draft sheet; the stored item remains archived until the Restore Draft sheet is saved
 - Restore Draft re-enables editable fields, shows Start Date read-only, shows `Active From` directly under Start Date, defaults End Repeat to Never, and clears End Date in the draft
 - Restore Draft `Active From` defaults to today and uses `max(archivedAt, today - 29 days)` as its minimum allowed date
-- Restore Draft uses the normal top-right `Save` action. Save stores the draft, removes archived history states on and after `Active From`, writes archived gap rows only for empty days, starts a new schedule version at `Active From`, clears `isArchived`/`archivedAt`, and returns the item to the active dashboards
+- Restore Draft uses the normal top-right `Save` action. Save first validates the draft. If valid, it shows the system confirmation dialog `Restore Pill?` / `Restore Habit?` with message `Keep your history or start fresh.`
+- `Keep History` stores the draft, removes archived history states on and after `Active From`, writes archived gap rows only for empty days, starts a new schedule version at `Active From`, clears `isArchived`/`archivedAt`, and returns the item to the active dashboards
+- `Start Fresh` stores the draft, deletes all old history buckets, history ranges, and legacy history rows for that item, sets Start Date to Active From, starts a new schedule version at Active From, clears `isArchived`/`archivedAt`, and returns the item to the active dashboards with empty calendar history and zero streak/count totals
 - if the user changes away from the owning tab while the read-only Archive sheet is dismissing, any pending Restore Draft handoff is cleared so the Restore Draft cannot appear on the wrong tab/context
 
 ### 13.5 Reminder Time UI

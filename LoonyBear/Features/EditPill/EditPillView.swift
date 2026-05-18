@@ -31,12 +31,14 @@ struct EditPillView: View {
     @State private var isDismissingKeyboardForNonTextControl = false
     @State private var isShowingDeleteConfirmation = false
     @State private var isShowingArchiveConfirmation = false
+    @State private var isShowingRestoreConfirmation = false
     @State private var isShowingNotificationSettingsAlert = false
     @State private var isHistoryWarningDismissed = false
     @State private var isScheduleWarningDismissed = false
     @State private var isEndDateWarningDismissed = false
     @State private var isArchived: Bool
     @State private var isRestoreMode = false
+    @State private var pendingRestoreDraft: EditPillDraft?
 
     private enum Field: Hashable {
         case description
@@ -160,6 +162,21 @@ struct EditPillView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text(archiveConfirmationMessage)
+            }
+            .confirmationDialog(
+                "Restore Pill?",
+                isPresented: $isShowingRestoreConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Keep History") {
+                    confirmRestorePill(historyMode: .keepHistory)
+                }
+
+                Button("Start Fresh") {
+                    confirmRestorePill(historyMode: .startFresh)
+                }
+            } message: {
+                Text("Keep your history or start fresh.")
             }
             .safeAreaInset(edge: .bottom) {
                 Color.clear
@@ -746,7 +763,7 @@ struct EditPillView: View {
 
     private func save() {
         guard !isRestoreMode else {
-            restorePill()
+            prepareRestorePillConfirmation()
             return
         }
 
@@ -875,7 +892,7 @@ struct EditPillView: View {
         }
     }
 
-    private func restorePill() {
+    private func prepareRestorePillConfirmation() {
         applyPendingScheduleRuleIfNeeded()
 
         guard isFormValid else {
@@ -890,14 +907,26 @@ struct EditPillView: View {
             return
         }
 
+        validationMessage = nil
+        historyValidationMessage = nil
+        pendingRestoreDraft = normalizedDraft()
+        isShowingRestoreConfirmation = true
+    }
+
+    private func confirmRestorePill(historyMode: RestoreHistoryMode) {
+        let savedDraft = pendingRestoreDraft ?? normalizedDraft()
+        pendingRestoreDraft = nil
+        restorePill(savedDraft: savedDraft, historyMode: historyMode)
+    }
+
+    private func restorePill(savedDraft: EditPillDraft, historyMode: RestoreHistoryMode) {
         isSaving = true
         validationMessage = nil
         historyValidationMessage = nil
-        let savedDraft = normalizedDraft()
 
         Task {
             do {
-                try await pillAppState.restorePill(from: savedDraft)
+                try await pillAppState.restorePill(from: savedDraft, historyMode: historyMode)
                 isSaving = false
                 onSaveSuccess()
                 dismiss()

@@ -286,6 +286,7 @@ Meaning:
 - `isArchived` is the stored flag for the user-facing Archive state. When true, the item has moved to the separate Archive page and should not produce active today actions, overdue state, reminders, badge count, or history review.
 - `archivedAt` stores the normalized local day on which the item entered Archive. Manual and automatic Archive both use the actual archive operation day; automatic Archive does not backdate this value to the logical End Date. Restore uses `archivedAt` to bound `Active From` and to write archived gap rows.
 - Archiving does not delete or rewrite reminder settings, repeat settings, end date, or stored history. Those stored values remain historical facts for read-only archived Details and backups.
+- Restore has two persistence modes. `Keep History` preserves existing bucket, range, and legacy history rows and writes archived gap rows only into empty days. `Start Fresh` deletes all bucket, range, and legacy history rows for the item, sets `startDate` to `activeFrom`, clears `isArchived`/`archivedAt`, and inserts a new initial schedule version effective from the new Start Date.
 - Reminder times are stored as hour and minute integer components.
 - Habit and Pill history mode are stored in `historyModeRaw`.
 - Schedule changes are append-only through new version rows.

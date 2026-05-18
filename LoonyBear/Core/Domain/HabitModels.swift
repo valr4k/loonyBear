@@ -63,6 +63,11 @@ enum HabitHistoryMode: String, Codable, Equatable {
     }
 }
 
+enum RestoreHistoryMode: Equatable {
+    case keepHistory
+    case startFresh
+}
+
 struct ReminderTime: Codable, Equatable {
     let hour: Int
     let minute: Int
