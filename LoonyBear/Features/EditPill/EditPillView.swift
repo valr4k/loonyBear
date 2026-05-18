@@ -38,7 +38,7 @@ struct EditPillView: View {
     @State private var isEndDateWarningDismissed = false
     @State private var isArchived: Bool
     @State private var isRestoreMode = false
-    @State private var pendingRestoreDraft: EditPillDraft?
+    @State private var didHandleSaveTouchDown = false
 
     private enum Field: Hashable {
         case description
@@ -145,39 +145,6 @@ struct EditPillView: View {
             .navigationTitle(isRestoreMode ? "Restore Pill" : "Pill Details")
             .navigationBarTitleDisplayMode(.inline)
             .scrollDismissesKeyboard(.immediately)
-            .alert("Permanently delete this Pill?", isPresented: $isShowingDeleteConfirmation) {
-                Button("Delete", role: .destructive) {
-                    deletePill()
-                }
-
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This Pill will be permanently deleted.")
-            }
-            .alert(archiveConfirmationTitle, isPresented: $isShowingArchiveConfirmation) {
-                Button("Archive") {
-                    archivePill()
-                }
-
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text(archiveConfirmationMessage)
-            }
-            .confirmationDialog(
-                "Restore Pill?",
-                isPresented: $isShowingRestoreConfirmation,
-                titleVisibility: .visible
-            ) {
-                Button("Keep History") {
-                    confirmRestorePill(historyMode: .keepHistory)
-                }
-
-                Button("Start Fresh") {
-                    confirmRestorePill(historyMode: .startFresh)
-                }
-            } message: {
-                Text("Keep your history or start fresh.")
-            }
             .safeAreaInset(edge: .bottom) {
                 Color.clear
                     .frame(height: shouldShowDescriptionInset ? 36 : 0)
@@ -197,13 +164,32 @@ struct EditPillView: View {
                 if !isEditingDisabled {
                     ToolbarItem(placement: .confirmationAction) {
                         Button {
-                            save()
+                            handleSaveButtonAction()
                         } label: {
                             AppToolbarIconLabel("Save", systemName: "checkmark")
                         }
-                        .appToolbarActionTint(isDisabled: !isFormValid || hasMissingPastDays || isSaving)
+                        .appToolbarActionTint(isDisabled: isSaveDisabled)
                         .fontWeight(.semibold)
-                        .disabled(!isFormValid || hasMissingPastDays || isSaving)
+                        .disabled(isSaveDisabled)
+                        .simultaneousGesture(
+                            LongPressGesture(minimumDuration: 0)
+                                .onEnded { _ in
+                                    handleSaveTouchDown()
+                                }
+                        )
+                        .confirmationDialog(
+                            "You can continue with your previous progress or start from scratch.",
+                            isPresented: $isShowingRestoreConfirmation,
+                            titleVisibility: .visible
+                        ) {
+                            Button("Continue Progress") {
+                                confirmRestorePill(historyMode: .keepHistory)
+                            }
+
+                            Button("Start From Scratch") {
+                                confirmRestorePill(historyMode: .startFresh)
+                            }
+                        }
                     }
                 }
             }
@@ -427,6 +413,15 @@ struct EditPillView: View {
         .tint(.red)
         .frame(maxWidth: .infinity)
         .disabled(isSaving)
+        .alert("Permanently delete this Pill?", isPresented: $isShowingDeleteConfirmation) {
+            Button("Delete", role: .destructive) {
+                deletePill()
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This Pill will be permanently deleted.")
+        }
     }
 
     private var archiveButton: some View {
@@ -439,6 +434,15 @@ struct EditPillView: View {
         .buttonStyle(AppMaterialCapsuleActionButtonStyle())
         .frame(maxWidth: .infinity)
         .disabled(isSaving)
+        .alert(archiveConfirmationTitle, isPresented: $isShowingArchiveConfirmation) {
+            Button("Archive") {
+                archivePill()
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(archiveConfirmationMessage)
+        }
     }
 
     private var restoreButton: some View {
@@ -744,6 +748,10 @@ struct EditPillView: View {
         "This Pill will be moved to Archive."
     }
 
+    private var isSaveDisabled: Bool {
+        !isFormValid || hasMissingPastDays || isSaving
+    }
+
     private func beginRestore() {
         let today = Calendar.current.startOfDay(for: Date())
         pendingScheduleRule = nil
@@ -759,6 +767,25 @@ struct EditPillView: View {
         isScheduleWarningDismissed = false
         isEndDateWarningDismissed = false
         displayedMonth = month(containing: today)
+    }
+
+    private func handleSaveTap() {
+        save()
+    }
+
+    private func handleSaveTouchDown() {
+        guard !isSaveDisabled else { return }
+        didHandleSaveTouchDown = true
+        handleSaveTap()
+    }
+
+    private func handleSaveButtonAction() {
+        guard !didHandleSaveTouchDown else {
+            didHandleSaveTouchDown = false
+            return
+        }
+
+        handleSaveTap()
     }
 
     private func save() {
@@ -893,7 +920,9 @@ struct EditPillView: View {
     }
 
     private func prepareRestorePillConfirmation() {
-        applyPendingScheduleRuleIfNeeded()
+        if !isRestoreMode {
+            applyPendingScheduleRuleIfNeeded()
+        }
 
         guard isFormValid else {
             if !draft.scheduleRule.isValidSelection {
@@ -907,16 +936,11 @@ struct EditPillView: View {
             return
         }
 
-        validationMessage = nil
-        historyValidationMessage = nil
-        pendingRestoreDraft = normalizedDraft()
         isShowingRestoreConfirmation = true
     }
 
     private func confirmRestorePill(historyMode: RestoreHistoryMode) {
-        let savedDraft = pendingRestoreDraft ?? normalizedDraft()
-        pendingRestoreDraft = nil
-        restorePill(savedDraft: savedDraft, historyMode: historyMode)
+        restorePill(savedDraft: normalizedDraft(), historyMode: historyMode)
     }
 
     private func restorePill(savedDraft: EditPillDraft, historyMode: RestoreHistoryMode) {
