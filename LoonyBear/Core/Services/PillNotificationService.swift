@@ -411,7 +411,10 @@ final class PillNotificationService {
                 self.removeSnoozedNotifications(forPillID: pillID, on: deliveryDay) {
                     onCleanupFinished?()
                     if case .mutated = actionOutcome {
-                        self.rescheduleAllNotifications()
+                        self.rescheduleAllNotifications {
+                            completion(true)
+                        }
+                        return
                     }
                     completion(true)
                 }

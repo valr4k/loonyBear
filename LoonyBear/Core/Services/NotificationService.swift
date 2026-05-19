@@ -358,7 +358,10 @@ final class NotificationService {
             ) {
                 onCleanupFinished?()
                 if case .mutated = actionOutcome {
-                    self.rescheduleAllNotifications()
+                    self.rescheduleAllNotifications {
+                        completion(true)
+                    }
+                    return
                 }
                 completion(true)
             }
