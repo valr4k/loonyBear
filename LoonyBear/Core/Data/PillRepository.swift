@@ -22,14 +22,14 @@ protocol PillRepository {
     func createPill(from draft: PillDraft) throws -> UUID
     func updatePill(from draft: EditPillDraft) throws
     func restorePill(from draft: EditPillDraft, historyMode: RestoreHistoryMode) throws -> Bool
-    func deletePill(id: UUID) throws
-    func setPillArchived(id: UUID, isArchived: Bool) throws
-    func markTakenToday(id: UUID) throws
-    func markPillTaken(id: UUID, on day: Date) throws
-    func skipPillToday(id: UUID) throws
-    func skipPillDay(id: UUID, on day: Date) throws
-    func clearPillDayStateToday(id: UUID) throws
-    func clearPillDayState(id: UUID, on day: Date) throws
+    func deletePill(id: UUID) throws -> Bool
+    func setPillArchived(id: UUID, isArchived: Bool) throws -> Bool
+    func markTakenToday(id: UUID) throws -> Bool
+    func markPillTaken(id: UUID, on day: Date) throws -> Bool
+    func skipPillToday(id: UUID) throws -> Bool
+    func skipPillDay(id: UUID, on day: Date) throws -> Bool
+    func clearPillDayStateToday(id: UUID) throws -> Bool
+    func clearPillDayState(id: UUID, on day: Date) throws -> Bool
     func movePills(from offsets: IndexSet, to destination: Int) throws
 }
 

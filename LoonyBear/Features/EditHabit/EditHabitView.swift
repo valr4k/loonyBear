@@ -166,7 +166,7 @@ struct EditHabitView: View {
                     .fontWeight(.semibold)
                     .disabled(isSaveDisabled)
                     .confirmationDialog(
-                        "You can continue with your previous progress or start from scratch.",
+                        "Restore Habit?",
                         isPresented: $isShowingRestoreConfirmation,
                         titleVisibility: .visible
                     ) {
@@ -177,6 +177,8 @@ struct EditHabitView: View {
                         Button("Start From Scratch") {
                             confirmRestoreHabit(historyMode: .startFresh)
                         }
+                    } message: {
+                        Text("You can continue with your previous progress or start from scratch.")
                     }
                 }
             }

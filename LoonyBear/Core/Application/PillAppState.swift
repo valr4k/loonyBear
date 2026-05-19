@@ -143,7 +143,8 @@ final class PillAppState: ObservableObject {
         let didRestore = try await writeCoordinator.performThrowingMutation(
             refresh: { self.refreshDashboard(animated: true) },
             setError: { self.actionErrorMessage = $0 },
-            refreshOnFailure: true
+            refreshOnFailure: true,
+            marksDataDirtyWhen: { $0 }
         ) {
             try self.repository.restorePill(from: draft, historyMode: historyMode)
         }

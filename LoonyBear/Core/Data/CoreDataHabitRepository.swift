@@ -338,21 +338,21 @@ struct CoreDataHabitRepository: HabitRepository {
         }, missingResultError: HabitRepositoryError.internalFailure)
     }
 
-    func completeHabitToday(id: UUID) throws {
+    func completeHabitToday(id: UUID) throws -> Bool {
         try completeHabitDay(id: id, on: clock.now())
     }
 
-    func completeHabitDay(id: UUID, on day: Date) throws {
-        try repositoryContext.performWrite { context in
-            guard let habit = try fetchHabit(id: id, in: context) else { return }
-            guard !habit.boolValue(forKey: "isArchived") else { return }
+    func completeHabitDay(id: UUID, on day: Date) throws -> Bool {
+        try repositoryContext.performWrite({ context in
+            guard let habit = try fetchHabit(id: id, in: context) else { return false }
+            guard !habit.boolValue(forKey: "isArchived") else { return false }
 
             let today = calendar.startOfDay(for: day)
             guard
                 let startDate = habit.dateValue(forKey: "startDate"),
                 today >= calendar.startOfDay(for: startDate)
             else {
-                return
+                return false
             }
             let didChange = try upsertCompletion(
                 for: habit,
@@ -363,28 +363,29 @@ struct CoreDataHabitRepository: HabitRepository {
                 updateWhen: { $0 == .skipped }
             )
 
-            guard didChange else { return }
+            guard didChange else { return false }
             applyAutomaticArchiveIfNeeded(for: habit, habitID: id)
             try context.save()
             clearOverdueAnchorIfNeeded(for: id, on: today)
-        }
+            return true
+        }, missingResultError: HabitRepositoryError.internalFailure)
     }
 
-    func skipHabitToday(id: UUID) throws {
+    func skipHabitToday(id: UUID) throws -> Bool {
         try skipHabitDay(id: id, on: clock.now())
     }
 
-    func skipHabitDay(id: UUID, on day: Date) throws {
-        try repositoryContext.performWrite { context in
-            guard let habit = try fetchHabit(id: id, in: context) else { return }
-            guard !habit.boolValue(forKey: "isArchived") else { return }
+    func skipHabitDay(id: UUID, on day: Date) throws -> Bool {
+        try repositoryContext.performWrite({ context in
+            guard let habit = try fetchHabit(id: id, in: context) else { return false }
+            guard !habit.boolValue(forKey: "isArchived") else { return false }
 
             let today = calendar.startOfDay(for: day)
             guard
                 let startDate = habit.dateValue(forKey: "startDate"),
                 today >= calendar.startOfDay(for: startDate)
             else {
-                return
+                return false
             }
             let didChange = try upsertCompletion(
                 for: habit,
@@ -395,42 +396,45 @@ struct CoreDataHabitRepository: HabitRepository {
                 updateWhen: { _ in false }
             )
 
-            guard didChange else { return }
+            guard didChange else { return false }
             applyAutomaticArchiveIfNeeded(for: habit, habitID: id)
             try context.save()
             clearOverdueAnchorIfNeeded(for: id, on: today)
-        }
+            return true
+        }, missingResultError: HabitRepositoryError.internalFailure)
     }
 
-    func clearHabitDayStateToday(id: UUID) throws {
+    func clearHabitDayStateToday(id: UUID) throws -> Bool {
         try clearHabitDayState(id: id, on: clock.now())
     }
 
-    func clearHabitDayState(id: UUID, on day: Date) throws {
-        try repositoryContext.performWrite { context in
-            guard let habit = try fetchHabit(id: id, in: context) else { return }
-            guard !habit.boolValue(forKey: "isArchived") else { return }
+    func clearHabitDayState(id: UUID, on day: Date) throws -> Bool {
+        try repositoryContext.performWrite({ context in
+            guard let habit = try fetchHabit(id: id, in: context) else { return false }
+            guard !habit.boolValue(forKey: "isArchived") else { return false }
             let today = calendar.startOfDay(for: day)
             let didChange = try clearCompletion(for: habit, habitID: id, on: today, in: context)
-            guard didChange else { return }
+            guard didChange else { return false }
             try context.save()
             syncTodayOverdueAnchorAfterClearingDay(for: habit, habitID: id, clearedDay: today)
-        }
+            return true
+        }, missingResultError: HabitRepositoryError.internalFailure)
     }
 
-    func deleteHabit(id: UUID) throws {
-        try repositoryContext.performWrite { context in
-            guard let habit = try fetchHabit(id: id, in: context) else { return }
+    func deleteHabit(id: UUID) throws -> Bool {
+        try repositoryContext.performWrite({ context in
+            guard let habit = try fetchHabit(id: id, in: context) else { return false }
 
             context.delete(habit)
             try context.save()
-        }
+            return true
+        }, missingResultError: HabitRepositoryError.internalFailure)
     }
 
-    func setHabitArchived(id: UUID, isArchived: Bool) throws {
-        try repositoryContext.performWrite { context in
-            guard let habit = try fetchHabit(id: id, in: context) else { return }
-            guard habit.boolValue(forKey: "isArchived") != isArchived else { return }
+    func setHabitArchived(id: UUID, isArchived: Bool) throws -> Bool {
+        try repositoryContext.performWrite({ context in
+            guard let habit = try fetchHabit(id: id, in: context) else { return false }
+            guard habit.boolValue(forKey: "isArchived") != isArchived else { return false }
 
             habit.setValue(isArchived, forKey: "isArchived")
             habit.setValue(isArchived ? clock.now() : nil, forKey: "archivedAt")
@@ -440,7 +444,8 @@ struct CoreDataHabitRepository: HabitRepository {
             if isArchived {
                 overdueAnchorStore.clearAnchorDay(for: .habit, id: id)
             }
-        }
+            return true
+        }, missingResultError: HabitRepositoryError.internalFailure)
     }
 
     func updateHabit(from draft: EditHabitDraft) throws {

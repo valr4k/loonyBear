@@ -600,14 +600,14 @@ private struct FakeHabitRepository: HabitRepository {
     func fetchHabitDetails(id: UUID) throws -> HabitDetailsProjection? { nil }
     func reconcilePastDays(today: Date) throws -> Int { 0 }
     func createHabit(from draft: CreateHabitDraft) throws -> UUID { fatalError("Unused in tests") }
-    func completeHabitToday(id: UUID) throws { fatalError("Unused in tests") }
-    func completeHabitDay(id: UUID, on day: Date) throws { fatalError("Unused in tests") }
-    func skipHabitToday(id: UUID) throws { fatalError("Unused in tests") }
-    func skipHabitDay(id: UUID, on day: Date) throws { fatalError("Unused in tests") }
-    func clearHabitDayStateToday(id: UUID) throws { fatalError("Unused in tests") }
-    func clearHabitDayState(id: UUID, on day: Date) throws { fatalError("Unused in tests") }
-    func deleteHabit(id: UUID) throws { fatalError("Unused in tests") }
-    func setHabitArchived(id: UUID, isArchived: Bool) throws { fatalError("Unused in tests") }
+    func completeHabitToday(id: UUID) throws -> Bool { fatalError("Unused in tests") }
+    func completeHabitDay(id: UUID, on day: Date) throws -> Bool { fatalError("Unused in tests") }
+    func skipHabitToday(id: UUID) throws -> Bool { fatalError("Unused in tests") }
+    func skipHabitDay(id: UUID, on day: Date) throws -> Bool { fatalError("Unused in tests") }
+    func clearHabitDayStateToday(id: UUID) throws -> Bool { fatalError("Unused in tests") }
+    func clearHabitDayState(id: UUID, on day: Date) throws -> Bool { fatalError("Unused in tests") }
+    func deleteHabit(id: UUID) throws -> Bool { fatalError("Unused in tests") }
+    func setHabitArchived(id: UUID, isArchived: Bool) throws -> Bool { fatalError("Unused in tests") }
     func updateHabit(from draft: EditHabitDraft) throws { fatalError("Unused in tests") }
     func restoreHabit(from draft: EditHabitDraft, historyMode: RestoreHistoryMode) throws -> Bool { fatalError("Unused in tests") }
 }
@@ -622,14 +622,14 @@ private struct FakePillRepository: PillRepository {
     func createPill(from draft: PillDraft) throws -> UUID { fatalError("Unused in tests") }
     func updatePill(from draft: EditPillDraft) throws { fatalError("Unused in tests") }
     func restorePill(from draft: EditPillDraft, historyMode: RestoreHistoryMode) throws -> Bool { fatalError("Unused in tests") }
-    func deletePill(id: UUID) throws { fatalError("Unused in tests") }
-    func setPillArchived(id: UUID, isArchived: Bool) throws { fatalError("Unused in tests") }
-    func markTakenToday(id: UUID) throws { fatalError("Unused in tests") }
-    func markPillTaken(id: UUID, on day: Date) throws { fatalError("Unused in tests") }
-    func skipPillToday(id: UUID) throws { fatalError("Unused in tests") }
-    func skipPillDay(id: UUID, on day: Date) throws { fatalError("Unused in tests") }
-    func clearPillDayStateToday(id: UUID) throws { fatalError("Unused in tests") }
-    func clearPillDayState(id: UUID, on day: Date) throws { fatalError("Unused in tests") }
+    func deletePill(id: UUID) throws -> Bool { fatalError("Unused in tests") }
+    func setPillArchived(id: UUID, isArchived: Bool) throws -> Bool { fatalError("Unused in tests") }
+    func markTakenToday(id: UUID) throws -> Bool { fatalError("Unused in tests") }
+    func markPillTaken(id: UUID, on day: Date) throws -> Bool { fatalError("Unused in tests") }
+    func skipPillToday(id: UUID) throws -> Bool { fatalError("Unused in tests") }
+    func skipPillDay(id: UUID, on day: Date) throws -> Bool { fatalError("Unused in tests") }
+    func clearPillDayStateToday(id: UUID) throws -> Bool { fatalError("Unused in tests") }
+    func clearPillDayState(id: UUID, on day: Date) throws -> Bool { fatalError("Unused in tests") }
     func movePills(from offsets: IndexSet, to destination: Int) throws { fatalError("Unused in tests") }
 }
 

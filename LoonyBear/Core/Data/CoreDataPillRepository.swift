@@ -613,18 +613,19 @@ struct CoreDataPillRepository: PillRepository {
         }, missingResultError: PillRepositoryError.internalFailure)
     }
 
-    func deletePill(id: UUID) throws {
-        try repositoryContext.performWrite { context in
-            guard let pill = try fetchPill(id: id, in: context) else { return }
+    func deletePill(id: UUID) throws -> Bool {
+        try repositoryContext.performWrite({ context in
+            guard let pill = try fetchPill(id: id, in: context) else { return false }
             context.delete(pill)
             try context.save()
-        }
+            return true
+        }, missingResultError: PillRepositoryError.internalFailure)
     }
 
-    func setPillArchived(id: UUID, isArchived: Bool) throws {
-        try repositoryContext.performWrite { context in
-            guard let pill = try fetchPill(id: id, in: context) else { return }
-            guard pill.boolValue(forKey: "isArchived") != isArchived else { return }
+    func setPillArchived(id: UUID, isArchived: Bool) throws -> Bool {
+        try repositoryContext.performWrite({ context in
+            guard let pill = try fetchPill(id: id, in: context) else { return false }
+            guard pill.boolValue(forKey: "isArchived") != isArchived else { return false }
 
             pill.setValue(isArchived, forKey: "isArchived")
             pill.setValue(isArchived ? clock.now() : nil, forKey: "archivedAt")
@@ -634,23 +635,24 @@ struct CoreDataPillRepository: PillRepository {
             if isArchived {
                 overdueAnchorStore.clearAnchorDay(for: .pill, id: id)
             }
-        }
+            return true
+        }, missingResultError: PillRepositoryError.internalFailure)
     }
 
-    func markTakenToday(id: UUID) throws {
+    func markTakenToday(id: UUID) throws -> Bool {
         try markPillTaken(id: id, on: clock.now())
     }
 
-    func markPillTaken(id: UUID, on day: Date) throws {
-        try repositoryContext.performWrite { context in
-            guard let pill = try fetchPill(id: id, in: context) else { return }
-            guard !pill.boolValue(forKey: "isArchived") else { return }
+    func markPillTaken(id: UUID, on day: Date) throws -> Bool {
+        try repositoryContext.performWrite({ context in
+            guard let pill = try fetchPill(id: id, in: context) else { return false }
+            guard !pill.boolValue(forKey: "isArchived") else { return false }
             let today = calendar.startOfDay(for: day)
             guard
                 let startDate = pill.dateValue(forKey: "startDate"),
                 today >= calendar.startOfDay(for: startDate)
             else {
-                return
+                return false
             }
             let didChange = try upsertIntake(
                 for: pill,
@@ -661,27 +663,28 @@ struct CoreDataPillRepository: PillRepository {
                 updateWhen: { $0 == .skipped }
             )
 
-            guard didChange else { return }
+            guard didChange else { return false }
             applyAutomaticArchiveIfNeeded(for: pill, pillID: id)
             try context.save()
             clearOverdueAnchorIfNeeded(for: id, on: today)
-        }
+            return true
+        }, missingResultError: PillRepositoryError.internalFailure)
     }
 
-    func skipPillToday(id: UUID) throws {
+    func skipPillToday(id: UUID) throws -> Bool {
         try skipPillDay(id: id, on: clock.now())
     }
 
-    func skipPillDay(id: UUID, on day: Date) throws {
-        try repositoryContext.performWrite { context in
-            guard let pill = try fetchPill(id: id, in: context) else { return }
-            guard !pill.boolValue(forKey: "isArchived") else { return }
+    func skipPillDay(id: UUID, on day: Date) throws -> Bool {
+        try repositoryContext.performWrite({ context in
+            guard let pill = try fetchPill(id: id, in: context) else { return false }
+            guard !pill.boolValue(forKey: "isArchived") else { return false }
             let today = calendar.startOfDay(for: day)
             guard
                 let startDate = pill.dateValue(forKey: "startDate"),
                 today >= calendar.startOfDay(for: startDate)
             else {
-                return
+                return false
             }
             let didChange = try upsertIntake(
                 for: pill,
@@ -692,27 +695,29 @@ struct CoreDataPillRepository: PillRepository {
                 updateWhen: { _ in false }
             )
 
-            guard didChange else { return }
+            guard didChange else { return false }
             applyAutomaticArchiveIfNeeded(for: pill, pillID: id)
             try context.save()
             clearOverdueAnchorIfNeeded(for: id, on: today)
-        }
+            return true
+        }, missingResultError: PillRepositoryError.internalFailure)
     }
 
-    func clearPillDayStateToday(id: UUID) throws {
+    func clearPillDayStateToday(id: UUID) throws -> Bool {
         try clearPillDayState(id: id, on: clock.now())
     }
 
-    func clearPillDayState(id: UUID, on day: Date) throws {
-        try repositoryContext.performWrite { context in
-            guard let pill = try fetchPill(id: id, in: context) else { return }
-            guard !pill.boolValue(forKey: "isArchived") else { return }
+    func clearPillDayState(id: UUID, on day: Date) throws -> Bool {
+        try repositoryContext.performWrite({ context in
+            guard let pill = try fetchPill(id: id, in: context) else { return false }
+            guard !pill.boolValue(forKey: "isArchived") else { return false }
             let today = calendar.startOfDay(for: day)
             let didChange = try clearIntake(for: pill, pillID: id, on: today, in: context)
-            guard didChange else { return }
+            guard didChange else { return false }
             try context.save()
             syncTodayOverdueAnchorAfterClearingDay(for: pill, pillID: id, clearedDay: today)
-        }
+            return true
+        }, missingResultError: PillRepositoryError.internalFailure)
     }
 
     func movePills(from offsets: IndexSet, to destination: Int) throws {

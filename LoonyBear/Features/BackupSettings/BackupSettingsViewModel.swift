@@ -70,9 +70,11 @@ final class BackupSettingsViewModel: ObservableObject {
         do {
             try service.saveFolderBookmark(for: url)
             status = try service.loadStatus()
+            if !status.allowsAutomaticBackup {
+                autoBackupService.setEnabled(false)
+            }
             if isAwaitingAutoBackupFolderSelection {
                 guard status.allowsAutomaticBackup else {
-                    autoBackupService.setEnabled(false)
                     showAutoBackupUnavailableBanner()
                     isAwaitingAutoBackupFolderSelection = false
                     return

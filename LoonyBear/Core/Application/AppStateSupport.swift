@@ -63,14 +63,41 @@ final class AppStateWriteCoordinator {
         }
     }
 
+    func performMutation(
+        refresh: @escaping () -> Void,
+        setError: @escaping (String?) -> Void,
+        refreshOnFailure: Bool = false,
+        mutation: @escaping () throws -> Bool
+    ) async -> Bool {
+        do {
+            let didMutate = try await performWriteOperation(marksDataDirty: false, mutation)
+            if didMutate {
+                AutoBackupService.shared.markDirty(reason: "app-state-write")
+            }
+            refresh()
+            setError(nil)
+            return didMutate
+        } catch {
+            if refreshOnFailure {
+                refresh()
+            }
+            setError(UserFacingErrorMessage.text(for: error))
+            return false
+        }
+    }
+
     func performThrowingMutation<T>(
         refresh: @escaping () -> Void = {},
         setError: @escaping (String?) -> Void,
         refreshOnFailure: Bool = false,
+        marksDataDirtyWhen shouldMarkDataDirty: @escaping (T) -> Bool = { _ in true },
         operation: @escaping () throws -> T
     ) async throws -> T {
         do {
-            let result = try await performWriteOperation(operation)
+            let result = try await performWriteOperation(marksDataDirty: false, operation)
+            if shouldMarkDataDirty(result) {
+                AutoBackupService.shared.markDirty(reason: "app-state-write")
+            }
             refresh()
             setError(nil)
             return result

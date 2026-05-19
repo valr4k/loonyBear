@@ -185,7 +185,7 @@ struct EditPillView: View {
                         .fontWeight(.semibold)
                         .disabled(isSaveDisabled)
                         .confirmationDialog(
-                            "You can continue with your previous progress or start from scratch.",
+                            "Restore Pill?",
                             isPresented: $isShowingRestoreConfirmation,
                             titleVisibility: .visible
                         ) {
@@ -196,6 +196,8 @@ struct EditPillView: View {
                             Button("Start From Scratch") {
                                 confirmRestorePill(historyMode: .startFresh)
                             }
+                        } message: {
+                            Text("You can continue with your previous progress or start from scratch.")
                         }
                     }
                 }

@@ -124,17 +124,16 @@ final class HabitAppState: ObservableObject {
     }
 
     func deleteHabit(id: UUID) async {
-        do {
-            dashboard = dashboardRemovingHabit(id: id)
-            try await writeCoordinator.performWriteOperation {
-                try self.repository.deleteHabit(id: id)
-            }
-            sideEffectCoordinator.handleDeletion(forHabitID: id, dashboard: dashboard)
-            actionErrorMessage = nil
-        } catch {
-            refreshDashboard()
-            actionErrorMessage = UserFacingErrorMessage.text(for: error)
+        let didDelete = await writeCoordinator.performMutation(
+            refresh: refreshDashboard,
+            setError: { self.actionErrorMessage = $0 },
+            refreshOnFailure: true
+        ) {
+            try self.repository.deleteHabit(id: id)
         }
+        guard didDelete else { return }
+
+        sideEffectCoordinator.handleDeletion(forHabitID: id, dashboard: dashboard)
     }
 
     func setHabitArchived(id: UUID, isArchived: Bool) async {
@@ -204,7 +203,8 @@ final class HabitAppState: ObservableObject {
         let didRestore = try await writeCoordinator.performThrowingMutation(
             refresh: { self.refreshDashboard(animated: true) },
             setError: { self.actionErrorMessage = $0 },
-            refreshOnFailure: true
+            refreshOnFailure: true,
+            marksDataDirtyWhen: { $0 }
         ) {
             try self.repository.restoreHabit(from: draft, historyMode: historyMode)
         }

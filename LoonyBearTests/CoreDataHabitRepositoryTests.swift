@@ -74,6 +74,34 @@ struct CoreDataHabitRepositoryTests {
     }
 
     @Test
+    func habitNoOpMutationsReturnFalse() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let today = TestSupport.makeDate(2026, 5, 4, calendar: calendar)
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataHabitRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { today.addingTimeInterval(10 * 60 * 60) })
+        )
+
+        var draft = CreateHabitDraft()
+        draft.type = .build
+        draft.name = "No-op habit"
+        draft.startDate = today
+        draft.scheduleRule = .weekly(.daily)
+
+        let habitID = try repository.createHabit(from: draft)
+
+        #expect(try repository.completeHabitDay(id: habitID, on: today))
+        #expect(try !repository.completeHabitDay(id: habitID, on: today))
+        #expect(try repository.setHabitArchived(id: habitID, isArchived: true))
+        #expect(try !repository.setHabitArchived(id: habitID, isArchived: true))
+        #expect(try !repository.completeHabitDay(id: habitID, on: today))
+        #expect(try !repository.clearHabitDayState(id: habitID, on: today))
+    }
+
+    @Test
     func restoreHabitReturnsFalseForActiveItem() throws {
         let calendar = Calendar(identifier: .gregorian)
         let today = TestSupport.makeDate(2026, 5, 3, calendar: calendar)

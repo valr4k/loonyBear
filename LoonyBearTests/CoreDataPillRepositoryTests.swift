@@ -70,6 +70,34 @@ struct CoreDataPillRepositoryTests {
     }
 
     @Test
+    func pillNoOpMutationsReturnFalse() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let today = TestSupport.makeDate(2026, 5, 4, calendar: calendar)
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { today.addingTimeInterval(10 * 60 * 60) })
+        )
+
+        var draft = PillDraft()
+        draft.name = "No-op pill"
+        draft.dosage = "1 tablet"
+        draft.startDate = today
+        draft.scheduleRule = .weekly(.daily)
+
+        let pillID = try repository.createPill(from: draft)
+
+        #expect(try repository.markPillTaken(id: pillID, on: today))
+        #expect(try !repository.markPillTaken(id: pillID, on: today))
+        #expect(try repository.setPillArchived(id: pillID, isArchived: true))
+        #expect(try !repository.setPillArchived(id: pillID, isArchived: true))
+        #expect(try !repository.markPillTaken(id: pillID, on: today))
+        #expect(try !repository.clearPillDayState(id: pillID, on: today))
+    }
+
+    @Test
     func restorePillReturnsFalseForActiveItem() throws {
         let calendar = Calendar(identifier: .gregorian)
         let today = TestSupport.makeDate(2026, 5, 3, calendar: calendar)

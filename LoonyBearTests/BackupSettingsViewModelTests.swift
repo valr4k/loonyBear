@@ -165,6 +165,37 @@ struct BackupSettingsViewModelTests {
     }
 
     @Test
+    func changingFolderToUnreadableBackupDisablesAutoBackup() throws {
+        let fixture = try makeFixture()
+        let viewModel = fixture.viewModel
+        let autoBackupService = fixture.autoBackupService
+        let trustedFolderURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let unreadableFolderURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: trustedFolderURL, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: unreadableFolderURL, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: trustedFolderURL)
+            try? FileManager.default.removeItem(at: unreadableFolderURL)
+        }
+
+        try fixture.backupService.saveFolderBookmark(for: trustedFolderURL)
+        viewModel.load()
+        viewModel.setAutoBackupEnabled(true)
+
+        #expect(autoBackupService.isEnabled)
+
+        try Data("broken-backup".utf8).write(
+            to: unreadableFolderURL.appendingPathComponent("LoonyBear.json.gz"),
+            options: .atomic
+        )
+
+        viewModel.didPickFolder(unreadableFolderURL)
+
+        #expect(!autoBackupService.isEnabled)
+        #expect(viewModel.status.fileState == .unreadable)
+    }
+
+    @Test
     func enablingAutoBackupWithUnavailableStoredFolderRequiresReselectionAndCancelKeepsItOff() throws {
         let fixture = try makeFixture()
         let viewModel = fixture.viewModel
