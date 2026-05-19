@@ -64,6 +64,7 @@ This rule is mandatory for local test runs and documentation examples.
 - Monthly history bucket masks must be validated against the actual days in `yearMonthKey`, not against a generic 31-day mask. February 31, April 31, invalid months, and non-round-tripping `Calendar` dates are corrupted history/backup data and must fail integrity validation instead of normalizing into another month.
 - Keep shared schedule UI in `AppDesign.swift`; Create and active Details should use the shared pushed Repeat editor, while Archive read-only Details should use the same visual layout with all editing controls disabled until Restore Draft is opened.
 - Restore Draft must clear archived history states on and after Active From before writing the new archive gap, then write archived states only into empty gap days. This prevents stale future Archived days from a previous restore attempt while still preserving real completed/taken/skipped states.
+- Keep Restore repository methods result-bearing. `restoreHabit` and `restorePill` must return whether the item was actually restored. AppState must gate restore side effects on that result so missing/already-active no-op restore requests do not reschedule notifications or run archive/restore cleanup.
 - Keep Apply From out of the customer-facing Details UI. If Repeat changes, the hidden schedule version `effectiveFrom` is resolved in shared persistence logic from `max(today, startDate)` and must remain documented with schedule versioning tests.
 - Keep Schedule picker/popover protection shared through `AppSchedulePresentationGuard` and `appExclusiveTouchScope()`. Create and active Details must not grow separate picker-blocking state, and native compact `DatePicker` controls should stay native unless the product explicitly chooses a different visual pattern.
 - Do not attach the Time-row touch-down guard to Start Date. Start Date relies on the exclusive-touch scope only; an extra gesture can prevent the native compact date picker from opening.
@@ -83,6 +84,7 @@ High-priority tests include:
 - notification action routing
 - End Date validation through `EndDateValidationSupport`: empty End Date, dates before lower bound, first scheduled day, later scheduled windows, edited schedule previews, and one-time Pill repeat
 - Restore Draft with past, today, and future Active From values, including restore to a future date, archive again, then restore to an earlier date to confirm stale future Archived days are cleared
+- no-op Restore on an active or missing item, confirming the repository returns false and AppState does not run restore side effects
 - schedule version effectiveFrom behavior: Create uses startDate; Edit Repeat changes use hidden `max(today, startDate)` and do not auto-resolve to the next matching weekday
 - real-device Schedule interaction QA: two-finger Time + End Repeat, Start Date + End Repeat, Date + Time, Repeat + End Repeat, and vertical scrolling starting on the Time capsule and End Repeat value
 - reminder aggregation and snooze behavior

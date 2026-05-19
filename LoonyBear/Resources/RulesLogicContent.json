@@ -368,7 +368,7 @@
         },
         {
           "title": "Main state holders",
-          "body": "HabitAppState owns Habit dashboard loading, create, update, delete, daily mutations, detail state loading, reconciliation trigger, and Habit notification preparation. PillAppState owns the same responsibilities for Pills, plus Pill reordering."
+          "body": "HabitAppState owns Habit dashboard loading, create, update, delete, daily mutations, detail state loading, reconciliation trigger, and Habit notification preparation. PillAppState owns the same responsibilities for Pills, plus Pill reordering. Restore side effects are gated by the repository restore result: if restore returns false because the item is missing or already active, AppState refresh remains safe but notification/archive side effects are skipped."
         },
         {
           "title": "Storage architecture",
@@ -376,7 +376,7 @@
         },
         {
           "title": "Screen model",
-          "body": "The app uses a tab root with sheet-based create and item Details flows. The default tab is My Pills. Sheets are identified by enum state carrying either a fixed mode or a UUID. Active item sheets are editable Details screens; archived item sheets use the same layout in read-only mode and can enter Restore Draft. Restore Draft saves through a system confirmation choice: Keep History keeps prior history, while Start Fresh clears prior history and uses Active From as the new Start Date."
+          "body": "The app uses a tab root with sheet-based create and item Details flows. The default tab is My Pills. Sheets are identified by enum state carrying either a fixed mode or a UUID. Active item sheets are editable Details screens; archived item sheets use the same layout in read-only mode and can enter Restore Draft. Restore Draft saves through a system confirmation choice: Keep History keeps prior history, while Start Fresh clears prior history and uses Active From as the new Start Date. Repository restore returns true only when the archived-to-active transition actually happened; no-op restore requests for missing or already-active rows return false and do not trigger restore side effects."
         },
         {
           "title": "Calendar navigation",
@@ -455,7 +455,7 @@
         },
         {
           "title": "Habit update behavior",
-          "body": "Habit update changes name, reminder fields, optional End Date, and optionally inserts a new HabitScheduleVersion if the schedule rule changed. Apply From is hidden; the new schedule version starts at the hidden effectiveFrom based on max(today, startDate), bounded by the end of the second next calendar month, and normally saved at the lower bound. This hidden resolver is schedule-agnostic and does not skip explicit history states. Editable history is normalized and written back day by day using manual edit or skipped sources. Update validation requires every past editable scheduled day to be Completed or Skipped; missing scheduled past states block save instead of being auto-filled. Archived Habits open read-only Details; Restore Draft is the only path that edits and unarchives an archived Habit."
+          "body": "Habit update changes name, reminder fields, optional End Date, and optionally inserts a new HabitScheduleVersion if the schedule rule changed. Apply From is hidden; the new schedule version starts at the hidden effectiveFrom based on max(today, startDate), bounded by the end of the second next calendar month, and normally saved at the lower bound. This hidden resolver is schedule-agnostic and does not skip explicit history states. Editable history is normalized and written back day by day using manual edit or skipped sources. Update validation requires every past editable scheduled day to be Completed or Skipped; missing scheduled past states block save instead of being auto-filled. Archived Habits open read-only Details; Restore Draft is the only path that edits and unarchives an archived Habit. Habit restore returns a result flag from persistence. AppState runs restore side effects only when that flag confirms a real archived-to-active transition."
         },
         {
           "title": "Habit today actions",
@@ -484,7 +484,7 @@
         },
         {
           "title": "Pill update behavior",
-          "body": "Pill update changes name, dosage, details, reminder fields, optional End Date, and optionally inserts a new PillScheduleVersion if the schedule rule changed. Apply From is hidden; the new schedule version starts at the hidden effectiveFrom based on max(today, startDate), bounded by the end of the second next calendar month, and normally saved at the lower bound. This hidden resolver is schedule-agnostic and does not skip explicit history states. Repeat Never clears and ignores End Date. Editable history is normalized and written back day by day using manual edit or skipped sources. Update validation requires every past editable scheduled day to be Taken or Skipped; missing scheduled past states block save instead of being auto-filled. Archived Pills open read-only Details; Restore Draft is the only path that edits and unarchives an archived Pill."
+          "body": "Pill update changes name, dosage, details, reminder fields, optional End Date, and optionally inserts a new PillScheduleVersion if the schedule rule changed. Apply From is hidden; the new schedule version starts at the hidden effectiveFrom based on max(today, startDate), bounded by the end of the second next calendar month, and normally saved at the lower bound. This hidden resolver is schedule-agnostic and does not skip explicit history states. Repeat Never clears and ignores End Date. Editable history is normalized and written back day by day using manual edit or skipped sources. Update validation requires every past editable scheduled day to be Taken or Skipped; missing scheduled past states block save instead of being auto-filled. Archived Pills open read-only Details; Restore Draft is the only path that edits and unarchives an archived Pill. Pill restore returns a result flag from persistence. AppState runs restore side effects only when that flag confirms a real archived-to-active transition."
         },
         {
           "title": "Pill today actions",

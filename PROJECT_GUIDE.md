@@ -168,6 +168,7 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
 - Restore closes the read-only Archive sheet and opens a separate Restore Draft sheet. The item remains archived until the Restore Draft sheet is saved.
 - Restore Draft defaults End Repeat to `Never`, clears End Date in the draft, and shows editable `Active From` under the read-only Start Date.
 - Restore removes archived history states on and after Active From before the new active cycle starts. It then writes archived history states only into empty days between `archivedAt` and the day before Active From. Existing Completed/Taken/Skipped states in that gap are preserved.
+- Restore is no-op safe. If a stale Restore Draft tries to save an item that was already restored, deleted, or otherwise no longer archived, the repository reports that no restore happened. In that case the app must not run restore side effects such as notification rescheduling, snooze cleanup, delivered notification cleanup, badge/widget archive refresh, or restore-specific notification preparation.
 - Archived history states render in custom calendars as quiet system-gray circles, independent of app tint, and they are never editable.
 - If the user changes tabs after requesting Restore but before the Restore Draft sheet opens, the pending Restore Draft is cancelled.
 - My Pills and My Habits show the Archive toolbar button only when that tracker has at least one archived item.

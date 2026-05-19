@@ -467,10 +467,10 @@ struct CoreDataPillRepository: PillRepository {
         }
     }
 
-    func restorePill(from draft: EditPillDraft, historyMode: RestoreHistoryMode) throws {
-        try repositoryContext.performWrite { context in
-            guard let pill = try fetchPill(id: draft.id, in: context) else { return }
-            guard pill.boolValue(forKey: "isArchived") else { return }
+    func restorePill(from draft: EditPillDraft, historyMode: RestoreHistoryMode) throws -> Bool {
+        try repositoryContext.performWrite({ context in
+            guard let pill = try fetchPill(id: draft.id, in: context) else { return false }
+            guard pill.boolValue(forKey: "isArchived") else { return false }
 
             let now = clock.now()
             let today = calendar.startOfDay(for: now)
@@ -531,7 +531,7 @@ struct CoreDataPillRepository: PillRepository {
                     skippedDays: [],
                     now: now
                 )
-                return
+                return true
             }
 
             let scheduleRelationship = pill.mutableSetValue(forKey: "scheduleVersions")
@@ -609,7 +609,8 @@ struct CoreDataPillRepository: PillRepository {
                 skippedDays: skippedDays,
                 now: now
             )
-        }
+            return true
+        }, missingResultError: PillRepositoryError.internalFailure)
     }
 
     func deletePill(id: UUID) throws {

@@ -201,7 +201,7 @@ final class HabitAppState: ObservableObject {
         from draft: EditHabitDraft,
         historyMode: RestoreHistoryMode = .keepHistory
     ) async throws {
-        try await writeCoordinator.performThrowingMutation(
+        let didRestore = try await writeCoordinator.performThrowingMutation(
             refresh: { self.refreshDashboard(animated: true) },
             setError: { self.actionErrorMessage = $0 },
             refreshOnFailure: true
@@ -209,11 +209,13 @@ final class HabitAppState: ObservableObject {
             try self.repository.restoreHabit(from: draft, historyMode: historyMode)
         }
 
-        sideEffectCoordinator.handleArchiveChange(
-            forHabitID: draft.id,
-            dashboard: dashboard,
-            isArchived: false
-        )
+        if didRestore {
+            sideEffectCoordinator.handleArchiveChange(
+                forHabitID: draft.id,
+                dashboard: dashboard,
+                isArchived: false
+            )
+        }
     }
 
     func prepareReminderNotifications(forHabitID habitID: UUID) async {

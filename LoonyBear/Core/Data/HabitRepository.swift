@@ -15,11 +15,12 @@ protocol HabitRepository {
     func deleteHabit(id: UUID) throws
     func setHabitArchived(id: UUID, isArchived: Bool) throws
     func updateHabit(from draft: EditHabitDraft) throws
-    func restoreHabit(from draft: EditHabitDraft, historyMode: RestoreHistoryMode) throws
+    func restoreHabit(from draft: EditHabitDraft, historyMode: RestoreHistoryMode) throws -> Bool
 }
 
 extension HabitRepository {
-    func restoreHabit(from draft: EditHabitDraft) throws {
+    @discardableResult
+    func restoreHabit(from draft: EditHabitDraft) throws -> Bool {
         try restoreHabit(from: draft, historyMode: .keepHistory)
     }
 }

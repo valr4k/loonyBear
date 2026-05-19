@@ -591,10 +591,10 @@ struct CoreDataHabitRepository: HabitRepository {
         }
     }
 
-    func restoreHabit(from draft: EditHabitDraft, historyMode: RestoreHistoryMode) throws {
-        try repositoryContext.performWrite { context in
-            guard let habit = try fetchHabit(id: draft.id, in: context) else { return }
-            guard habit.boolValue(forKey: "isArchived") else { return }
+    func restoreHabit(from draft: EditHabitDraft, historyMode: RestoreHistoryMode) throws -> Bool {
+        try repositoryContext.performWrite({ context in
+            guard let habit = try fetchHabit(id: draft.id, in: context) else { return false }
+            guard habit.boolValue(forKey: "isArchived") else { return false }
 
             let now = clock.now()
             let today = calendar.startOfDay(for: now)
@@ -653,7 +653,7 @@ struct CoreDataHabitRepository: HabitRepository {
                     skippedDays: [],
                     now: now
                 )
-                return
+                return true
             }
 
             let scheduleRelationship = habit.mutableSetValue(forKey: "scheduleVersions")
@@ -731,7 +731,8 @@ struct CoreDataHabitRepository: HabitRepository {
                 skippedDays: skippedDays,
                 now: now
             )
-        }
+            return true
+        }, missingResultError: HabitRepositoryError.internalFailure)
     }
 
     private func fetchHabit(id: UUID, in context: NSManagedObjectContext) throws -> NSManagedObject? {

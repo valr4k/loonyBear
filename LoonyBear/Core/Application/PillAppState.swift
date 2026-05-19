@@ -140,7 +140,7 @@ final class PillAppState: ObservableObject {
         from draft: EditPillDraft,
         historyMode: RestoreHistoryMode = .keepHistory
     ) async throws {
-        try await writeCoordinator.performThrowingMutation(
+        let didRestore = try await writeCoordinator.performThrowingMutation(
             refresh: { self.refreshDashboard(animated: true) },
             setError: { self.actionErrorMessage = $0 },
             refreshOnFailure: true
@@ -148,7 +148,9 @@ final class PillAppState: ObservableObject {
             try self.repository.restorePill(from: draft, historyMode: historyMode)
         }
 
-        sideEffectCoordinator.handleArchiveChange(forPillID: draft.id, isArchived: false)
+        if didRestore {
+            sideEffectCoordinator.handleArchiveChange(forPillID: draft.id, isArchived: false)
+        }
     }
 
     func markTakenToday(id: UUID, animatedRefresh: Bool = false) async {

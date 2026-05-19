@@ -43,6 +43,7 @@ The current app supports:
 - End Repeat / End Date and separate Archive pages for manually archived or automatically finished items
 - active Pill Details and Habit Details sheets that replace the older separate Edit/Details split
 - read-only item Details for archived items, Restore Draft flows with Keep History / Start Fresh choices, and permanent delete
+- no-op-safe Restore persistence that skips notification/archive side effects when a stale Restore Draft no longer maps to an archived item
 - Events tab between Habits and Settings, with permanent delete only and no reminder/history/archive behavior
 - optimized Habit/Pill history storage using monthly buckets plus schedule-aware cold history ranges for very old generated history
 - optional Auto Backup toggle on the Backup screen; automatic backup keeps the existing backup files/schema and runs only when user-enabled, dirty data exists, and the selected folder is accessible

@@ -70,6 +70,46 @@ struct CoreDataPillRepositoryTests {
     }
 
     @Test
+    func restorePillReturnsFalseForActiveItem() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let today = TestSupport.makeDate(2026, 5, 3, calendar: calendar)
+        let persistence = PersistenceController(inMemory: true)
+        let repository = CoreDataPillRepository(
+            context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext,
+            calendar: calendar,
+            clock: AppClock(calendar: calendar, now: { today.addingTimeInterval(10 * 60 * 60) })
+        )
+
+        var draft = PillDraft()
+        draft.name = "Active pill"
+        draft.dosage = "1 tablet"
+        draft.startDate = today
+        draft.scheduleRule = .weekly(.daily)
+
+        let pillID = try repository.createPill(from: draft)
+        let details = try #require(try repository.fetchPillDetails(id: pillID))
+        let restoreDraft = EditPillDraft(
+            id: pillID,
+            name: details.name,
+            dosage: details.dosage,
+            details: details.details ?? "",
+            startDate: details.startDate,
+            activeFrom: details.activeFrom,
+            endDate: details.endDate,
+            scheduleRule: details.scheduleRule,
+            reminderEnabled: details.reminderEnabled,
+            reminderTime: details.reminderTime ?? ReminderTime.default(),
+            takenDays: details.takenDays,
+            skippedDays: details.skippedDays
+        )
+
+        let didRestore = try repository.restorePill(from: restoreDraft)
+
+        #expect(!didRestore)
+    }
+
+    @Test
     func restorePillWritesArchivedGapWithoutOverwritingExplicitHistory() throws {
         let calendar = Calendar(identifier: .gregorian)
         var now = TestSupport.makeDate(2026, 5, 3, calendar: calendar).addingTimeInterval(10 * 60 * 60)
@@ -112,7 +152,9 @@ struct CoreDataPillRepositoryTests {
         )
         restoreDraft.restoreActiveFrom = TestSupport.makeDate(2026, 5, 7, calendar: calendar)
 
-        try repository.restorePill(from: restoreDraft)
+        let didRestore = try repository.restorePill(from: restoreDraft)
+
+        #expect(didRestore)
 
         let restoredDetails = try #require(try repository.fetchPillDetails(id: pillID))
         #expect(restoredDetails.archivedDays.contains(TestSupport.makeDate(2026, 5, 3, calendar: calendar)))
@@ -188,9 +230,10 @@ struct CoreDataPillRepositoryTests {
         let activeFrom = TestSupport.makeDate(2026, 5, 7, calendar: calendar)
         restoreDraft.restoreActiveFrom = activeFrom
 
-        try repository.restorePill(from: restoreDraft, historyMode: .startFresh)
+        let didRestore = try repository.restorePill(from: restoreDraft, historyMode: .startFresh)
 
         let restoredDetails = try #require(try repository.fetchPillDetails(id: pillID))
+        #expect(didRestore)
         #expect(!restoredDetails.isArchived)
         #expect(restoredDetails.archivedAt == nil)
         #expect(restoredDetails.startDate == activeFrom)
@@ -252,8 +295,9 @@ struct CoreDataPillRepositoryTests {
         )
         firstRestoreDraft.restoreActiveFrom = TestSupport.makeDate(2026, 5, 25, calendar: calendar)
 
-        try repository.restorePill(from: firstRestoreDraft)
+        let firstDidRestore = try repository.restorePill(from: firstRestoreDraft)
         let firstRestoredDetails = try #require(try repository.fetchPillDetails(id: pillID))
+        #expect(firstDidRestore)
         #expect(firstRestoredDetails.archivedDays.contains(TestSupport.makeDate(2026, 5, 24, calendar: calendar)))
 
         try repository.setPillArchived(id: pillID, isArchived: true)
@@ -274,9 +318,10 @@ struct CoreDataPillRepositoryTests {
         )
         secondRestoreDraft.restoreActiveFrom = TestSupport.makeDate(2026, 5, 13, calendar: calendar)
 
-        try repository.restorePill(from: secondRestoreDraft)
+        let secondDidRestore = try repository.restorePill(from: secondRestoreDraft)
 
         let restoredDetails = try #require(try repository.fetchPillDetails(id: pillID))
+        #expect(secondDidRestore)
         #expect(restoredDetails.activeFrom == TestSupport.makeDate(2026, 5, 13, calendar: calendar))
         #expect(restoredDetails.archivedDays.contains(TestSupport.makeDate(2026, 5, 10, calendar: calendar)))
         #expect(restoredDetails.archivedDays.contains(TestSupport.makeDate(2026, 5, 12, calendar: calendar)))
