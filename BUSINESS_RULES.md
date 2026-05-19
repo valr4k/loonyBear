@@ -251,11 +251,11 @@ This file describes the behavioral rules that are currently implemented in code.
 - `Active From` minimum is `max(archivedAt, today - 29 days)`. This gives the user up to the normal 30-day editable window including today, but never allows Active From before the archive date.
 - `Active From` can be the archive date, any later date, today, or a future date.
 - In Restore Draft, End Repeat defaults to `Never` and End Date is cleared. The read-only archived screen still shows the stored historical End Repeat/End Date until Restore Draft starts.
-- The Restore Draft screen uses the normal `Save` action. If the draft is valid, Save opens a system confirmation dialog titled `Restore Pill?` or `Restore Habit?` with the message `Keep your history or start fresh.` The dialog has two neutral actions and no explicit Cancel action:
-  - `Keep History`
-  - `Start Fresh`
-- `Keep History` preserves the old history and behaves like the original Restore flow: the app saves the draft edits, sets `isArchived = false`, clears `archivedAt`, writes `activeFrom`, inserts a new schedule version effective from Active From, and keeps previous Completed/Taken/Skipped/Archived history.
-- `Start Fresh` turns the Restore Draft into a new cycle: the app saves the draft edits, clears all old Completed/Taken/Skipped/Archived history, sets Start Date to Active From, sets `isArchived = false`, clears `archivedAt`, writes `activeFrom`, and inserts a new schedule version effective from the new Start Date. Streaks and totals restart from zero because the stored history is empty.
+- The Restore Draft screen uses the normal `Save` action. If the draft is valid, Save opens a system confirmation dialog titled `Restore Pill?` or `Restore Habit?` with the message `You can continue with your previous progress or start from scratch.` The dialog has two neutral actions and no explicit Cancel action:
+  - `Continue Progress`
+  - `Start From Scratch`
+- `Continue Progress` preserves the old history and behaves like the original Restore flow: the app saves the draft edits, sets `isArchived = false`, clears `archivedAt`, writes `activeFrom`, inserts a new schedule version effective from Active From, and keeps previous Completed/Taken/Skipped/Archived history.
+- `Start From Scratch` turns the Restore Draft into a new cycle: the app saves the draft edits, clears all old Completed/Taken/Skipped/Archived history, sets Start Date to Active From, sets `isArchived = false`, clears `archivedAt`, writes `activeFrom`, and inserts a new schedule version effective from the new Start Date. Streaks and totals restart from zero because the stored history is empty.
 - Restore is no-op safe. If a stale Restore Draft tries to save an item that is missing or already active, the persistence layer returns `didRestore = false`. The user-facing data is left unchanged and restore-only side effects are skipped, including notification rescheduling, delivered notification cleanup, pill snooze cleanup, badge/widget restore work, and archive-state cleanup.
 - Before writing the new Restore gap, Restore removes archived history states on and after Active From. This prevents stale future Archived days from an earlier Restore attempt from staying inside the new active cycle.
 - Restore writes `archived` history states from `archivedAt` through the day before Active From. If Active From is the archive day, this gap is empty and no archived states are created.
@@ -268,6 +268,15 @@ This file describes the behavioral rules that are currently implemented in code.
 - If the user changes tabs after tapping Restore but before the Restore Draft sheet opens, the pending Restore Draft is cancelled.
 - Manual and automatic Archive use the actual archive day as `archivedAt`. Auto Archive does not backdate `archivedAt` to the logical End Date.
 - `Repeat = Never` for Pills behaves like a one-time schedule on the start date. After that day is taken or skipped, the Pill moves to Archive automatically. If it is not acted on, it stays active and can become overdue.
+
+## Unsaved Sheet Dismissal
+
+- Add new Pill, Add new Habit, Pill Details, Habit Details, Restore Pill, Restore Habit, Add new Event, and Event Details all protect unsaved changes.
+- Each sheet stores a baseline draft when it opens. If the current draft differs from that baseline, the sheet is considered dirty.
+- Tapping the Close button on a dirty sheet shows the system confirmation `Discard changes?` / `Your changes will be lost.` with the destructive action `Discard Changes`.
+- Swiping a dirty sheet down uses the same confirmation path as the Close button. The sheet does not dismiss until the user confirms `Discard Changes`.
+- Swiping or closing a clean sheet dismisses immediately.
+- The swipe-down guard is intentionally not used as validation. It only prevents accidental loss of local edits; Save validation remains owned by each screen.
 
 ## Reminder Rules
 

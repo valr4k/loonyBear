@@ -183,6 +183,7 @@ struct EditHabitView: View {
                 }
             }
         }
+        .appSheetDismissGuard(isDisabled: hasUnsavedChanges, onAttempt: close)
         .onChange(of: draft.reminderEnabled) { _, isEnabled in
             guard isEnabled else { return }
 
@@ -199,13 +200,16 @@ struct EditHabitView: View {
             handleScheduleRuleChange()
             handleEndDateValidationInputsChanged()
             resolveEffectiveFromSelection(showAdjustmentBanner: false)
+            clampDisplayedMonthToAvailableRange()
         }
         .onChange(of: draft.restoreActiveFrom) { _, _ in
             handleEndDateValidationInputsChanged()
+            clampDisplayedMonthToAvailableRange()
         }
         .onAppear {
             applyPendingScheduleRuleIfNeeded()
             resolveEffectiveFromSelection(showAdjustmentBanner: false)
+            clampDisplayedMonthToAvailableRange()
         }
         .appNotificationSettingsAlert(isPresented: $isShowingNotificationSettingsAlert)
         .onChange(of: draft.completedDays) { _, _ in
@@ -220,6 +224,7 @@ struct EditHabitView: View {
         }
         .onChange(of: draft.endDate) { _, _ in
             handleEndDateValidationInputsChanged()
+            clampDisplayedMonthToAvailableRange()
         }
         .onChange(of: draft.name) { _, _ in
             isValidationWarningDismissed = false
@@ -435,10 +440,12 @@ struct EditHabitView: View {
     }
 
     private var availableMonthRange: ClosedRange<Date> {
-        let calendarStart = normalizedRestoreActiveFrom ?? draft.startDate
+        let calendarStart = normalizedRestoreActiveFrom ?? activeCycleStartDate
         let firstMonth = HistoryMonthWindow.monthStart(containing: calendarStart, calendar: Calendar.current)
+        let defaultEndDate = HistoryMonthWindow.detailsCalendarEndDate(startDate: calendarStart)
+        let calendarEnd = max(defaultEndDate, draft.endDate ?? defaultEndDate)
         let lastMonth = HistoryMonthWindow.monthStart(
-            containing: HistoryMonthWindow.detailsCalendarEndDate(startDate: calendarStart),
+            containing: calendarEnd,
             calendar: Calendar.current
         )
         return firstMonth ... max(firstMonth, lastMonth)
@@ -891,6 +898,16 @@ struct EditHabitView: View {
 
     private func handleEndDateValidationInputsChanged() {
         isEndDateWarningDismissed = false
+    }
+
+    private func clampDisplayedMonthToAvailableRange() {
+        let normalizedDisplayedMonth = month(containing: displayedMonth)
+        let range = availableMonthRange
+        if normalizedDisplayedMonth < range.lowerBound {
+            displayedMonth = range.lowerBound
+        } else if normalizedDisplayedMonth > range.upperBound {
+            displayedMonth = range.upperBound
+        }
     }
 
     private func stageScheduleRule(_ scheduleRule: ScheduleRule) {

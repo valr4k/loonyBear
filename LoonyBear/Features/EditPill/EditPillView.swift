@@ -202,6 +202,7 @@ struct EditPillView: View {
                     }
                 }
             }
+            .appSheetDismissGuard(isDisabled: hasUnsavedChanges, onAttempt: close)
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
                 AppDescriptionFieldSupport.scrollIntoView(
                     with: proxy,
@@ -228,14 +229,17 @@ struct EditPillView: View {
                 handleEndDateValidationInputsChanged()
                 resolveEffectiveFromSelection(showAdjustmentBanner: false)
                 clearEndDateForNeverRepeat(showInfo: true)
+                clampDisplayedMonthToAvailableRange()
             }
             .onChange(of: draft.restoreActiveFrom) { _, _ in
                 handleEndDateValidationInputsChanged()
+                clampDisplayedMonthToAvailableRange()
             }
             .onAppear {
                 applyPendingScheduleRuleIfNeeded()
                 resolveEffectiveFromSelection(showAdjustmentBanner: false)
                 clearEndDateForNeverRepeat(showInfo: false)
+                clampDisplayedMonthToAvailableRange()
             }
             .appNotificationSettingsAlert(isPresented: $isShowingNotificationSettingsAlert)
             .onChange(of: draft.takenDays) { _, _ in
@@ -250,6 +254,7 @@ struct EditPillView: View {
             }
             .onChange(of: draft.endDate) { _, _ in
                 handleEndDateValidationInputsChanged()
+                clampDisplayedMonthToAvailableRange()
             }
             .onChange(of: draft.name) { _, _ in
                 handleNonScheduleValidationInputChanged()
@@ -494,10 +499,12 @@ struct EditPillView: View {
     }
 
     private var availableMonthRange: ClosedRange<Date> {
-        let calendarStart = normalizedRestoreActiveFrom ?? draft.startDate
+        let calendarStart = normalizedRestoreActiveFrom ?? activeCycleStartDate
         let firstMonth = HistoryMonthWindow.monthStart(containing: calendarStart, calendar: Calendar.current)
+        let defaultEndDate = HistoryMonthWindow.detailsCalendarEndDate(startDate: calendarStart)
+        let calendarEnd = max(defaultEndDate, draft.endDate ?? defaultEndDate)
         let lastMonth = HistoryMonthWindow.monthStart(
-            containing: HistoryMonthWindow.detailsCalendarEndDate(startDate: calendarStart),
+            containing: calendarEnd,
             calendar: Calendar.current
         )
         return firstMonth ... max(firstMonth, lastMonth)
@@ -872,6 +879,16 @@ struct EditPillView: View {
 
     private func handleEndDateValidationInputsChanged() {
         isEndDateWarningDismissed = false
+    }
+
+    private func clampDisplayedMonthToAvailableRange() {
+        let normalizedDisplayedMonth = month(containing: displayedMonth)
+        let range = availableMonthRange
+        if normalizedDisplayedMonth < range.lowerBound {
+            displayedMonth = range.lowerBound
+        } else if normalizedDisplayedMonth > range.upperBound {
+            displayedMonth = range.upperBound
+        }
     }
 
     private func stageScheduleRule(_ scheduleRule: ScheduleRule) {

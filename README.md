@@ -42,7 +42,8 @@ The current app supports:
 - pushed Repeat editor with Days and Interval selection
 - End Repeat / End Date and separate Archive pages for manually archived or automatically finished items
 - active Pill Details and Habit Details sheets that replace the older separate Edit/Details split
-- read-only item Details for archived items, Restore Draft flows with Keep History / Start Fresh choices, and permanent delete
+- read-only item Details for archived items, Restore Draft flows with Continue Progress / Start From Scratch choices, and permanent delete
+- unsaved-change protection for create/details/restore sheets: Close and swipe-down dismissal both route through the same Discard Changes confirmation
 - no-op-safe Restore persistence that skips notification/archive side effects when a stale Restore Draft no longer maps to an archived item
 - Events tab between Habits and Settings, with permanent delete only and no reminder/history/archive behavior
 - optimized Habit/Pill history storage using monthly buckets plus schedule-aware cold history ranges for very old generated history

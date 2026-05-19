@@ -66,6 +66,7 @@ struct CreateEventView: View {
                 .disabled(!isFormValid || isSaving)
             }
         }
+        .appSheetDismissGuard(isDisabled: hasUnsavedChanges, onAttempt: close)
         .onChange(of: draft.mode) { oldMode, newMode in
             applyModeSwitch(from: oldMode, to: newMode)
             handleValidationInputChanged()
@@ -233,6 +234,7 @@ struct EditEventView: View {
                 .disabled(!isFormValid || isSaving)
             }
         }
+        .appSheetDismissGuard(isDisabled: hasUnsavedChanges, onAttempt: close)
         .alert("Delete this Event?", isPresented: $isShowingDeleteConfirmation) {
             Button("Cancel", role: .cancel) {}
             Button("Delete", role: .destructive) {

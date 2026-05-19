@@ -31,7 +31,7 @@ The app has exactly 4 tabs:
 
 The default selected tab is `My Pills`.
 
-Create flows and item Details flows for Habits, Pills, and Events open as modal sheets. Habit and Pill create sheet titles are `Add new Pill` and `Add new Habit`. Active Habit and Pill Details sheets are titled `Pill Details` and `Habit Details` and are editable. Archived Habit and Pill Details reuse the same layout in read-only mode, with Restore and permanent Delete available at the bottom. Event Details are editable and use permanent Delete only.
+Create flows and item Details flows for Habits, Pills, and Events open as modal sheets. Habit and Pill create sheet titles are `Add new Pill` and `Add new Habit`. Active Habit and Pill Details sheets are titled `Pill Details` and `Habit Details` and are editable. Archived Habit and Pill Details reuse the same layout in read-only mode, with Restore and permanent Delete available at the bottom. Event Details are editable and use permanent Delete only. Create, Details, and Restore sheets protect dirty drafts from both Close-button dismissal and interactive swipe-down dismissal.
 
 Settings uses route-based navigation:
 - `SettingsRoute.backup`
@@ -543,9 +543,9 @@ Rules:
 - Restore Draft defaults `Active From` to today and bounds it to `max(archivedAt, today - 29 days)`, so the user can choose inside the current 30-day editable window but never before the archive day
 - Restore Draft may choose a future `Active From`; future restored Pills return to Pending, while future restored Habits return to Build/Quit without today action/status until `Active From`
 - Restore Draft defaults End Repeat to `Never` and clears End Date inside the draft only; the read-only archived screen still shows the stored historical End Repeat/End Date before Restore Draft starts
-- Restore Draft uses the standard top-right `Save` control. If validation passes, Save opens a system confirmation dialog with title `Restore Pill?` or `Restore Habit?`, message `Keep your history or start fresh.`, and two neutral actions: `Keep History` and `Start Fresh`
-- `Keep History` saves the draft edits, sets `isArchived = false`, clears `archivedAt`, writes `activeFrom`, inserts a new schedule version effective from `Active From`, and preserves existing completed/taken/skipped/archived history
-- `Start Fresh` saves the draft edits, clears all old completed/taken/skipped/archived history from bucket, range, and legacy rows, sets `startDate = activeFrom`, sets `isArchived = false`, clears `archivedAt`, writes `activeFrom`, and inserts a new schedule version effective from the new start date; streaks and totals reset because no history remains
+- Restore Draft uses the standard top-right `Save` control. If validation passes, Save opens a system confirmation dialog with title `Restore Pill?` or `Restore Habit?`, message `You can continue with your previous progress or start from scratch.`, and two neutral actions: `Continue Progress` and `Start From Scratch`
+- `Continue Progress` saves the draft edits, sets `isArchived = false`, clears `archivedAt`, writes `activeFrom`, inserts a new schedule version effective from `Active From`, and preserves existing completed/taken/skipped/archived history
+- `Start From Scratch` saves the draft edits, clears all old completed/taken/skipped/archived history from bucket, range, and legacy rows, sets `startDate = activeFrom`, sets `isArchived = false`, clears `archivedAt`, writes `activeFrom`, and inserts a new schedule version effective from the new start date; streaks and totals reset because no history remains
 - `restoreHabit(from:historyMode:)` and `restorePill(from:historyMode:)` return `Bool`. `true` means the row existed, was archived, and was actually restored. `false` means the row was missing or already active, so the restore request was a no-op.
 - `HabitAppState.restoreHabit` and `PillAppState.restorePill` must run restore side effects only when the repository returns `true`. This prevents stale Restore Drafts or repeated restore actions from rescheduling notifications, cleaning delivered notifications, clearing pill snoozes, refreshing badges/widgets, or performing restore-specific archive cleanup for a restore that did not happen.
 - before writing the new Restore gap, Restore removes archived history states on and after `Active From`; this clears stale future Archived days left by an earlier restore-then-archive cycle
@@ -1256,13 +1256,54 @@ Archive page behavior:
 - `Restore` dismisses the read-only Archive sheet and opens a separate Restore Draft sheet; the stored item remains archived until the Restore Draft sheet is saved
 - Restore Draft re-enables editable fields, shows Start Date read-only, shows `Active From` directly under Start Date, defaults End Repeat to Never, and clears End Date in the draft
 - Restore Draft `Active From` defaults to today and uses `max(archivedAt, today - 29 days)` as its minimum allowed date
-- Restore Draft uses the normal top-right `Save` action. Save first validates the draft. If valid, it shows the system confirmation dialog `Restore Pill?` / `Restore Habit?` with message `Keep your history or start fresh.`
-- `Keep History` stores the draft, removes archived history states on and after `Active From`, writes archived gap rows only for empty days, starts a new schedule version at `Active From`, clears `isArchived`/`archivedAt`, and returns the item to the active dashboards
-- `Start Fresh` stores the draft, deletes all old history buckets, history ranges, and legacy history rows for that item, sets Start Date to Active From, starts a new schedule version at Active From, clears `isArchived`/`archivedAt`, and returns the item to the active dashboards with empty calendar history and zero streak/count totals
+- Restore Draft uses the normal top-right `Save` action. Save first validates the draft. If valid, it shows the system confirmation dialog `Restore Pill?` / `Restore Habit?` with message `You can continue with your previous progress or start from scratch.`
+- `Continue Progress` stores the draft, removes archived history states on and after `Active From`, writes archived gap rows only for empty days, starts a new schedule version at `Active From`, clears `isArchived`/`archivedAt`, and returns the item to the active dashboards
+- `Start From Scratch` stores the draft, deletes all old history buckets, history ranges, and legacy history rows for that item, sets Start Date to Active From, starts a new schedule version at Active From, clears `isArchived`/`archivedAt`, and returns the item to the active dashboards with empty calendar history and zero streak/count totals
 - repository restore returns `true` only for a real archived-to-active transition. If the row is missing or already active, it returns `false`; AppState still remains safe but skips notification/archive side effects because no restore occurred.
 - if the user changes away from the owning tab while the read-only Archive sheet is dismissing, any pending Restore Draft handoff is cleared so the Restore Draft cannot appear on the wrong tab/context
 
-### 13.5 Reminder Time UI
+### 13.5 Unsaved Sheet Dismissal Guard
+Defined in `LoonyBear/Shared/AppDesign.swift` as `appSheetDismissGuard(isDisabled:onAttempt:)`.
+
+Purpose:
+- keep the Close-button and swipe-down dismissal behavior identical for dirty sheets
+- prevent accidental loss of local edits when the user drags a sheet down
+- preserve normal system sheet dismissal when no edits exist
+
+Applied screens:
+- `CreatePillView`
+- `CreateHabitView`
+- `EditPillView` for active Pill Details and Restore Pill
+- `EditHabitView` for active Habit Details and Restore Habit
+- `CreateEventView`
+- `EditEventView`
+
+Behavior:
+- each screen already owns a baseline draft and a `hasUnsavedChanges` comparison
+- each screen already owns `close()`, which dismisses immediately when clean and presents `Discard changes?` when dirty
+- the guard passes `hasUnsavedChanges` as `isDisabled`
+- when `isDisabled == false`, UIKit interactive sheet dismissal proceeds normally
+- when `isDisabled == true`, `presentationControllerShouldDismiss` returns `false`
+- UIKit then calls `presentationControllerDidAttemptToDismiss`, and the guard invokes the same `close()` closure used by the visible Close button
+- the resulting confirmation uses the existing copy from `AppCopy`: title `Discard changes?`, message `Your changes will be lost.`, destructive action `Discard Changes`
+
+Implementation notes:
+- SwiftUI has `interactiveDismissDisabled`, but it does not provide a first-class “attempted dismiss” callback for routing into the same custom confirmation path
+- the helper uses a zero-sized `UIViewControllerRepresentable` in the view background to attach a `UIAdaptivePresentationControllerDelegate` to the active sheet presentation controller
+- the helper updates the coordinator on every SwiftUI update so changes in `hasUnsavedChanges` are reflected without recreating the sheet
+- the helper is dismissal-only; it must not run validation, save data, mutate drafts, or replace any existing confirmation dialogs
+- do not add separate per-screen swipe-dismiss state unless a screen truly needs different business behavior
+- if a future SwiftUI API exposes a native attempted-dismiss callback, this helper can be replaced with the native API while preserving the same `hasUnsavedChanges -> close()` contract
+
+Manual QA:
+- open each applied sheet with a clean draft and swipe down; it should dismiss immediately
+- open each applied sheet, change any field, and tap Close; the Discard Changes confirmation should appear
+- open each applied sheet, change any field, and swipe down; the same Discard Changes confirmation should appear and the sheet should remain open until confirmed
+- dismiss the Discard confirmation without choosing `Discard Changes`; the dirty sheet should remain open with edits intact
+- choose `Discard Changes`; the sheet should close without saving the local draft
+- verify Restore Pill and Restore Habit still show their Restore confirmation only from Save, not from swipe-down discard
+
+### 13.6 Reminder Time UI
 Defined in `LoonyBear/Shared/AppDesign.swift`.
 
 Behavior:
@@ -1275,7 +1316,7 @@ Behavior:
 - the touch-down helper is a window-level observer rather than a SwiftUI gesture on the capsule, so vertical scrolling that starts on the Time capsule must continue to work
 - Start Date intentionally does not use this touch-down guard because applying a gesture to the Start Date compact date picker can prevent the native date picker from opening
 
-### 13.6 Editable Start Date UI
+### 13.7 Editable Start Date UI
 Defined in `LoonyBear/Shared/AppDesign.swift`.
 
 Behavior:
@@ -1286,7 +1327,7 @@ Behavior:
 - active Details screens show Start Date as a read-only row and do not expose a Start Date picker
 - Start Date participates in the schedule card exclusive-touch scope, but it does not install an additional touch-down gesture
 
-### 13.7 End Date UI
+### 13.8 End Date UI
 Defined in `LoonyBear/Shared/AppDesign.swift`.
 
 Behavior:
@@ -1311,7 +1352,7 @@ Behavior:
 - the End Repeat options button checks `AppSchedulePresentationGuard.isEndDateOptionsPresentationBlocked` before presenting, so a Time picker touch-down or Repeat navigation tap can win and prevent the popover from racing another presentation
 - if Pill Repeat is `Never`, End Date is disabled and cleared
 
-### 13.8 Schedule System Presentation Guard
+### 13.9 Schedule System Presentation Guard
 Defined in `LoonyBear/Shared/AppDesign.swift`.
 
 Purpose:
@@ -1394,7 +1435,7 @@ Known tradeoff:
 - touching End Repeat can block compact picker hit-testing for up to 200 ms before the popover-visible state takes over
 - this is intentional because it prevents observed real-device same-frame presentation races while keeping native controls and current UI unchanged
 
-### 13.9 Build Number Display
+### 13.10 Build Number Display
 Defined by the main target build phase and Settings/About UI.
 
 Behavior:

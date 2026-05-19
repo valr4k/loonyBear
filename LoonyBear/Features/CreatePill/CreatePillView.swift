@@ -83,6 +83,7 @@ struct CreatePillView: View {
                     .disabled(!isFormValid || isSaving)
                 }
             }
+            .appSheetDismissGuard(isDisabled: hasUnsavedChanges, onAttempt: close)
             .onChange(of: draft.reminderEnabled) { _, isEnabled in
                 guard isEnabled else { return }
 

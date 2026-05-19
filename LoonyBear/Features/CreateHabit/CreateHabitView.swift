@@ -67,6 +67,7 @@ struct CreateHabitView: View {
                 .disabled(!isFormValid || isSaving)
             }
         }
+        .appSheetDismissGuard(isDisabled: hasUnsavedChanges, onAttempt: close)
         .onAppear {
             initializeIfNeeded()
             applyPendingScheduleRuleIfNeeded()

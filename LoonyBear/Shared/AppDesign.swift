@@ -2241,3 +2241,75 @@ struct AppActionIcon: View {
             .frame(width: AppLayout.listIconWidth, height: AppLayout.listIconWidth)
     }
 }
+
+extension View {
+    func appSheetDismissGuard(
+        isDisabled: Bool,
+        onAttempt: @escaping () -> Void
+    ) -> some View {
+        background(
+            AppSheetDismissGuardController(
+                isDisabled: isDisabled,
+                onAttempt: onAttempt
+            )
+            .frame(width: 0, height: 0)
+        )
+    }
+}
+
+private struct AppSheetDismissGuardController: UIViewControllerRepresentable {
+    let isDisabled: Bool
+    let onAttempt: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(isDisabled: isDisabled, onAttempt: onAttempt)
+    }
+
+    func makeUIViewController(context _: Context) -> UIViewController {
+        UIViewController()
+    }
+
+    func updateUIViewController(_ viewController: UIViewController, context: Context) {
+        context.coordinator.isDisabled = isDisabled
+        context.coordinator.onAttempt = onAttempt
+
+        DispatchQueue.main.async {
+            attachDelegate(from: viewController, coordinator: context.coordinator)
+        }
+    }
+
+    private func attachDelegate(from viewController: UIViewController, coordinator: Coordinator) {
+        var candidate: UIViewController? = viewController
+
+        while let controller = candidate {
+            controller.presentationController?.delegate = coordinator
+            controller.navigationController?.presentationController?.delegate = coordinator
+            candidate = controller.parent
+        }
+
+        viewController.view.window?
+            .rootViewController?
+            .presentedViewController?
+            .presentationController?
+            .delegate = coordinator
+    }
+
+    final class Coordinator: NSObject, UIAdaptivePresentationControllerDelegate {
+        var isDisabled: Bool
+        var onAttempt: () -> Void
+
+        init(isDisabled: Bool, onAttempt: @escaping () -> Void) {
+            self.isDisabled = isDisabled
+            self.onAttempt = onAttempt
+        }
+
+        func presentationControllerShouldDismiss(_: UIPresentationController) -> Bool {
+            !isDisabled
+        }
+
+        func presentationControllerDidAttemptToDismiss(_: UIPresentationController) {
+            guard isDisabled else { return }
+            onAttempt()
+        }
+    }
+}
