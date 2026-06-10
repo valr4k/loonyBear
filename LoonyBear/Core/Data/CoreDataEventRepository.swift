@@ -25,6 +25,7 @@ struct CoreDataEventRepository: EventRepository {
     }
 
     func fetchDashboardEvents() throws -> [EventCardProjection] {
+        try PerformanceLog.measure("event.dashboard.fetch") {
         let request = NSFetchRequest<NSManagedObject>(entityName: "Event")
         request.sortDescriptors = [
             NSSortDescriptor(key: "sortOrder", ascending: true),
@@ -40,9 +41,11 @@ struct CoreDataEventRepository: EventRepository {
         }
 
         return events
+        }
     }
 
     func fetchEventDetails(id: UUID) throws -> EventDetailsProjection? {
+        try PerformanceLog.measure("event.details.fetch", metadata: "id=\(id.uuidString)") {
         guard let object = try fetchEvent(id: id, in: readContext) else { return nil }
 
         var report = IntegrityReportBuilder()
@@ -53,9 +56,11 @@ struct CoreDataEventRepository: EventRepository {
         }
 
         return details
+        }
     }
 
     func createEvent(from draft: EventDraft) throws -> UUID {
+        try PerformanceLog.measure("event.create.save") {
         try repositoryContext.performWrite({ context in
             let countRequest = NSFetchRequest<NSDictionary>(entityName: "Event")
             countRequest.resultType = .dictionaryResultType
@@ -80,9 +85,11 @@ struct CoreDataEventRepository: EventRepository {
             try context.save()
             return eventID
         }, missingResultError: EventRepositoryError.internalFailure)
+        }
     }
 
     func updateEvent(from draft: EditEventDraft) throws {
+        try PerformanceLog.measure("event.update.save", metadata: "id=\(draft.id.uuidString)") {
         try repositoryContext.performWrite { context in
             guard let object = try fetchEvent(id: draft.id, in: context) else {
                 throw EventRepositoryError.internalFailure
@@ -96,9 +103,11 @@ struct CoreDataEventRepository: EventRepository {
 
             try context.save()
         }
+        }
     }
 
     func deleteEvent(id: UUID) throws {
+        try PerformanceLog.measure("event.delete.save", metadata: "id=\(id.uuidString)") {
         try repositoryContext.performWrite { context in
             guard let object = try fetchEvent(id: id, in: context) else {
                 throw EventRepositoryError.internalFailure
@@ -106,6 +115,7 @@ struct CoreDataEventRepository: EventRepository {
 
             context.delete(object)
             try context.save()
+        }
         }
     }
 

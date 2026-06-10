@@ -14,9 +14,11 @@ enum UserFacingErrorMessage {
 
 @MainActor
 final class AppStateWriteCoordinator {
+    private let name: String
     private let writeQueue: OperationQueue
 
     init(name: String) {
+        self.name = name
         let queue = OperationQueue()
         queue.name = name
         queue.qualityOfService = .userInitiated
@@ -28,17 +30,24 @@ final class AppStateWriteCoordinator {
         marksDataDirty: Bool = true,
         _ operation: @escaping () throws -> T
     ) async throws -> T {
-        let result: T = try await withCheckedThrowingContinuation { continuation in
-            writeQueue.addOperation {
-                do {
-                    continuation.resume(returning: try operation())
-                } catch {
-                    continuation.resume(throwing: error)
+        let result: T = try await PerformanceLog.measure(
+            "appstate.write.operation",
+            metadata: "queue=\(name)"
+        ) {
+            try await withCheckedThrowingContinuation { continuation in
+                writeQueue.addOperation {
+                    do {
+                        continuation.resume(returning: try operation())
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
                 }
             }
         }
         if marksDataDirty {
-            AutoBackupService.shared.markDirty(reason: "app-state-write")
+            PerformanceLog.measure("appstate.autobackup.markDirty", metadata: "queue=\(name)") {
+                AutoBackupService.shared.markDirty(reason: "app-state-write")
+            }
         }
         return result
     }
@@ -51,12 +60,16 @@ final class AppStateWriteCoordinator {
     ) async -> Bool {
         do {
             try await performWriteOperation(mutation)
-            refresh()
+            PerformanceLog.measure("appstate.refresh.afterMutation") {
+                refresh()
+            }
             setError(nil)
             return true
         } catch {
             if refreshOnFailure {
-                refresh()
+                PerformanceLog.measure("appstate.refresh.afterMutationFailure") {
+                    refresh()
+                }
             }
             setError(UserFacingErrorMessage.text(for: error))
             return false
@@ -72,14 +85,20 @@ final class AppStateWriteCoordinator {
         do {
             let didMutate = try await performWriteOperation(marksDataDirty: false, mutation)
             if didMutate {
-                AutoBackupService.shared.markDirty(reason: "app-state-write")
+                PerformanceLog.measure("appstate.autobackup.markDirty", metadata: "queue=\(name)") {
+                    AutoBackupService.shared.markDirty(reason: "app-state-write")
+                }
             }
-            refresh()
+            PerformanceLog.measure("appstate.refresh.afterMutation") {
+                refresh()
+            }
             setError(nil)
             return didMutate
         } catch {
             if refreshOnFailure {
-                refresh()
+                PerformanceLog.measure("appstate.refresh.afterMutationFailure") {
+                    refresh()
+                }
             }
             setError(UserFacingErrorMessage.text(for: error))
             return false
@@ -96,14 +115,20 @@ final class AppStateWriteCoordinator {
         do {
             let result = try await performWriteOperation(marksDataDirty: false, operation)
             if shouldMarkDataDirty(result) {
-                AutoBackupService.shared.markDirty(reason: "app-state-write")
+                PerformanceLog.measure("appstate.autobackup.markDirty", metadata: "queue=\(name)") {
+                    AutoBackupService.shared.markDirty(reason: "app-state-write")
+                }
             }
-            refresh()
+            PerformanceLog.measure("appstate.refresh.afterMutation") {
+                refresh()
+            }
             setError(nil)
             return result
         } catch {
             if refreshOnFailure {
-                refresh()
+                PerformanceLog.measure("appstate.refresh.afterMutationFailure") {
+                    refresh()
+                }
             }
             setError(UserFacingErrorMessage.text(for: error))
             throw error
@@ -123,14 +148,18 @@ final class AppStateWriteCoordinator {
             let finalizedDays = try await performWriteOperation(marksDataDirty: false, operation)
             if finalizedDays > 0 {
                 ReliabilityLog.info("\(logPrefix) finalized \(finalizedDays) day(s)")
-                AutoBackupService.shared.markDirty(reason: "\(logPrefix)-finalized")
+                PerformanceLog.measure("appstate.autobackup.markDirty", metadata: "queue=\(name)") {
+                    AutoBackupService.shared.markDirty(reason: "\(logPrefix)-finalized")
+                }
             }
         } catch {
             reconciliationErrorMessage = UserFacingErrorMessage.text(for: error)
             ReliabilityLog.error("\(logPrefix) failed: \(error.localizedDescription)")
         }
 
-        refresh()
+        PerformanceLog.measure("appstate.refresh.afterReconciliation") {
+            refresh()
+        }
         if let reconciliationErrorMessage {
             setError(reconciliationErrorMessage)
         }

@@ -32,7 +32,13 @@ final class EventAppState: ObservableObject {
 
     func refreshDashboard() {
         do {
-            dashboard = EventDashboardProjection(events: try repository.fetchDashboardEvents())
+            let events = try repository.fetchDashboardEvents()
+            let nextDashboard = PerformanceLog.measure("event.dashboard.projection") {
+                EventDashboardProjection(events: events)
+            }
+            PerformanceLog.measure("event.dashboard.publish") {
+                dashboard = nextDashboard
+            }
             actionErrorMessage = nil
         } catch {
             actionErrorMessage = UserFacingErrorMessage.text(for: error)

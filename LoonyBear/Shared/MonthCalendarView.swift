@@ -166,6 +166,10 @@ struct MonthCalendarView<DayContent: View>: View {
             return
         }
 
+        PerformanceLog.event(
+            "calendar.month.change",
+            metadata: "from=\(month.formatted(.dateTime.year().month())) to=\(nextMonth.formatted(.dateTime.year().month()))"
+        )
         onMonthChange(nextMonth)
     }
 }

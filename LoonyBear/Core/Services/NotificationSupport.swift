@@ -614,6 +614,12 @@ enum NotificationRescheduleSupport {
         completion: @escaping () -> Void
     ) {
         ReliabilityLog.info("\(logName) started")
+        let start = ProcessInfo.processInfo.systemUptime
+        let finishWithLog: (String) -> Void = { message in
+            let elapsed = (ProcessInfo.processInfo.systemUptime - start) * 1_000
+            ReliabilityLog.info("\(message) in \(String(format: "%.1f", elapsed))ms")
+            completion()
+        }
         removeDeliveredAggregatedNotifications(now())
         storeContext.refreshReadContext()
 
@@ -621,8 +627,7 @@ enum NotificationRescheduleSupport {
             let requests = try makePendingRequests()
             removePendingNotifications {
                 guard !requests.isEmpty else {
-                    ReliabilityLog.info("\(logName) finished with 0 request(s)")
-                    completion()
+                    finishWithLog("\(logName) finished with 0 request(s)")
                     return
                 }
 
@@ -639,16 +644,15 @@ enum NotificationRescheduleSupport {
                     }
                 }
                 group.notify(queue: .main) {
-                    ReliabilityLog.info("\(logName) finished with \(requests.count) request(s)")
-                    completion()
+                    finishWithLog("\(logName) finished with \(requests.count) request(s)")
                 }
             }
         } catch let error as DataIntegrityError {
             ReliabilityLog.error("\(logName) failed: \(error.localizedDescription)")
-            completion()
+            finishWithLog("\(logName) failed")
         } catch {
             ReliabilityLog.error("\(logName) failed: \(error.localizedDescription)")
-            completion()
+            finishWithLog("\(logName) failed")
         }
     }
 }

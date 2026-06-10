@@ -39,6 +39,7 @@ struct CoreDataHabitRepository: HabitRepository {
     }
 
     func fetchDashboardHabits() throws -> [HabitCardProjection] {
+        try PerformanceLog.measure("habit.dashboard.fetch") {
         let request = NSFetchRequest<NSManagedObject>(entityName: "Habit")
         request.sortDescriptors = [
             NSSortDescriptor(key: "typeRaw", ascending: true),
@@ -68,9 +69,11 @@ struct CoreDataHabitRepository: HabitRepository {
         }
 
         return projections.sorted(by: habitDashboardSort)
+        }
     }
 
     func fetchHabitDetails(id: UUID) throws -> HabitDetailsProjection? {
+        try PerformanceLog.measure("habit.details.fetch", metadata: "id=\(id.uuidString)") {
         guard let habitObject = try fetchHabit(id: id, in: readContext) else {
             return nil
         }
@@ -238,11 +241,13 @@ struct CoreDataHabitRepository: HabitRepository {
             isArchived: isArchived,
             archivedAt: habitObject.dateValue(forKey: "archivedAt")
         )
+        }
     }
 
     func reconcilePastDays(today: Date) throws -> Int { 0 }
 
     func createHabit(from draft: CreateHabitDraft) throws -> UUID {
+        try PerformanceLog.measure("habit.create.save") {
         try repositoryContext.performWrite({ context in
             let countRequest = NSFetchRequest<NSFetchRequestResult>(entityName: "Habit")
             let totalHabits = try context.count(for: countRequest)
@@ -336,6 +341,7 @@ struct CoreDataHabitRepository: HabitRepository {
             try context.save()
             return habitID
         }, missingResultError: HabitRepositoryError.internalFailure)
+        }
     }
 
     func completeHabitToday(id: UUID) throws -> Bool {
@@ -449,6 +455,7 @@ struct CoreDataHabitRepository: HabitRepository {
     }
 
     func updateHabit(from draft: EditHabitDraft) throws {
+        try PerformanceLog.measure("habit.update.save", metadata: "id=\(draft.id.uuidString)") {
         try repositoryContext.performWrite { context in
             guard let habit = try fetchHabit(id: draft.id, in: context) else { return }
             let wasArchived = habit.boolValue(forKey: "isArchived")
@@ -594,9 +601,14 @@ struct CoreDataHabitRepository: HabitRepository {
                 )
             }
         }
+        }
     }
 
     func restoreHabit(from draft: EditHabitDraft, historyMode: RestoreHistoryMode) throws -> Bool {
+        try PerformanceLog.measure(
+            "habit.restore.save",
+            metadata: "id=\(draft.id.uuidString) historyMode=\(historyMode)"
+        ) {
         try repositoryContext.performWrite({ context in
             guard let habit = try fetchHabit(id: draft.id, in: context) else { return false }
             guard habit.boolValue(forKey: "isArchived") else { return false }
@@ -738,6 +750,7 @@ struct CoreDataHabitRepository: HabitRepository {
             )
             return true
         }, missingResultError: HabitRepositoryError.internalFailure)
+        }
     }
 
     private func fetchHabit(id: UUID, in context: NSManagedObjectContext) throws -> NSManagedObject? {

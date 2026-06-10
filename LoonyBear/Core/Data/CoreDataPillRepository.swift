@@ -28,6 +28,7 @@ struct CoreDataPillRepository: PillRepository {
     }
 
     func fetchDashboardPills() throws -> [PillCardProjection] {
+        try PerformanceLog.measure("pill.dashboard.fetch") {
         let request = NSFetchRequest<NSManagedObject>(entityName: "Pill")
         request.sortDescriptors = [
             NSSortDescriptor(key: "sortOrder", ascending: true),
@@ -56,9 +57,11 @@ struct CoreDataPillRepository: PillRepository {
         }
 
         return projections.sorted(by: pillDashboardSort)
+        }
     }
 
     func fetchPillDetails(id: UUID) throws -> PillDetailsProjection? {
+        try PerformanceLog.measure("pill.details.fetch", metadata: "id=\(id.uuidString)") {
         guard let pillObject = try fetchPill(id: id, in: readContext) else { return nil }
 
         var report = IntegrityReportBuilder()
@@ -204,11 +207,13 @@ struct CoreDataPillRepository: PillRepository {
             isArchived: isArchived,
             archivedAt: pillObject.dateValue(forKey: "archivedAt")
         )
+        }
     }
 
     func reconcilePastDays(today: Date) throws -> Int { 0 }
 
     func createPill(from draft: PillDraft) throws -> UUID {
+        try PerformanceLog.measure("pill.create.save") {
         try repositoryContext.performWrite({ context in
             let totalPillsRequest = NSFetchRequest<NSFetchRequestResult>(entityName: "Pill")
             let totalPills = try context.count(for: totalPillsRequest)
@@ -315,9 +320,11 @@ struct CoreDataPillRepository: PillRepository {
             try context.save()
             return pillID
         }, missingResultError: PillRepositoryError.internalFailure)
+        }
     }
 
     func updatePill(from draft: EditPillDraft) throws {
+        try PerformanceLog.measure("pill.update.save", metadata: "id=\(draft.id.uuidString)") {
         try repositoryContext.performWrite { context in
             guard let pill = try fetchPill(id: draft.id, in: context) else { return }
             let wasArchived = pill.boolValue(forKey: "isArchived")
@@ -465,9 +472,14 @@ struct CoreDataPillRepository: PillRepository {
                 )
             }
         }
+        }
     }
 
     func restorePill(from draft: EditPillDraft, historyMode: RestoreHistoryMode) throws -> Bool {
+        try PerformanceLog.measure(
+            "pill.restore.save",
+            metadata: "id=\(draft.id.uuidString) historyMode=\(historyMode)"
+        ) {
         try repositoryContext.performWrite({ context in
             guard let pill = try fetchPill(id: draft.id, in: context) else { return false }
             guard pill.boolValue(forKey: "isArchived") else { return false }
@@ -611,6 +623,7 @@ struct CoreDataPillRepository: PillRepository {
             )
             return true
         }, missingResultError: PillRepositoryError.internalFailure)
+        }
     }
 
     func deletePill(id: UUID) throws -> Bool {

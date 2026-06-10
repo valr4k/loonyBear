@@ -4,16 +4,13 @@ import Foundation
 struct PillSideEffectCoordinator {
     let notificationService: PillNotificationService
     let clock: AppClock
-    let rescheduleAllReminderNotifications: (() -> Void)?
 
     init(
         notificationService: PillNotificationService,
-        clock: AppClock? = nil,
-        rescheduleAllReminderNotifications: (() -> Void)? = nil
+        clock: AppClock? = nil
     ) {
         self.notificationService = notificationService
         self.clock = clock ?? .live
-        self.rescheduleAllReminderNotifications = rescheduleAllReminderNotifications
     }
 
     func refreshDerivedState() {}
@@ -23,24 +20,17 @@ struct PillSideEffectCoordinator {
         notificationService.removeSnoozedNotifications(forPillID: pillID, on: logicalDay) {
             self.notificationService.removePendingNotification(forPillID: pillID, on: logicalDay)
             self.notificationService.removeDeliveredNotifications(forPillID: pillID, on: logicalDay)
-            if let rescheduleAllReminderNotifications = self.rescheduleAllReminderNotifications {
-                rescheduleAllReminderNotifications()
-            } else {
-                self.notificationService.rescheduleNotifications(forPillID: pillID)
-            }
+            self.notificationService.rescheduleNotifications(forPillID: pillID)
         }
     }
 
     func handleDeletion(forPillID pillID: UUID) {
         notificationService.removeNotifications(forPillID: pillID)
-        rescheduleAllReminderNotifications?()
     }
 
     func handleArchiveChange(forPillID pillID: UUID, isArchived: Bool) {
         if isArchived {
             notificationService.removeNotifications(forPillID: pillID)
-        } else if let rescheduleAllReminderNotifications {
-            rescheduleAllReminderNotifications()
         } else {
             notificationService.rescheduleNotifications(forPillID: pillID)
         }

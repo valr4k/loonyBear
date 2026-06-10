@@ -60,6 +60,56 @@ enum ReliabilityLog {
     }
 }
 
+enum PerformanceLog {
+    @discardableResult
+    static func measure<T>(
+        _ name: String,
+        metadata: @autoclosure () -> String = "",
+        operation: () throws -> T
+    ) rethrows -> T {
+        #if DEBUG
+        let start = ProcessInfo.processInfo.systemUptime
+        defer {
+            let elapsed = (ProcessInfo.processInfo.systemUptime - start) * 1_000
+            let formattedElapsed = String(format: "%.1f", elapsed)
+            let resolvedMetadata = metadata()
+            let suffix = resolvedMetadata.isEmpty ? "" : " \(resolvedMetadata)"
+            ReliabilityLog.info("perf.\(name) \(formattedElapsed)ms\(suffix)")
+        }
+        #endif
+
+        return try operation()
+    }
+
+    static func event(_ name: String, metadata: @autoclosure () -> String = "") {
+        #if DEBUG
+        let resolvedMetadata = metadata()
+        let suffix = resolvedMetadata.isEmpty ? "" : " \(resolvedMetadata)"
+        ReliabilityLog.info("perf.\(name)\(suffix)")
+        #endif
+    }
+
+    @discardableResult
+    static func measure<T>(
+        _ name: String,
+        metadata: @autoclosure () -> String = "",
+        operation: () async throws -> T
+    ) async rethrows -> T {
+        #if DEBUG
+        let start = ProcessInfo.processInfo.systemUptime
+        defer {
+            let elapsed = (ProcessInfo.processInfo.systemUptime - start) * 1_000
+            let formattedElapsed = String(format: "%.1f", elapsed)
+            let resolvedMetadata = metadata()
+            let suffix = resolvedMetadata.isEmpty ? "" : " \(resolvedMetadata)"
+            ReliabilityLog.info("perf.\(name) \(formattedElapsed)ms\(suffix)")
+        }
+        #endif
+
+        return try await operation()
+    }
+}
+
 struct IntegrityReportBuilder {
     private(set) var issues: [DataIntegrityIssue] = []
 

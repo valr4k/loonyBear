@@ -28,8 +28,7 @@ final class PillAppState: ObservableObject {
         repository: PillRepository,
         notificationService: PillNotificationService,
         badgeService: AppBadgeService,
-        clock: AppClock? = nil,
-        rescheduleAllReminderNotifications: (() -> Void)? = nil
+        clock: AppClock? = nil
     ) {
         let resolvedClock = clock ?? .live
         self.reconcileHistoryUseCase = reconcileHistoryUseCase
@@ -38,8 +37,7 @@ final class PillAppState: ObservableObject {
         self.clock = resolvedClock
         sideEffectCoordinator = PillSideEffectCoordinator(
             notificationService: notificationService,
-            clock: resolvedClock,
-            rescheduleAllReminderNotifications: rescheduleAllReminderNotifications
+            clock: resolvedClock
         )
     }
 
@@ -56,15 +54,22 @@ final class PillAppState: ObservableObject {
 
     private func refreshDashboard(animated: Bool) {
         do {
-            let nextDashboard = PillDashboardProjection(pills: try repository.fetchDashboardPills())
-            if animated {
-                withAnimation(.smooth(duration: 0.38, extraBounce: 0)) {
+            let pills = try repository.fetchDashboardPills()
+            let nextDashboard = PerformanceLog.measure("pill.dashboard.projection") {
+                PillDashboardProjection(pills: pills)
+            }
+            PerformanceLog.measure("pill.dashboard.publish", metadata: "animated=\(animated)") {
+                if animated {
+                    withAnimation(.smooth(duration: 0.38, extraBounce: 0)) {
+                        dashboard = nextDashboard
+                    }
+                } else {
                     dashboard = nextDashboard
                 }
-            } else {
-                dashboard = nextDashboard
             }
-            sideEffectCoordinator.refreshDerivedState()
+            PerformanceLog.measure("pill.dashboard.sideEffects") {
+                sideEffectCoordinator.refreshDerivedState()
+            }
             actionErrorMessage = nil
         } catch {
             actionErrorMessage = UserFacingErrorMessage.text(for: error)

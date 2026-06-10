@@ -36,8 +36,7 @@ final class HabitAppState: ObservableObject {
         notificationService: NotificationService,
         widgetSyncService: WidgetSyncService,
         badgeService: AppBadgeService,
-        clock: AppClock? = nil,
-        rescheduleAllReminderNotifications: (() -> Void)? = nil
+        clock: AppClock? = nil
     ) {
         let resolvedClock = clock ?? .live
         self.loadDashboardUseCase = loadDashboardUseCase
@@ -50,8 +49,7 @@ final class HabitAppState: ObservableObject {
         sideEffectCoordinator = HabitSideEffectCoordinator(
             notificationService: notificationService,
             widgetSyncService: widgetSyncService,
-            clock: resolvedClock,
-            rescheduleAllReminderNotifications: rescheduleAllReminderNotifications
+            clock: resolvedClock
         )
     }
 
@@ -254,14 +252,18 @@ final class HabitAppState: ObservableObject {
     private func refreshDashboard(animated: Bool) {
         do {
             let nextDashboard = try loadDashboardUseCase.execute()
-            if animated {
-                withAnimation(.smooth(duration: 0.38, extraBounce: 0)) {
+            PerformanceLog.measure("habit.dashboard.publish", metadata: "animated=\(animated)") {
+                if animated {
+                    withAnimation(.smooth(duration: 0.38, extraBounce: 0)) {
+                        dashboard = nextDashboard
+                    }
+                } else {
                     dashboard = nextDashboard
                 }
-            } else {
-                dashboard = nextDashboard
             }
-            sideEffectCoordinator.refreshDerivedState(with: dashboard)
+            PerformanceLog.measure("habit.dashboard.sideEffects") {
+                sideEffectCoordinator.refreshDerivedState(with: dashboard)
+            }
             actionErrorMessage = nil
         } catch {
             actionErrorMessage = UserFacingErrorMessage.text(for: error)

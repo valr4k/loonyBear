@@ -1337,8 +1337,13 @@ final class PillNotificationService {
     }
 
     private func addPendingNotificationRequests(_ requests: [UNNotificationRequest], logName: String) {
+        let start = ProcessInfo.processInfo.systemUptime
+        let finishWithLog: (String) -> Void = { message in
+            let elapsed = (ProcessInfo.processInfo.systemUptime - start) * 1_000
+            ReliabilityLog.info("\(message) in \(String(format: "%.1f", elapsed))ms")
+        }
         guard !requests.isEmpty else {
-            ReliabilityLog.info("\(logName) finished with 0 request(s)")
+            finishWithLog("\(logName) finished with 0 request(s)")
             return
         }
 
@@ -1349,7 +1354,7 @@ final class PillNotificationService {
                 }
             }
         }
-        ReliabilityLog.info("\(logName) finished with \(requests.count) request(s)")
+        finishWithLog("\(logName) finished with \(requests.count) request(s)")
     }
 }
 
