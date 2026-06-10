@@ -8,6 +8,68 @@ import Testing
 @Suite
 struct CoreDataPillRepositoryTests {
     @Test
+    func dateOnlyStorageKeepsLegacyDayAfterWestwardTimeZoneShift() throws {
+        var sourceCalendar = Calendar(identifier: .gregorian)
+        sourceCalendar.timeZone = try #require(TimeZone(identifier: "Europe/Bucharest"))
+        var displayCalendar = Calendar(identifier: .gregorian)
+        displayCalendar.timeZone = try #require(TimeZone(identifier: "Europe/Paris"))
+
+        let storedDate = try #require(sourceCalendar.date(from: DateComponents(
+            timeZone: sourceCalendar.timeZone,
+            year: 2026,
+            month: 5,
+            day: 10
+        )))
+        let normalizedDate = CoreDataDateOnlyStorage.normalizedDay(fromStoredDate: storedDate, calendar: displayCalendar)
+        let components = displayCalendar.dateComponents([.year, .month, .day], from: normalizedDate)
+
+        #expect(components.year == 2026)
+        #expect(components.month == 5)
+        #expect(components.day == 10)
+    }
+
+    @Test
+    func legacyPillIntakeSurvivesWestwardTimeZoneShift() throws {
+        var sourceCalendar = Calendar(identifier: .gregorian)
+        sourceCalendar.timeZone = try #require(TimeZone(identifier: "Europe/Bucharest"))
+        var displayCalendar = Calendar(identifier: .gregorian)
+        displayCalendar.timeZone = try #require(TimeZone(identifier: "Europe/Paris"))
+
+        let persistence = PersistenceController(inMemory: true)
+        let context = persistence.container.viewContext
+        let pillID = UUID()
+        let storedDate = try #require(sourceCalendar.date(from: DateComponents(
+            timeZone: sourceCalendar.timeZone,
+            year: 2026,
+            month: 5,
+            day: 10
+        )))
+        let displayedDay = try #require(displayCalendar.date(from: DateComponents(
+            timeZone: displayCalendar.timeZone,
+            year: 2026,
+            month: 5,
+            day: 10
+        )))
+
+        let intake = NSEntityDescription.insertNewObject(forEntityName: "PillIntake", into: context)
+        intake.setValue(UUID(), forKey: "id")
+        intake.setValue(pillID, forKey: "pillID")
+        intake.setValue(storedDate, forKey: "localDate")
+        intake.setValue(PillCompletionSource.manualEdit.rawValue, forKey: "sourceRaw")
+        intake.setValue(storedDate, forKey: "createdAt")
+        try context.save()
+
+        let state = try TestSupport.pillBucketState(
+            pillID: pillID,
+            localDate: displayedDay,
+            context: context,
+            calendar: displayCalendar
+        )
+
+        #expect(state == .positive)
+    }
+
+    @Test
     func dashboardIntervalPillShowsNextScheduledWeekdays() throws {
         let calendar = Calendar(identifier: .gregorian)
         let today = TestSupport.makeDate(2026, 5, 3, calendar: calendar)

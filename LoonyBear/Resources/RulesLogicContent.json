@@ -137,7 +137,7 @@
         },
         {
           "title": "Event cards",
-          "body": "Event cards show the name on the left and duration on the right. Duration uses the same compact style as streak text, such as 2yr 2mo 7d. Duration normally uses the app tint. Countdown events show 0d in red on and after the event date. Count Up events count the selected date as day 1."
+          "body": "Event cards show the name on the left and duration on the right. Duration uses the same compact style as streak text, such as 2yr 2mo 7d. Duration normally uses the app tint. Countdown events show 0d in red on and after the event date. Count Up events show elapsed local calendar time from the selected date to today, so the selected date itself is 0d and older dates use real calendar years, months, and days."
         },
         {
           "title": "Event Details and Delete",

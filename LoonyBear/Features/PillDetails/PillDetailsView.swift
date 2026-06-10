@@ -101,7 +101,7 @@ struct PillDetailsView: View {
                             archivedDays: details.archivedDays,
                             historySnapshot: details.historySnapshot,
                             scheduledDates: visibleScheduledDates(for: details),
-                            availableMonthRange: availableMonthRange(for: details.startDate),
+                            availableMonthRange: availableMonthRange(for: details),
                             onMonthChange: { displayedMonth = $0 }
                         )
                         .padding(.horizontal, 18)
@@ -302,13 +302,26 @@ struct PillDetailsView: View {
         isLoadingDetails = false
     }
 
-    private func availableMonthRange(for startDate: Date) -> ClosedRange<Date> {
+    private func availableMonthRange(for details: PillDetailsProjection) -> ClosedRange<Date> {
+        let startDate = calendarDisplayStartDate(for: details)
         let firstMonth = HistoryMonthWindow.monthStart(containing: startDate, calendar: Calendar.current)
         let lastMonth = HistoryMonthWindow.monthStart(
             containing: HistoryMonthWindow.detailsCalendarEndDate(startDate: startDate),
             calendar: Calendar.current
         )
         return firstMonth ... max(firstMonth, lastMonth)
+    }
+
+    private func calendarDisplayStartDate(for details: PillDetailsProjection) -> Date {
+        let calendar = Calendar.current
+        var candidates = [calendar.startOfDay(for: details.startDate)]
+        if let earliestStateDate = details.historySnapshot.earliestStateDate {
+            candidates.append(calendar.startOfDay(for: earliestStateDate))
+        }
+        if let earliestArchivedDay = details.archivedDays.min() {
+            candidates.append(calendar.startOfDay(for: earliestArchivedDay))
+        }
+        return candidates.min() ?? calendar.startOfDay(for: details.startDate)
     }
 
     private func visibleScheduledDates(for details: PillDetailsProjection) -> Set<Date> {

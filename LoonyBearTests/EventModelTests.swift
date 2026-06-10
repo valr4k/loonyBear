@@ -54,7 +54,7 @@ struct EventModelTests {
     }
 
     @Test
-    func countUpDurationStartsAtDayOne() {
+    func countUpDurationShowsElapsedCalendarTime() {
         let today = TestSupport.makeDate(2026, 5, 8, calendar: calendar)
         let todayEvent = EventCardProjection(
             id: UUID(),
@@ -70,8 +70,17 @@ struct EventModelTests {
             date: TestSupport.makeDate(2026, 5, 7, calendar: calendar),
             sortOrder: 1
         )
+        let birthdayEvent = EventCardProjection(
+            id: UUID(),
+            name: "Birthday",
+            mode: .countUp,
+            date: TestSupport.makeDate(1988, 7, 5, calendar: calendar),
+            sortOrder: 2
+        )
+        let birthdayNow = TestSupport.makeDate(2026, 6, 8, calendar: calendar)
 
-        #expect(EventDurationFormatter.text(for: todayEvent, now: today, calendar: calendar) == "1d")
-        #expect(EventDurationFormatter.text(for: yesterdayEvent, now: today, calendar: calendar) == "2d")
+        #expect(EventDurationFormatter.text(for: todayEvent, now: today, calendar: calendar) == "0d")
+        #expect(EventDurationFormatter.text(for: yesterdayEvent, now: today, calendar: calendar) == "1d")
+        #expect(EventDurationFormatter.text(for: birthdayEvent, now: birthdayNow, calendar: calendar) == "37yr 11mo 3d")
     }
 }

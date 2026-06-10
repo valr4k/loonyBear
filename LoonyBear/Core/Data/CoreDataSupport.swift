@@ -64,6 +64,23 @@ struct CoreDataRepositoryContext {
     }
 }
 
+enum CoreDataDateOnlyStorage {
+    static func normalizedDay(fromStoredDate storedDate: Date, calendar: Calendar = .autoupdatingCurrent) -> Date {
+        let startOfDay = calendar.startOfDay(for: storedDate)
+
+        // Legacy date-only Core Data rows were stored as local midnight Date values.
+        // After a westward time-zone change that same instant can appear as late
+        // evening on the previous calendar day. Treat those values as the intended
+        // next local day so old Completed/Taken/Skipped marks stay on the user day.
+        if calendar.component(.hour, from: storedDate) >= 12,
+           let nextDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) {
+            return calendar.startOfDay(for: nextDay)
+        }
+
+        return startOfDay
+    }
+}
+
 enum EditableHistoryWindow {
     static func dates(
         startDate: Date,
@@ -1770,6 +1787,14 @@ struct CoreDataHistoryBucketSnapshot: Equatable {
         positiveDate(searchForward: false)
     }
 
+    var earliestStateDate: Date? {
+        stateDate(searchForward: true)
+    }
+
+    var latestStateDate: Date? {
+        stateDate(searchForward: false)
+    }
+
     func positiveStreakSeed(calendar: Calendar = .autoupdatingCurrent) -> StreakEngine.Seed? {
         let positiveRanges = rangeRecords.compactMap { record -> (lastDate: Date, count: Int)? in
             guard let lastDate = record.lastDate(for: .positive, calendar: calendar), record.count > 0 else {
@@ -1819,6 +1844,38 @@ struct CoreDataHistoryBucketSnapshot: Equatable {
             searchForward ? $0.firstDate(for: .positive) : $0.lastDate(for: .positive)
         }
         let rangeCandidate = searchForward ? rangePositiveDays.min() : rangePositiveDays.max()
+
+        let candidates = [candidate, legacyCandidate, rangeCandidate].compactMap { $0 }
+        return searchForward ? candidates.min() : candidates.max()
+    }
+
+    private func stateDate(searchForward: Bool) -> Date? {
+        let sortedKeys = masksByYearMonth.keys.sorted()
+        let orderedKeys = searchForward ? sortedKeys : Array(sortedKeys.reversed())
+        var candidate: Date?
+
+        for key in orderedKeys {
+            guard let masks = masksByYearMonth[key] else { continue }
+            let mask = masks.positive | masks.skipped | masks.archived
+            guard mask != 0 else { continue }
+
+            let orderedDays: AnySequence<Int> = searchForward ? AnySequence(1...31) : AnySequence((1...31).reversed())
+            for day in orderedDays {
+                let bit = Int64(1) << Int64(day - 1)
+                guard mask & bit != 0 else { continue }
+                if let date = CoreDataHistoryBucketSupport.date(yearMonthKey: key, day: day) {
+                    candidate = date
+                    break
+                }
+            }
+            if candidate != nil { break }
+        }
+
+        let legacyCandidate = searchForward ? legacyStatesByDay.keys.min() : legacyStatesByDay.keys.max()
+        let rangeDates = rangeRecords.compactMap { record in
+            searchForward ? record.firstDate(for: record.state) : record.lastDate(for: record.state)
+        }
+        let rangeCandidate = searchForward ? rangeDates.min() : rangeDates.max()
 
         let candidates = [candidate, legacyCandidate, rangeCandidate].compactMap { $0 }
         return searchForward ? candidates.min() : candidates.max()
@@ -2430,11 +2487,7 @@ enum CoreDataHistoryRangeSupport {
     ) throws -> CoreDataHistoryBucketState? {
         let normalizedDate = calendar.startOfDay(for: localDate)
         let request = NSFetchRequest<NSManagedObject>(entityName: rangeEntityName)
-        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
-            NSPredicate(format: "%K == %@", ownerKey, ownerID as CVarArg),
-            NSPredicate(format: "startDate <= %@", normalizedDate as CVarArg),
-            NSPredicate(format: "endDate >= %@", normalizedDate as CVarArg),
-        ])
+        request.predicate = NSPredicate(format: "%K == %@", ownerKey, ownerID as CVarArg)
         request.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
 
         return try context.fetch(request)
@@ -2499,12 +2552,21 @@ enum CoreDataHistoryRangeSupport {
             let state = CoreDataHistoryBucketState(storageRaw: stateRaw),
             let scheduleKindRaw = row.stringValue(forKey: "scheduleKindRaw"),
             let anchorDate = row.dateValue(forKey: "anchorDate"),
-            let createdAt = row.dateValue(forKey: "createdAt"),
+            let createdAt = row.dateValue(forKey: "createdAt")
+        else {
+            return nil
+        }
+
+        let normalizedStart = CoreDataDateOnlyStorage.normalizedDay(fromStoredDate: startDate, calendar: calendar)
+        let normalizedEnd = CoreDataDateOnlyStorage.normalizedDay(fromStoredDate: endDate, calendar: calendar)
+        let normalizedAnchor = CoreDataDateOnlyStorage.normalizedDay(fromStoredDate: anchorDate, calendar: calendar)
+
+        guard
             let rule = ScheduleRule.make(
                 kindRaw: scheduleKindRaw,
                 weekdayMask: Int(row.int16Value(forKey: "weekdayMask")),
                 intervalDays: Int(row.int16Value(forKey: "intervalDays", default: Int16(ScheduleRule.defaultIntervalDays))),
-                effectiveFrom: anchorDate,
+                effectiveFrom: normalizedAnchor,
                 calendar: calendar
             )
         else {
@@ -2514,12 +2576,12 @@ enum CoreDataHistoryRangeSupport {
         return CoreDataHistoryRangeRecord(
             id: id,
             ownerID: row.uuidValue(forKey: ownerKey) ?? fallbackOwnerID,
-            startDate: calendar.startOfDay(for: startDate),
-            endDate: calendar.startOfDay(for: endDate),
+            startDate: normalizedStart,
+            endDate: normalizedEnd,
             state: state,
             useScheduleForHistory: row.boolValue(forKey: "useScheduleForHistory"),
             scheduleRule: rule,
-            anchorDate: calendar.startOfDay(for: anchorDate),
+            anchorDate: normalizedAnchor,
             count: Int(row.int32Value(forKey: "count")),
             createdAt: createdAt
         )
@@ -2545,14 +2607,14 @@ enum CoreDataHistoryRangeSupport {
         }
 
         return isValidPayload(
-            startDate: startDate,
-            endDate: endDate,
+            startDate: CoreDataDateOnlyStorage.normalizedDay(fromStoredDate: startDate, calendar: calendar),
+            endDate: CoreDataDateOnlyStorage.normalizedDay(fromStoredDate: endDate, calendar: calendar),
             stateRaw: stateRaw,
             useScheduleForHistory: row.boolValue(forKey: "useScheduleForHistory"),
             scheduleKindRaw: scheduleKindRaw,
             weekdayMask: Int(row.int16Value(forKey: "weekdayMask")),
             intervalDays: Int(row.int16Value(forKey: "intervalDays", default: Int16(ScheduleRule.defaultIntervalDays))),
-            anchorDate: anchorDate,
+            anchorDate: CoreDataDateOnlyStorage.normalizedDay(fromStoredDate: anchorDate, calendar: calendar),
             count: Int(row.int32Value(forKey: "count")),
             calendar: calendar
         )
@@ -2844,7 +2906,8 @@ enum CoreDataHistoryBucketSupport {
             ownerKey: ownerKey,
             legacyEntityName: legacyEntityName,
             legacySourceToState: legacySourceToState,
-            in: context
+            in: context,
+            calendar: calendar
         ) {
             return legacyState
         }
@@ -2902,7 +2965,8 @@ enum CoreDataHistoryBucketSupport {
             localDate: normalizedDate,
             ownerKey: ownerKey,
             legacyEntityName: legacyEntityName,
-            in: context
+            in: context,
+            calendar: calendar
         )
 
         let didTrimRanges: Bool
@@ -3053,7 +3117,8 @@ enum CoreDataHistoryBucketSupport {
             localDate: normalizedDate,
             ownerKey: ownerKey,
             legacyEntityName: legacyEntityName,
-            in: context
+            in: context,
+            calendar: calendar
         )
 
         let didTrimRanges: Bool
@@ -3110,7 +3175,7 @@ enum CoreDataHistoryBucketSupport {
             _ = try setState(
                 owner: owner,
                 ownerID: ownerID,
-                localDate: localDate,
+                localDate: CoreDataDateOnlyStorage.normalizedDay(fromStoredDate: localDate, calendar: calendar),
                 state: state,
                 bucketEntityName: bucketEntityName,
                 ownerKey: ownerKey,
@@ -3165,7 +3230,7 @@ enum CoreDataHistoryBucketSupport {
                 continue
             }
 
-            let normalizedDate = calendar.startOfDay(for: localDate)
+            let normalizedDate = CoreDataDateOnlyStorage.normalizedDay(fromStoredDate: localDate, calendar: calendar)
             guard bucketState(on: normalizedDate, masksByYearMonth: masksByYearMonth, calendar: calendar) == nil else {
                 continue
             }
@@ -3413,17 +3478,30 @@ enum CoreDataHistoryBucketSupport {
         ownerKey: String,
         legacyEntityName: String,
         legacySourceToState: (String) -> CoreDataHistoryBucketState?,
-        in context: NSManagedObjectContext
+        in context: NSManagedObjectContext,
+        calendar: Calendar
     ) throws -> CoreDataHistoryBucketState? {
+        let normalizedDate = calendar.startOfDay(for: localDate)
+        let bounds = legacyLookupBounds(for: normalizedDate, calendar: calendar)
         let request = NSFetchRequest<NSManagedObject>(entityName: legacyEntityName)
         request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
             NSPredicate(format: "\(ownerKey) == %@", ownerID as CVarArg),
-            NSPredicate(format: "localDate == %@", localDate as CVarArg),
+            NSPredicate(format: "localDate >= %@", bounds.lower as CVarArg),
+            NSPredicate(format: "localDate < %@", bounds.upper as CVarArg),
         ])
         request.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
-        return try context.fetch(request).compactMap { row in
-            row.stringValue(forKey: "sourceRaw").flatMap(legacySourceToState)
-        }.first
+        for row in try context.fetch(request) {
+            guard
+                let storedDate = row.dateValue(forKey: "localDate"),
+                CoreDataDateOnlyStorage.normalizedDay(fromStoredDate: storedDate, calendar: calendar) == normalizedDate
+            else {
+                continue
+            }
+            if let state = row.stringValue(forKey: "sourceRaw").flatMap(legacySourceToState) {
+                return state
+            }
+        }
+        return nil
     }
 
     @discardableResult
@@ -3432,15 +3510,21 @@ enum CoreDataHistoryBucketSupport {
         localDate: Date,
         ownerKey: String,
         legacyEntityName: String,
-        in context: NSManagedObjectContext
+        in context: NSManagedObjectContext,
+        calendar: Calendar
     ) throws -> Bool {
-        let rows = try CoreDataFetchSupport.fetchHistoryObjects(
-            entityName: legacyEntityName,
-            ownerKey: ownerKey,
-            ownerID: ownerID,
-            localDate: localDate,
-            in: context
-        )
+        let normalizedDate = calendar.startOfDay(for: localDate)
+        let bounds = legacyLookupBounds(for: normalizedDate, calendar: calendar)
+        let request = NSFetchRequest<NSManagedObject>(entityName: legacyEntityName)
+        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            NSPredicate(format: "\(ownerKey) == %@", ownerID as CVarArg),
+            NSPredicate(format: "localDate >= %@", bounds.lower as CVarArg),
+            NSPredicate(format: "localDate < %@", bounds.upper as CVarArg),
+        ])
+        let rows = try context.fetch(request).filter { row in
+            guard let storedDate = row.dateValue(forKey: "localDate") else { return false }
+            return CoreDataDateOnlyStorage.normalizedDay(fromStoredDate: storedDate, calendar: calendar) == normalizedDate
+        }
         rows.forEach(context.delete)
         return !rows.isEmpty
     }
@@ -3468,11 +3552,19 @@ enum CoreDataHistoryBucketSupport {
                 localDate: localDate,
                 ownerKey: ownerKey,
                 legacyEntityName: legacyEntityName,
-                in: context
+                in: context,
+                calendar: calendar
             ) || didDelete
         }
 
         return didDelete
+    }
+
+    private static func legacyLookupBounds(for normalizedDate: Date, calendar: Calendar) -> (lower: Date, upper: Date) {
+        let lower = calendar.date(byAdding: .day, value: -1, to: normalizedDate) ?? normalizedDate
+        let nextDay = calendar.date(byAdding: .day, value: 1, to: normalizedDate) ?? normalizedDate
+        let upper = calendar.date(byAdding: .day, value: 1, to: nextDay) ?? nextDay
+        return (lower, upper)
     }
 
     private static func clearBit(
@@ -3591,7 +3683,8 @@ enum CoreDataRelationshipLoadingSupport {
                 return nil
             }
 
-            return makeModel(id, localDate, source, createdAt)
+            let normalizedDate = CoreDataDateOnlyStorage.normalizedDay(fromStoredDate: localDate)
+            return makeModel(id, normalizedDate, source, createdAt)
         }
     }
 
@@ -3623,7 +3716,8 @@ enum CoreDataRelationshipLoadingSupport {
                 return nil
             }
 
-            models.append(makeModel(id, localDate, source, createdAt))
+            let normalizedDate = CoreDataDateOnlyStorage.normalizedDay(fromStoredDate: localDate)
+            models.append(makeModel(id, normalizedDate, source, createdAt))
         }
 
         return models

@@ -393,12 +393,24 @@ private struct HabitHeatmapView: View {
     }
 
     private var displayMonthRange: ClosedRange<Date> {
-        let firstMonth = HistoryMonthWindow.monthStart(containing: startDate, calendar: calendar)
+        let displayStartDate = calendarDisplayStartDate()
+        let firstMonth = HistoryMonthWindow.monthStart(containing: displayStartDate, calendar: calendar)
         let lastMonth = HistoryMonthWindow.monthStart(
-            containing: HistoryMonthWindow.detailsCalendarEndDate(startDate: startDate, today: Date(), calendar: calendar),
+            containing: HistoryMonthWindow.detailsCalendarEndDate(startDate: displayStartDate, today: Date(), calendar: calendar),
             calendar: calendar
         )
         return firstMonth ... max(firstMonth, lastMonth)
+    }
+
+    private func calendarDisplayStartDate() -> Date {
+        var candidates = [calendar.startOfDay(for: startDate)]
+        if let earliestStateDate = historySnapshot.earliestStateDate {
+            candidates.append(calendar.startOfDay(for: earliestStateDate))
+        }
+        if let earliestArchivedDay = archivedDays.min() {
+            candidates.append(calendar.startOfDay(for: earliestArchivedDay))
+        }
+        return candidates.min() ?? calendar.startOfDay(for: startDate)
     }
 
     private var visibleScheduledDates: Set<Date> {

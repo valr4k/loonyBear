@@ -194,7 +194,7 @@ This file describes the behavioral rules that are currently implemented in code.
 - Countdown events count full local calendar days from today to the event date.
 - Countdown date can be today or in the future when saving. Past dates are invalid.
 - When a Countdown event reaches or passes its date, it remains on screen and shows `0d` in red forever.
-- Count Up events count the selected date as day 1.
+- Count Up events show elapsed local calendar time from the selected date to today. The selected date itself displays `0d`; yesterday displays `1d`; older dates use real calendar years, months, and days rather than fixed 365/30-day math.
 - Count Up date can be today or in the past when saving. Future dates are invalid.
 - Count Up events continue counting indefinitely until the user deletes them.
 - Add new Event defaults:

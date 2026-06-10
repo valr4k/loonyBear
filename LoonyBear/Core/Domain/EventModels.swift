@@ -127,15 +127,17 @@ enum EventValidation {
 }
 
 enum EventDurationFormatter {
-    private static let daysPerMonth = 30
-    private static let daysPerYear = 365
-
     static func text(
         for event: EventCardProjection,
         now: Date = Date(),
         calendar: Calendar = .autoupdatingCurrent
     ) -> String {
-        compactText(forDays: dayCount(for: event, now: now, calendar: calendar))
+        switch event.mode {
+        case .countdown:
+            return "\(countdownDayCount(for: event, now: now, calendar: calendar))d"
+        case .countUp:
+            return countUpText(from: event.date, to: now, calendar: calendar)
+        }
     }
 
     static func isCountdownComplete(
@@ -149,7 +151,7 @@ enum EventDurationFormatter {
         return eventDate <= today
     }
 
-    private static func dayCount(
+    private static func countdownDayCount(
         for event: EventCardProjection,
         now: Date,
         calendar: Calendar
@@ -157,31 +159,30 @@ enum EventDurationFormatter {
         let today = calendar.startOfDay(for: now)
         let eventDate = calendar.startOfDay(for: event.date)
         let rawDays = calendar.dateComponents([.day], from: today, to: eventDate).day ?? 0
-
-        switch event.mode {
-        case .countdown:
-            return max(0, rawDays)
-        case .countUp:
-            return max(1, -rawDays + 1)
-        }
+        return max(0, rawDays)
     }
 
-    private static func compactText(forDays totalDays: Int) -> String {
-        guard totalDays > 0 else { return "0d" }
+    private static func countUpText(
+        from date: Date,
+        to now: Date,
+        calendar: Calendar
+    ) -> String {
+        let eventDate = calendar.startOfDay(for: date)
+        let today = calendar.startOfDay(for: now)
+        guard eventDate < today else { return "0d" }
 
-        var remainingDays = totalDays
-        let years = remainingDays / daysPerYear
-        remainingDays %= daysPerYear
-
-        let months = remainingDays / daysPerMonth
-        remainingDays %= daysPerMonth
+        let components = calendar.dateComponents([.year, .month, .day], from: eventDate, to: today)
+        let years = max(0, components.year ?? 0)
+        let months = max(0, components.month ?? 0)
+        let days = max(0, components.day ?? 0)
 
         if years > 0 {
-            return "\(years)yr \(months)mo \(remainingDays)d"
+            return "\(years)yr \(months)mo \(days)d"
         }
         if months > 0 {
-            return "\(months)mo \(remainingDays)d"
+            return "\(months)mo \(days)d"
         }
-        return "\(remainingDays)d"
+        return "\(days)d"
     }
+
 }

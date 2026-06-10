@@ -1079,8 +1079,8 @@ Rules:
 - Countdown default date is today.
 - Count Up default date is today.
 - Countdown duration uses calendar-day distance from today to event date and clamps at `0d`.
-- Count Up duration counts the event date as `1d`, so yesterday displays `2d`.
-- Duration text uses the shared compact day formatter logic in `EventDurationFormatter`: years are 365 days and months are 30 days, matching the simple compact app display convention.
+- Count Up duration is elapsed local calendar time from `eventDate` to today. The event date displays `0d`, yesterday displays `1d`, and older dates use `Calendar.dateComponents([.year, .month, .day], from: eventDateStartOfDay, to: todayStartOfDay)`.
+- Count Up intentionally does not use fixed `365`-day years or `30`-day months, because user-facing age-like durations must follow real calendar boundaries.
 
 ### 14.2 Persistence
 Defined in:
@@ -1143,6 +1143,7 @@ Behavior:
 - right side shows duration.
 - normal duration uses app tint.
 - Countdown duration becomes red when the Event date is today or in the past and displays `0d`.
+- Count Up duration uses real calendar components. For example, `5 Jul 1988` through `8 Jun 2026` displays `37yr 11mo 3d`.
 
 ### 14.5 Add and Details UI
 Defined in `LoonyBear/Features/MyEvents/EventEditorViews.swift`.

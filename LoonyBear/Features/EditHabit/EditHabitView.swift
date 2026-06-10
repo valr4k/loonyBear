@@ -440,7 +440,7 @@ struct EditHabitView: View {
     }
 
     private var availableMonthRange: ClosedRange<Date> {
-        let calendarStart = normalizedRestoreActiveFrom ?? activeCycleStartDate
+        let calendarStart = calendarDisplayStartDate(activeStartDate: normalizedRestoreActiveFrom ?? activeCycleStartDate)
         let firstMonth = HistoryMonthWindow.monthStart(containing: calendarStart, calendar: Calendar.current)
         let defaultEndDate = HistoryMonthWindow.detailsCalendarEndDate(startDate: calendarStart)
         let calendarEnd = max(defaultEndDate, draft.endDate ?? defaultEndDate)
@@ -449,6 +449,18 @@ struct EditHabitView: View {
             calendar: Calendar.current
         )
         return firstMonth ... max(firstMonth, lastMonth)
+    }
+
+    private func calendarDisplayStartDate(activeStartDate: Date) -> Date {
+        let calendar = Calendar.current
+        var candidates = [calendar.startOfDay(for: activeStartDate)]
+        if let earliestStateDate = historySnapshot.earliestStateDate {
+            candidates.append(calendar.startOfDay(for: earliestStateDate))
+        }
+        if let earliestArchivedDay = archivedDays.min() {
+            candidates.append(calendar.startOfDay(for: earliestArchivedDay))
+        }
+        return candidates.min() ?? calendar.startOfDay(for: activeStartDate)
     }
 
     private var displayedMonthRange: ClosedRange<Date> {
