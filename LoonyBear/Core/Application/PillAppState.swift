@@ -28,7 +28,8 @@ final class PillAppState: ObservableObject {
         repository: PillRepository,
         notificationService: PillNotificationService,
         badgeService: AppBadgeService,
-        clock: AppClock? = nil
+        clock: AppClock? = nil,
+        rescheduleAllReminderNotifications: (() -> Void)? = nil
     ) {
         let resolvedClock = clock ?? .live
         self.reconcileHistoryUseCase = reconcileHistoryUseCase
@@ -37,7 +38,8 @@ final class PillAppState: ObservableObject {
         self.clock = resolvedClock
         sideEffectCoordinator = PillSideEffectCoordinator(
             notificationService: notificationService,
-            clock: resolvedClock
+            clock: resolvedClock,
+            rescheduleAllReminderNotifications: rescheduleAllReminderNotifications
         )
     }
 

@@ -4,13 +4,16 @@ import Foundation
 struct PillSideEffectCoordinator {
     let notificationService: PillNotificationService
     let clock: AppClock
+    let rescheduleAllReminderNotifications: (() -> Void)?
 
     init(
         notificationService: PillNotificationService,
-        clock: AppClock? = nil
+        clock: AppClock? = nil,
+        rescheduleAllReminderNotifications: (() -> Void)? = nil
     ) {
         self.notificationService = notificationService
         self.clock = clock ?? .live
+        self.rescheduleAllReminderNotifications = rescheduleAllReminderNotifications
     }
 
     func refreshDerivedState() {}
@@ -20,31 +23,58 @@ struct PillSideEffectCoordinator {
         notificationService.removeSnoozedNotifications(forPillID: pillID, on: logicalDay) {
             self.notificationService.removePendingNotification(forPillID: pillID, on: logicalDay)
             self.notificationService.removeDeliveredNotifications(forPillID: pillID, on: logicalDay)
-            self.notificationService.rescheduleNotifications(forPillID: pillID)
+            self.rescheduleBadgeBearingNotifications {
+                self.notificationService.rescheduleNotifications(forPillID: pillID)
+            }
         }
     }
 
     func handleDeletion(forPillID pillID: UUID) {
-        notificationService.removeNotifications(forPillID: pillID)
+        removeBadgeBearingNotifications(forPillID: pillID)
     }
 
     func handleArchiveChange(forPillID pillID: UUID, isArchived: Bool) {
         if isArchived {
-            notificationService.removeNotifications(forPillID: pillID)
+            removeBadgeBearingNotifications(forPillID: pillID)
         } else {
-            notificationService.rescheduleNotifications(forPillID: pillID)
+            rescheduleBadgeBearingNotifications {
+                notificationService.rescheduleNotifications(forPillID: pillID)
+            }
         }
     }
 
     func prepareReminderNotifications(forPillID pillID: UUID) async {
-        await notificationService.prepareReminderNotifications(forPillID: pillID)
+        if await notificationService.ensureAuthorizationIfNeeded() {
+            rescheduleBadgeBearingNotifications {
+                notificationService.rescheduleNotifications(forPillID: pillID)
+            }
+        }
     }
 
     func syncNotificationsAfterUpdate(from draft: EditPillDraft) async {
         if draft.reminderEnabled {
-            await notificationService.prepareReminderNotifications(forPillID: draft.id)
+            await prepareReminderNotifications(forPillID: draft.id)
         } else {
-            notificationService.removeNotifications(forPillID: draft.id)
+            removeBadgeBearingNotifications(forPillID: draft.id)
+        }
+    }
+
+    private func rescheduleBadgeBearingNotifications(fallback: () -> Void) {
+        if let rescheduleAllReminderNotifications {
+            rescheduleAllReminderNotifications()
+        } else {
+            fallback()
+        }
+    }
+
+    private func removeBadgeBearingNotifications(forPillID pillID: UUID) {
+        guard let rescheduleAllReminderNotifications else {
+            notificationService.removeNotifications(forPillID: pillID)
+            return
+        }
+
+        notificationService.removeNotifications(forPillID: pillID) {
+            rescheduleAllReminderNotifications()
         }
     }
 }

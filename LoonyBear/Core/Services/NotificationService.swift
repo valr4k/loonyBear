@@ -143,9 +143,17 @@ final class NotificationService {
     }
 
     func removeNotifications(forHabitID habitID: UUID) {
+        removeNotifications(forHabitID: habitID) {
+            self.rescheduleAllNotifications()
+        }
+    }
+
+    func removeNotifications(forHabitID habitID: UUID, completion: @escaping () -> Void) {
         overdueAnchorStore.clearAnchorDay(for: .habit, id: habitID)
-        rescheduleAllNotifications()
-        removeDeliveredNotifications(forHabitID: habitID)
+        removePendingNotifications(forHabitID: habitID) {
+            self.removeDeliveredNotifications(forHabitID: habitID)
+            completion()
+        }
     }
 
     func removeDeliveredNotifications(forHabitID habitID: UUID) {

@@ -63,6 +63,11 @@ struct AppEnvironment {
             calendar: calendar,
             clock: clock
         )
+        let rescheduleAllReminderNotifications = {
+            notificationService.rescheduleAllNotifications {
+                pillNotificationService.rescheduleAllNotifications()
+            }
+        }
         let appState = HabitAppState(
             loadDashboardUseCase: loadDashboardUseCase,
             createHabitUseCase: CreateHabitUseCase(repository: repository),
@@ -72,14 +77,16 @@ struct AppEnvironment {
             notificationService: notificationService,
             widgetSyncService: widgetSyncService,
             badgeService: badgeService,
-            clock: clock
+            clock: clock,
+            rescheduleAllReminderNotifications: rescheduleAllReminderNotifications
         )
         let pillAppState = PillAppState(
             reconcileHistoryUseCase: ReconcilePillHistoryUseCase(repository: pillRepository, clock: clock),
             repository: pillRepository,
             notificationService: pillNotificationService,
             badgeService: badgeService,
-            clock: clock
+            clock: clock,
+            rescheduleAllReminderNotifications: rescheduleAllReminderNotifications
         )
         let eventAppState = EventAppState(repository: eventRepository)
         let notificationCoordinator = AppNotificationCoordinator(
@@ -153,6 +160,11 @@ struct AppEnvironment {
             calendar: calendar,
             clock: clock
         )
+        let rescheduleAllReminderNotifications = {
+            notificationService.rescheduleAllNotifications {
+                pillNotificationService.rescheduleAllNotifications()
+            }
+        }
         let appState = HabitAppState(
             loadDashboardUseCase: loadDashboardUseCase,
             createHabitUseCase: CreateHabitUseCase(repository: repository),
@@ -162,14 +174,16 @@ struct AppEnvironment {
             notificationService: notificationService,
             widgetSyncService: widgetSyncService,
             badgeService: badgeService,
-            clock: clock
+            clock: clock,
+            rescheduleAllReminderNotifications: rescheduleAllReminderNotifications
         )
         let pillAppState = PillAppState(
             reconcileHistoryUseCase: ReconcilePillHistoryUseCase(repository: pillRepository, clock: clock),
             repository: pillRepository,
             notificationService: pillNotificationService,
             badgeService: badgeService,
-            clock: clock
+            clock: clock,
+            rescheduleAllReminderNotifications: rescheduleAllReminderNotifications
         )
         let eventAppState = EventAppState(repository: eventRepository)
         let notificationCoordinator = AppNotificationCoordinator(

@@ -148,10 +148,16 @@ final class PillNotificationService {
     }
 
     func removeNotifications(forPillID pillID: UUID) {
+        removeNotifications(forPillID: pillID) {
+            self.rescheduleAllNotifications()
+        }
+    }
+
+    func removeNotifications(forPillID pillID: UUID, completion: @escaping () -> Void) {
         overdueAnchorStore.clearAnchorDay(for: .pill, id: pillID)
         removePendingNotifications(forPillID: pillID) {
             self.removeDeliveredNotifications(forPillID: pillID)
-            self.rescheduleAllNotifications()
+            completion()
         }
     }
 

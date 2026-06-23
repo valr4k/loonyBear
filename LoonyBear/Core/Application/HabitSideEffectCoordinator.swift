@@ -5,15 +5,18 @@ struct HabitSideEffectCoordinator {
     let notificationService: NotificationService
     let widgetSyncService: WidgetSyncService
     let clock: AppClock
+    let rescheduleAllReminderNotifications: (() -> Void)?
 
     init(
         notificationService: NotificationService,
         widgetSyncService: WidgetSyncService,
-        clock: AppClock? = nil
+        clock: AppClock? = nil,
+        rescheduleAllReminderNotifications: (() -> Void)? = nil
     ) {
         self.notificationService = notificationService
         self.widgetSyncService = widgetSyncService
         self.clock = clock ?? .live
+        self.rescheduleAllReminderNotifications = rescheduleAllReminderNotifications
     }
 
     func refreshDerivedState(with dashboard: DashboardProjection) {
@@ -24,32 +27,59 @@ struct HabitSideEffectCoordinator {
         let logicalDay = day ?? clock.now()
         notificationService.removePendingNotification(forHabitID: habitID, on: logicalDay)
         notificationService.removeDeliveredNotifications(forHabitID: habitID, on: logicalDay)
-        notificationService.rescheduleNotifications(forHabitID: habitID)
+        rescheduleBadgeBearingNotifications {
+            notificationService.rescheduleNotifications(forHabitID: habitID)
+        }
     }
 
     func handleDeletion(forHabitID habitID: UUID, dashboard: DashboardProjection) {
         widgetSyncService.syncSnapshot(from: dashboard)
-        notificationService.removeNotifications(forHabitID: habitID)
+        removeBadgeBearingNotifications(forHabitID: habitID)
     }
 
     func handleArchiveChange(forHabitID habitID: UUID, dashboard: DashboardProjection, isArchived: Bool) {
         widgetSyncService.syncSnapshot(from: dashboard)
         if isArchived {
-            notificationService.removeNotifications(forHabitID: habitID)
+            removeBadgeBearingNotifications(forHabitID: habitID)
         } else {
-            notificationService.rescheduleNotifications(forHabitID: habitID)
+            rescheduleBadgeBearingNotifications {
+                notificationService.rescheduleNotifications(forHabitID: habitID)
+            }
         }
     }
 
     func prepareReminderNotifications(forHabitID habitID: UUID) async {
-        await notificationService.prepareReminderNotifications(forHabitID: habitID)
+        if await notificationService.ensureAuthorizationIfNeeded() {
+            rescheduleBadgeBearingNotifications {
+                notificationService.rescheduleNotifications(forHabitID: habitID)
+            }
+        }
     }
 
     func syncNotificationsAfterUpdate(from draft: EditHabitDraft) async {
         if draft.reminderEnabled {
-            await notificationService.prepareReminderNotifications(forHabitID: draft.id)
+            await prepareReminderNotifications(forHabitID: draft.id)
         } else {
-            notificationService.removeNotifications(forHabitID: draft.id)
+            removeBadgeBearingNotifications(forHabitID: draft.id)
+        }
+    }
+
+    private func rescheduleBadgeBearingNotifications(fallback: () -> Void) {
+        if let rescheduleAllReminderNotifications {
+            rescheduleAllReminderNotifications()
+        } else {
+            fallback()
+        }
+    }
+
+    private func removeBadgeBearingNotifications(forHabitID habitID: UUID) {
+        guard let rescheduleAllReminderNotifications else {
+            notificationService.removeNotifications(forHabitID: habitID)
+            return
+        }
+
+        notificationService.removeNotifications(forHabitID: habitID) {
+            rescheduleAllReminderNotifications()
         }
     }
 }
