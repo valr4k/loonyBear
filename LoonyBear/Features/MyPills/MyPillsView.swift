@@ -35,7 +35,9 @@ struct MyPillsView: View {
             } else {
                 List {
                     ForEach(sections) { section in
-                        Section(section.title) {
+                        Section {
+                            AppListSectionHeader(title: section.title)
+
                             ForEach(Array(section.pills.enumerated()), id: \.element.id) { index, pill in
                                 PillCardView(
                                     pill: pill,
@@ -245,6 +247,7 @@ private struct ArchivedPillsView: View {
         }
         .navigationTitle("Archive")
         .navigationBarTitleDisplayMode(.inline)
+        .appNavigationTitleTint()
         .background(AppBackground(style: .pills))
         .appTintedBackButton()
     }

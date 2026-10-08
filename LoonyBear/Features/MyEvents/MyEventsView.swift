@@ -30,7 +30,9 @@ struct MyEventsView: View {
             } else {
                 List {
                     ForEach(sections) { section in
-                        Section(section.title) {
+                        Section {
+                            AppListSectionHeader(title: section.title)
+
                             ForEach(Array(section.events.enumerated()), id: \.element.id) { index, event in
                                 EventCardView(
                                     event: event,
@@ -122,7 +124,7 @@ private struct EventCardView: View {
     let event: EventCardProjection
     let position: PillRowPosition
     let currentTime: Date
-    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
+    @Environment(\.appTint) private var appTint
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -156,7 +158,7 @@ private struct EventCardView: View {
         if EventDurationFormatter.isCountdownComplete(event, now: currentTime) {
             return .red
         }
-        return Color(uiColor: AppTint.stored(rawValue: appTintRawValue).uiColor)
+        return appTint.accentColor
     }
 }
 

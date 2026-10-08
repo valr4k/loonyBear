@@ -39,6 +39,7 @@ struct BackupSettingsView: View {
         }
         .navigationTitle("Backup")
         .navigationBarTitleDisplayMode(.inline)
+        .appNavigationTitleTint()
         .onAppear {
             viewModel.load()
             if !presentViewModelBannerIfNeeded() {
@@ -247,7 +248,7 @@ private struct BackupInfoRow: View {
     var isTitleEmphasized = false
     let isTappable: Bool
     let action: (() -> Void)?
-    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
+    @Environment(\.appTint) private var appTint
 
     var body: some View {
         Group {
@@ -281,9 +282,6 @@ private struct BackupInfoRow: View {
         .contentShape(Rectangle())
     }
 
-    private var appTint: AppTint {
-        AppTint.stored(rawValue: appTintRawValue)
-    }
 }
 
 private struct BackupToggleInfoRow: View {
@@ -302,6 +300,7 @@ private struct BackupToggleInfoRow: View {
 
             Toggle(title, isOn: $isOn)
                 .labelsHidden()
+                .tint(Color(uiColor: .systemGreen))
         }
         .padding(.horizontal, AppLayout.rowHorizontalPadding)
         .padding(.vertical, AppLayout.rowVerticalPadding)

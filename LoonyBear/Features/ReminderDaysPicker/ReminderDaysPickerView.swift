@@ -42,6 +42,7 @@ struct ReminderDaysPickerView: View {
         }
         .navigationTitle("Days")
         .navigationBarTitleDisplayMode(.inline)
+        .appNavigationTitleTint()
         .onChange(of: draftSelection) { _, newValue in
             selection = newValue
         }

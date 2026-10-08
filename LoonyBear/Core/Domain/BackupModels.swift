@@ -92,6 +92,7 @@ struct BackupArchive: Codable {
 struct BackupAppSettings: Codable, Equatable {
     let appearanceMode: String
     let appTint: String
+    var appTintMode: String? = nil
 }
 
 struct BackupEvent: Codable {

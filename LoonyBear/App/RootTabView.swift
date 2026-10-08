@@ -24,6 +24,8 @@ struct RootTabView: View {
     @ObservedObject private var quickActionCenter = HomeQuickActionCenter.shared
     @SceneStorage("selected_tab") private var selectedTabRawValue = AppTab.myPills.rawValue
     @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
+    @AppStorage(AppTintMode.storageKey) private var appTintModeRawValue = AppTintMode.single.rawValue
+    @Environment(\.colorScheme) private var colorScheme
     @State private var presentedHabitSheet: HabitSheet?
     @State private var presentedPillSheet: PillSheet?
     @State private var presentedEventSheet: EventSheet?
@@ -55,12 +57,16 @@ struct RootTabView: View {
                 )
                 .environmentObject(pillAppState)
                 .navigationTitle("My Pills")
+                .navigationBarTitleDisplayMode(.inline)
+                .appNavigationTitleTint()
                 .sheet(item: $presentedPillSheet, onDismiss: handlePillSheetDismiss) { sheet in
                     NavigationStack {
                         pillSheetContent(for: sheet)
                     }
+                    .appTintScope(tint(for: .myPills))
                 }
             }
+                .appTintScope(tint(for: .myPills))
                 .tag(AppTab.myPills)
                 .tabItem {
                     Label("My Pills", systemImage: "pills")
@@ -82,12 +88,16 @@ struct RootTabView: View {
                 )
                 .environmentObject(appState)
                 .navigationTitle("My Habits")
+                .navigationBarTitleDisplayMode(.inline)
+                .appNavigationTitleTint()
                 .sheet(item: $presentedHabitSheet, onDismiss: handleHabitSheetDismiss) { sheet in
                     NavigationStack {
                         habitSheetContent(for: sheet)
                     }
+                    .appTintScope(tint(for: .myHabits))
                 }
             }
+                .appTintScope(tint(for: .myHabits))
                 .tag(AppTab.myHabits)
                 .tabItem {
                     Label("My Habits", systemImage: "checklist")
@@ -106,12 +116,16 @@ struct RootTabView: View {
                 )
                 .environmentObject(eventAppState)
                 .navigationTitle("Events")
+                .navigationBarTitleDisplayMode(.inline)
+                .appNavigationTitleTint()
                 .sheet(item: $presentedEventSheet, onDismiss: restoreTabBarVisualState) { sheet in
                     NavigationStack {
                         eventSheetContent(for: sheet)
                     }
+                    .appTintScope(tint(for: .events))
                 }
             }
+                .appTintScope(tint(for: .events))
                 .tag(AppTab.events)
                 .tabItem {
                     Label("Events", systemImage: "calendar.badge")
@@ -120,10 +134,18 @@ struct RootTabView: View {
             NavigationStack(path: $settingsPath) {
                 SettingsView()
             }
+                .appTintScope(tint(for: .settings))
                 .tag(AppTab.settings)
                 .tabItem {
                     Label("Settings", systemImage: "gearshape")
                 }
+        }
+        .tint(selectedTint.accentColor)
+        .onChange(of: selectedTint, initial: true) { _, _ in
+            restoreTabBarVisualState()
+        }
+        .onChange(of: colorScheme) { _, _ in
+            restoreTabBarVisualState()
         }
         .onReceive(NotificationCenter.default.publisher(for: .openMyHabitsTab)) { _ in
             presentedPillSheet = nil
@@ -185,10 +207,21 @@ struct RootTabView: View {
     }
 
     private func restoreTabBarVisualState() {
-        LoonyBearApp.refreshTabBarAppearance(for: AppTint.stored(rawValue: appTintRawValue))
+        LoonyBearApp.refreshTabBarAppearance(for: selectedTint)
         DispatchQueue.main.async {
-            LoonyBearApp.refreshTabBarAppearance(for: AppTint.stored(rawValue: appTintRawValue))
+            LoonyBearApp.refreshTabBarAppearance(for: selectedTint)
         }
+    }
+
+    private var selectedTint: AppTint {
+        tint(for: selectedTab.wrappedValue)
+    }
+
+    private func tint(for tab: AppTab) -> AppTint {
+        AppTintMode.stored(rawValue: appTintModeRawValue).tint(
+            for: tab,
+            singleTint: AppTint.stored(rawValue: appTintRawValue)
+        )
     }
 
     private func routeQuickActionIfNeeded(_ action: HomeQuickAction?) {

@@ -102,27 +102,27 @@ enum AppTint: String, CaseIterable, Identifiable {
 }
 
 private struct AppTintModifier: ViewModifier {
-    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
+    @Environment(\.appTint) private var appTint
 
     func body(content: Content) -> some View {
-        content.tint(AppTint.stored(rawValue: appTintRawValue).accentColor)
+        content.tint(appTint.accentColor)
     }
 }
 
 private struct AppAccentForegroundModifier: ViewModifier {
-    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
+    @Environment(\.appTint) private var appTint
 
     func body(content: Content) -> some View {
-        content.foregroundStyle(AppTint.stored(rawValue: appTintRawValue).accentColor)
+        content.foregroundStyle(appTint.accentColor)
     }
 }
 
 private struct AppToolbarActionTintModifier: ViewModifier {
     let isDisabled: Bool
-    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
+    @Environment(\.appTint) private var appTint
 
     func body(content: Content) -> some View {
-        content.tint(AppTint.stored(rawValue: appTintRawValue).accentColor)
+        content.tint(appTint.accentColor)
     }
 }
 
@@ -323,7 +323,7 @@ struct AppScreen<Content: View>: View {
 struct AppBackground: View {
     let style: AppBackgroundStyle
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
+    @Environment(\.appTint) private var appTint
 
     init(style: AppBackgroundStyle = .default) {
         self.style = style
@@ -347,9 +347,6 @@ struct AppBackground: View {
         0
     }
 
-    private var appTint: AppTint {
-        AppTint.stored(rawValue: appTintRawValue)
-    }
 }
 
 extension View {
@@ -872,6 +869,7 @@ struct AppReminderTimeRows: View {
 
                 Toggle("", isOn: $isEnabled)
                     .labelsHidden()
+                    .tint(Color(uiColor: .systemGreen))
                     .simultaneousGesture(TapGesture().onEnded {
                         dismissKeyboardForNonTextControl()
                     })
@@ -1192,7 +1190,7 @@ struct AppOptionalEndDatePickerRow: View {
                 if isSelected {
                     Image(systemName: "checkmark")
                         .font(.body.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .appAccentForeground()
                 }
             }
             .padding(.horizontal, 18)
@@ -1666,6 +1664,7 @@ struct AppCreateRepeatEditorScreen: View {
         }
         .navigationTitle("Repeat")
         .navigationBarTitleDisplayMode(.inline)
+        .appNavigationTitleTint()
         .appTintedBackButton()
     }
 
@@ -2089,8 +2088,9 @@ enum OverdueDayLabel {
 }
 
 enum FutureStartLabel {
-    static func text(for startDate: Date) -> String {
-        "Starts \(AppDateLabels.cardDate(startDate))"
+    static func text(for startDate: Date, stacked: Bool = false) -> String {
+        let separator = stacked ? "\n" : " "
+        return "Starts\(separator)\(AppDateLabels.cardDate(startDate))"
     }
 }
 
@@ -2109,6 +2109,25 @@ struct AppSectionDivider: View {
     var body: some View {
         Divider()
             .padding(.leading, inset)
+    }
+}
+
+// Keep list headings in the scrolling content instead of pinned section headers.
+struct AppListSectionHeader: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(.headline)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, AppLayout.rowHorizontalPadding)
+            .padding(.top, 24)
+            .padding(.bottom, 12)
+            .accessibilityAddTraits(.isHeader)
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
     }
 }
 
@@ -2209,7 +2228,7 @@ struct AppHelperText: View {
 struct AppListIcon: View {
     let symbol: String
     var tint: Color?
-    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
+    @Environment(\.appTint) private var appTint
 
     init(symbol: String, tint: Color? = nil) {
         self.symbol = symbol
@@ -2219,7 +2238,7 @@ struct AppListIcon: View {
     var body: some View {
         Image(systemName: symbol)
             .font(.system(size: AppLayout.listIconSize, weight: .regular))
-            .foregroundStyle(tint ?? AppTint.stored(rawValue: appTintRawValue).accentColor)
+            .foregroundStyle(tint ?? appTint.accentColor)
             .frame(width: AppLayout.listIconWidth)
     }
 }
@@ -2227,7 +2246,7 @@ struct AppListIcon: View {
 struct AppActionIcon: View {
     let symbol: String
     var tint: Color?
-    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
+    @Environment(\.appTint) private var appTint
 
     init(symbol: String, tint: Color? = nil) {
         self.symbol = symbol
@@ -2237,7 +2256,7 @@ struct AppActionIcon: View {
     var body: some View {
         Image(systemName: symbol)
             .font(.system(size: AppLayout.actionIconSize, weight: .semibold))
-            .foregroundStyle(tint ?? AppTint.stored(rawValue: appTintRawValue).accentColor)
+            .foregroundStyle(tint ?? appTint.accentColor)
             .frame(width: AppLayout.listIconWidth, height: AppLayout.listIconWidth)
     }
 }

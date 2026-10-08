@@ -26,6 +26,8 @@ enum PillRowPosition {
 }
 
 struct PillCardView: View {
+    @ScaledMetric(relativeTo: .caption) private var trailingColumnWidth: CGFloat = 88
+
     let pill: PillCardProjection
     let position: PillRowPosition
     let currentTime: Date
@@ -36,7 +38,9 @@ struct PillCardView: View {
                 Text(pill.name)
                     .font(.headline)
                     .lineLimit(2)
+                    .truncationMode(.tail)
                     .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Text(pill.dosage)
                     .font(.subheadline)
@@ -61,11 +65,16 @@ struct PillCardView: View {
                         Text(futureStartLabel)
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: true, vertical: false)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.trailing)
+                            .minimumScaleFactor(0.78)
+                            .allowsTightening(true)
+                            .fixedSize(horizontal: false, vertical: true)
                     } else if pill.reminderText != nil || activeOverdueLabel != nil {
                         VStack(alignment: .trailing, spacing: 2) {
                             if let reminderText = pill.reminderText {
                                 Text(reminderText)
+                                    .foregroundStyle(reminderStyle.color)
                             }
                             if let activeOverdueLabel {
                                 Text(activeOverdueLabel)
@@ -73,7 +82,11 @@ struct PillCardView: View {
                         }
                         .font(.caption)
                         .foregroundStyle(isReminderOverdue ? .red : .secondary)
-                        .fixedSize(horizontal: true, vertical: false)
+                        .lineLimit(1)
+                        .multilineTextAlignment(.trailing)
+                        .minimumScaleFactor(0.78)
+                        .allowsTightening(true)
+                        .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 .overlay(alignment: .trailing) {
@@ -97,7 +110,7 @@ struct PillCardView: View {
                             .accessibilityLabel("History needs review")
                     }
                 }
-            .frame(width: 44)
+            .frame(width: trailingColumnWidth)
             .frame(maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
@@ -107,6 +120,17 @@ struct PillCardView: View {
         .background(
             position.backgroundShape
                 .fill(Color(.secondarySystemGroupedBackground))
+        )
+    }
+
+    private var reminderStyle: CardReminderStyle {
+        CardReminderStyle(
+            isArchived: pill.isArchived,
+            startsInFuture: pill.startsInFuture,
+            isOverdue: isReminderOverdue,
+            needsHistoryReview: pill.needsHistoryReview,
+            isCompleted: pill.isTakenToday,
+            isSkipped: pill.isSkippedToday
         )
     }
 
@@ -121,7 +145,7 @@ struct PillCardView: View {
 
     private var futureStartLabel: String? {
         guard pill.startsInFuture, let futureStartDate = pill.futureStartDate else { return nil }
-        return FutureStartLabel.text(for: futureStartDate)
+        return FutureStartLabel.text(for: futureStartDate, stacked: true)
     }
 }
 
@@ -315,7 +339,7 @@ private struct PillCalendarDayView: View {
     let isEditable: Bool
     let isScheduled: Bool
     let cellSize: CGFloat
-    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
+    @Environment(\.appTint) private var appTint
 
     var body: some View {
         ZStack {
@@ -409,9 +433,6 @@ private struct PillCalendarDayView: View {
         Color(uiColor: .tertiaryLabel)
     }
 
-    private var appTint: AppTint {
-        AppTint.stored(rawValue: appTintRawValue)
-    }
 }
 
 private enum PillReadOnlyDayStyle {
@@ -426,7 +447,7 @@ private struct PillReadOnlyCalendarDayView: View {
     let style: PillReadOnlyDayStyle
     let isScheduled: Bool
     let cellSize: CGFloat
-    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
+    @Environment(\.appTint) private var appTint
 
     var body: some View {
         ZStack {
@@ -493,7 +514,4 @@ private struct PillReadOnlyCalendarDayView: View {
         Color(uiColor: .tertiaryLabel)
     }
 
-    private var appTint: AppTint {
-        AppTint.stored(rawValue: appTintRawValue)
-    }
 }

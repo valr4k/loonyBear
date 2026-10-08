@@ -34,6 +34,7 @@ struct CreateHabitView: View {
         }
         .navigationTitle("Add new Habit")
         .navigationBarTitleDisplayMode(.inline)
+        .appNavigationTitleTint()
         .scrollDismissesKeyboard(.immediately)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
@@ -62,9 +63,9 @@ struct CreateHabitView: View {
                 } label: {
                     AppToolbarIconLabel("Save", systemName: "checkmark")
                 }
-                .appToolbarActionTint(isDisabled: !isFormValid || isSaving)
+                .appToolbarActionTint(isDisabled: !isFormValid)
                 .fontWeight(.semibold)
-                .disabled(!isFormValid || isSaving)
+                .disabled(!isFormValid)
             }
         }
         .appSheetDismissGuard(isDisabled: hasUnsavedChanges, onAttempt: close)
@@ -278,6 +279,7 @@ struct CreateHabitView: View {
     }
 
     private func saveHabit() {
+        guard !isSaving else { return }
         guard isFormValid else {
             createLimitWarningMessage = nil
             if !draft.scheduleRule.isValidSelection {
@@ -299,7 +301,6 @@ struct CreateHabitView: View {
         Task {
             do {
                 let habitID = try await appState.createHabit(from: savedDraft)
-                isSaving = false
                 dismiss()
 
                 guard savedDraft.reminderEnabled else { return }

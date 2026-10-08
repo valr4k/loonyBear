@@ -8,6 +8,7 @@ struct LoonyBearApp: App {
     private let bootstrapState = AppEnvironment.live()
     @AppStorage(AppearanceMode.storageKey) private var appearanceModeRawValue = AppearanceMode.system.rawValue
     @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
+    @AppStorage(AppTintMode.storageKey) private var appTintModeRawValue = AppTintMode.single.rawValue
 
     init() {
         Self.configureTabBarAppearance(for: .blue)
@@ -32,16 +33,15 @@ struct LoonyBearApp: App {
                     PersistenceErrorView(error: error)
                 }
             }
+            .appTintScope(AppTint.stored(rawValue: appTintRawValue))
             .preferredColorScheme(preferredColorScheme)
-            .onAppear {
-                configureTabBarAppearance()
-            }
             .onChange(of: appTintRawValue) { _, _ in
-                configureTabBarAppearance()
                 AutoBackupService.shared.markDirty(reason: "settings-tint")
             }
+            .onChange(of: appTintModeRawValue) { _, _ in
+                AutoBackupService.shared.markDirty(reason: "settings-tint-mode")
+            }
             .onChange(of: appearanceModeRawValue) { _, _ in
-                configureTabBarAppearance()
                 AutoBackupService.shared.markDirty(reason: "settings-appearance")
             }
         }
@@ -56,14 +56,6 @@ struct LoonyBearApp: App {
         case .dark:
             return .dark
         }
-    }
-
-    private var appTint: AppTint {
-        AppTint.stored(rawValue: appTintRawValue)
-    }
-
-    private func configureTabBarAppearance() {
-        Self.configureTabBarAppearance(for: appTint)
     }
 
     static func refreshTabBarAppearance(for tint: AppTint) {

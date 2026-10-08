@@ -46,6 +46,7 @@ struct CreatePillView: View {
             }
             .navigationTitle("Add new Pill")
             .navigationBarTitleDisplayMode(.inline)
+            .appNavigationTitleTint()
             .scrollDismissesKeyboard(.immediately)
             .safeAreaInset(edge: .bottom) {
                 Color.clear
@@ -78,9 +79,9 @@ struct CreatePillView: View {
                     } label: {
                         AppToolbarIconLabel("Save", systemName: "checkmark")
                     }
-                    .appToolbarActionTint(isDisabled: !isFormValid || isSaving)
+                    .appToolbarActionTint(isDisabled: !isFormValid)
                     .fontWeight(.semibold)
-                    .disabled(!isFormValid || isSaving)
+                    .disabled(!isFormValid)
                 }
             }
             .appSheetDismissGuard(isDisabled: hasUnsavedChanges, onAttempt: close)
@@ -336,6 +337,7 @@ struct CreatePillView: View {
     }
 
     private func savePill() {
+        guard !isSaving else { return }
         guard isFormValid else {
             createLimitWarningMessage = nil
             if !draft.scheduleRule.isValidSelection {
@@ -357,7 +359,6 @@ struct CreatePillView: View {
         Task {
             do {
                 let pillID = try await pillAppState.createPill(from: savedDraft)
-                isSaving = false
                 dismiss()
 
                 guard savedDraft.reminderEnabled else { return }

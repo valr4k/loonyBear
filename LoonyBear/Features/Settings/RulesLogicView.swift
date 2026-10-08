@@ -39,6 +39,7 @@ struct RulesLogicView: View {
         }
         .navigationTitle(navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
+        .appNavigationTitleTint()
         .task {
             guard case .loading = loadState else { return }
             if let content = RulesLogicContentLoader.load() {

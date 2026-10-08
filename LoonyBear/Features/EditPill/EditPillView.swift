@@ -146,6 +146,7 @@ struct EditPillView: View {
             }
             .navigationTitle(isRestoreMode ? "Restore Pill" : "Pill Details")
             .navigationBarTitleDisplayMode(.inline)
+            .appNavigationTitleTint()
             .scrollDismissesKeyboard(.immediately)
             .safeAreaInset(edge: .bottom) {
                 Color.clear
@@ -792,10 +793,10 @@ struct EditPillView: View {
 
     private var isSaveDisabled: Bool {
         if isRestoreMode {
-            return isSaving
+            return false
         }
 
-        return !isFormValid || hasMissingPastDays || isSaving
+        return !isFormValid || hasMissingPastDays
     }
 
     private func beginRestore() {
@@ -826,6 +827,7 @@ struct EditPillView: View {
     }
 
     private func save() {
+        guard !isSaving else { return }
         guard !isRestoreMode else {
             prepareRestorePillConfirmation()
             return
@@ -860,7 +862,6 @@ struct EditPillView: View {
         Task {
             do {
                 try await pillAppState.updatePill(from: savedDraft)
-                isSaving = false
                 onSaveSuccess()
                 dismiss()
 
@@ -988,6 +989,7 @@ struct EditPillView: View {
     }
 
     private func restorePill(savedDraft: EditPillDraft, historyMode: RestoreHistoryMode) {
+        guard !isSaving else { return }
         isSaving = true
         validationMessage = nil
         historyValidationMessage = nil
@@ -995,7 +997,6 @@ struct EditPillView: View {
         Task {
             do {
                 try await pillAppState.restorePill(from: savedDraft, historyMode: historyMode)
-                isSaving = false
                 onSaveSuccess()
                 dismiss()
             } catch {

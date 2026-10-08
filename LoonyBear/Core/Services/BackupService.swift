@@ -1181,6 +1181,9 @@ final class BackupService {
             ).rawValue,
             appTint: AppTint.stored(
                 rawValue: defaults.string(forKey: AppTint.storageKey) ?? AppTint.blue.rawValue
+            ).rawValue,
+            appTintMode: AppTintMode.stored(
+                rawValue: defaults.string(forKey: AppTintMode.storageKey) ?? AppTintMode.single.rawValue
             ).rawValue
         )
     }
@@ -1189,6 +1192,10 @@ final class BackupService {
         guard let settings = archive.settings else { return }
         defaults.set(settings.appearanceMode, forKey: AppearanceMode.storageKey)
         defaults.set(AppTint.stored(rawValue: settings.appTint).rawValue, forKey: AppTint.storageKey)
+        defaults.set(
+            AppTintMode.stored(rawValue: settings.appTintMode ?? AppTintMode.single.rawValue).rawValue,
+            forKey: AppTintMode.storageKey
+        )
     }
 
     private func validateArchive(_ archive: BackupArchive) throws {
@@ -1278,6 +1285,15 @@ final class BackupService {
                     entityName: "BackupAppSettings",
                     objectIdentifier: "settings",
                     message: "Backup settings contain invalid app tint."
+                )
+            }
+
+            if let tintMode = settings.appTintMode, AppTintMode(rawValue: tintMode) == nil {
+                report.append(
+                    area: "backup.restore",
+                    entityName: "BackupAppSettings",
+                    objectIdentifier: "settings",
+                    message: "Backup settings contain invalid tint mode."
                 )
             }
         }

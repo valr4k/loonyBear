@@ -253,13 +253,14 @@ struct BackupServiceTests {
         ) == .weekly(.weekdays))
     }
 
-    @Test
-    func createBackupIncludesAppearanceModeAndTint() throws {
+    @Test(arguments: AppTintMode.allCases)
+    func createBackupIncludesAppearanceModeAndTint(_ tintMode: AppTintMode) throws {
         let persistence = PersistenceController(inMemory: true)
         let context = persistence.container.viewContext
         let defaults = try #require(UserDefaults(suiteName: "BackupServiceTests.\(UUID().uuidString)"))
         defaults.set(AppearanceMode.dark.rawValue, forKey: AppearanceMode.storageKey)
         defaults.set(AppTint.green.rawValue, forKey: AppTint.storageKey)
+        defaults.set(tintMode.rawValue, forKey: AppTintMode.storageKey)
         let compressionService = CompressionService()
         let service = BackupService(
             context: context,
@@ -277,7 +278,8 @@ struct BackupServiceTests {
         let archive = try readArchive(from: folderURL, compressionService: compressionService)
         #expect(archive.settings == BackupAppSettings(
             appearanceMode: AppearanceMode.dark.rawValue,
-            appTint: AppTint.green.rawValue
+            appTint: AppTint.green.rawValue,
+            appTintMode: tintMode.rawValue
         ))
     }
 
@@ -377,8 +379,8 @@ struct BackupServiceTests {
         #expect(status.fileState == .created)
     }
 
-    @Test
-    func restoreArchiveAppliesAppearanceModeAndTint() throws {
+    @Test(arguments: AppTintMode.allCases)
+    func restoreArchiveAppliesAppearanceModeAndTint(_ tintMode: AppTintMode) throws {
         let persistence = PersistenceController(inMemory: true)
         let context = persistence.container.viewContext
         let defaults = try #require(UserDefaults(suiteName: "BackupServiceTests.\(UUID().uuidString)"))
@@ -395,13 +397,15 @@ struct BackupServiceTests {
             makeValidArchive(
                 settings: BackupAppSettings(
                     appearanceMode: AppearanceMode.dark.rawValue,
-                    appTint: AppTint.green.rawValue
+                    appTint: AppTint.green.rawValue,
+                    appTintMode: tintMode.rawValue
                 )
             )
         )
 
         #expect(defaults.string(forKey: AppearanceMode.storageKey) == AppearanceMode.dark.rawValue)
         #expect(defaults.string(forKey: AppTint.storageKey) == AppTint.green.rawValue)
+        #expect(defaults.string(forKey: AppTintMode.storageKey) == tintMode.rawValue)
     }
 
     @Test
@@ -410,6 +414,7 @@ struct BackupServiceTests {
         let context = persistence.container.viewContext
         let defaults = try #require(UserDefaults(suiteName: "BackupServiceTests.\(UUID().uuidString)"))
         defaults.set(AppTint.amber.rawValue, forKey: AppTint.storageKey)
+        defaults.set(AppTintMode.bySection.rawValue, forKey: AppTintMode.storageKey)
         let service = BackupService(
             context: context,
             makeWorkContext: persistence.makeBackgroundContext,
@@ -427,6 +432,7 @@ struct BackupServiceTests {
         )
 
         #expect(defaults.string(forKey: AppTint.storageKey) == AppTint.blue.rawValue)
+        #expect(defaults.string(forKey: AppTintMode.storageKey) == AppTintMode.single.rawValue)
     }
 
     @Test
@@ -436,6 +442,7 @@ struct BackupServiceTests {
         let defaults = try #require(UserDefaults(suiteName: "BackupServiceTests.\(UUID().uuidString)"))
         defaults.set(AppearanceMode.dark.rawValue, forKey: AppearanceMode.storageKey)
         defaults.set(AppTint.amber.rawValue, forKey: AppTint.storageKey)
+        defaults.set(AppTintMode.bySection.rawValue, forKey: AppTintMode.storageKey)
         let service = BackupService(
             context: context,
             makeWorkContext: persistence.makeBackgroundContext,
@@ -447,6 +454,32 @@ struct BackupServiceTests {
 
         #expect(defaults.string(forKey: AppearanceMode.storageKey) == AppearanceMode.dark.rawValue)
         #expect(defaults.string(forKey: AppTint.storageKey) == AppTint.amber.rawValue)
+        #expect(defaults.string(forKey: AppTintMode.storageKey) == AppTintMode.bySection.rawValue)
+    }
+
+    @Test
+    func restoreRejectsUnknownTintModeBeforeChangingSettings() throws {
+        let persistence = PersistenceController(inMemory: true)
+        let defaults = try #require(UserDefaults(suiteName: "BackupServiceTests.\(UUID().uuidString)"))
+        defaults.set(AppTint.amber.rawValue, forKey: AppTint.storageKey)
+        defaults.set(AppTintMode.bySection.rawValue, forKey: AppTintMode.storageKey)
+        let service = BackupService(
+            context: persistence.container.viewContext,
+            makeWorkContext: persistence.makeBackgroundContext,
+            defaults: defaults,
+            compressionService: CompressionService()
+        )
+        let archive = makeValidArchive(settings: BackupAppSettings(
+            appearanceMode: AppearanceMode.dark.rawValue,
+            appTint: AppTint.green.rawValue,
+            appTintMode: "invalid-mode"
+        ))
+
+        #expect(throws: (any Error).self) {
+            try service.restoreArchive(archive)
+        }
+        #expect(defaults.string(forKey: AppTint.storageKey) == AppTint.amber.rawValue)
+        #expect(defaults.string(forKey: AppTintMode.storageKey) == AppTintMode.bySection.rawValue)
     }
 
     @Test

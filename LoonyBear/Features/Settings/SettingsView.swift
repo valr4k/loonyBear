@@ -8,6 +8,7 @@ enum SettingsRoute: String, Hashable {
 struct SettingsView: View {
     @AppStorage(AppearanceMode.storageKey) private var appearanceModeRawValue = AppearanceMode.system.rawValue
     @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
+    @AppStorage(AppTintMode.storageKey) private var appTintModeRawValue = AppTintMode.single.rawValue
     @EnvironmentObject private var appState: HabitAppState
     @EnvironmentObject private var pillAppState: PillAppState
     let onBackupRestoreComplete: () -> Void
@@ -39,7 +40,18 @@ struct SettingsView: View {
 
                     AppSectionDivider()
 
-                    tintRow
+                    Picker("Color mode", selection: $appTintModeRawValue) {
+                        ForEach(AppTintMode.allCases) { mode in
+                            Text(mode.title).tag(mode.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(12)
+
+                    if AppTintMode.stored(rawValue: appTintModeRawValue) == .single {
+                        AppSectionDivider()
+                        tintRow
+                    }
                 }
             }
 
@@ -86,6 +98,8 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.inline)
+        .appNavigationTitleTint()
         .navigationDestination(for: SettingsRoute.self) { route in
             switch route {
             case .backup:

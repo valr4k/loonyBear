@@ -33,6 +33,7 @@ struct CreateEventView: View {
         }
         .navigationTitle("Add new Event")
         .navigationBarTitleDisplayMode(.inline)
+        .appNavigationTitleTint()
         .scrollDismissesKeyboard(.immediately)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
@@ -61,9 +62,9 @@ struct CreateEventView: View {
                 } label: {
                     AppToolbarIconLabel("Save", systemName: "checkmark")
                 }
-                .appToolbarActionTint(isDisabled: !isFormValid || isSaving)
+                .appToolbarActionTint(isDisabled: !isFormValid)
                 .fontWeight(.semibold)
-                .disabled(!isFormValid || isSaving)
+                .disabled(!isFormValid)
             }
         }
         .appSheetDismissGuard(isDisabled: hasUnsavedChanges, onAttempt: close)
@@ -131,6 +132,7 @@ struct CreateEventView: View {
     }
 
     private func saveEvent() {
+        guard !isSaving else { return }
         guard isFormValid else {
             isValidationWarningDismissed = false
             return
@@ -141,7 +143,6 @@ struct CreateEventView: View {
             do {
                 _ = try await eventAppState.createEvent(from: draft)
                 await MainActor.run {
-                    isSaving = false
                     dismiss()
                 }
             } catch {
@@ -201,6 +202,7 @@ struct EditEventView: View {
         }
         .navigationTitle("Event Details")
         .navigationBarTitleDisplayMode(.inline)
+        .appNavigationTitleTint()
         .scrollDismissesKeyboard(.immediately)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
@@ -229,9 +231,9 @@ struct EditEventView: View {
                 } label: {
                     AppToolbarIconLabel("Save", systemName: "checkmark")
                 }
-                .appToolbarActionTint(isDisabled: !isFormValid || isSaving)
+                .appToolbarActionTint(isDisabled: !isFormValid)
                 .fontWeight(.semibold)
-                .disabled(!isFormValid || isSaving)
+                .disabled(!isFormValid)
             }
         }
         .appSheetDismissGuard(isDisabled: hasUnsavedChanges, onAttempt: close)
@@ -319,6 +321,7 @@ struct EditEventView: View {
     }
 
     private func saveEvent() {
+        guard !isSaving else { return }
         guard isFormValid else {
             isValidationWarningDismissed = false
             return
@@ -329,7 +332,6 @@ struct EditEventView: View {
             do {
                 try await eventAppState.updateEvent(from: draft)
                 await MainActor.run {
-                    isSaving = false
                     dismiss()
                 }
             } catch {
@@ -465,7 +467,7 @@ private struct EventModePickerRow: View {
                         if option == mode {
                             Image(systemName: "checkmark")
                                 .font(.body.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                                .appAccentForeground()
                         }
                     }
                     .padding(.horizontal, 18)

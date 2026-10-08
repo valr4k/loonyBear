@@ -145,6 +145,7 @@ struct PillDetailsView: View {
         }
         .navigationTitle("Pill Details")
         .navigationBarTitleDisplayMode(.inline)
+        .appNavigationTitleTint()
         .alert("Permanently delete this Pill?", isPresented: $isShowingDeleteConfirmation) {
             Button("Delete", role: .destructive) {
                 deletePill()

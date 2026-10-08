@@ -34,7 +34,9 @@ struct MyHabitsView: View {
             } else {
                 List {
                     ForEach(sections) { section in
-                        Section(section.title) {
+                        Section {
+                            AppListSectionHeader(title: section.title)
+
                             ForEach(Array(section.habits.enumerated()), id: \.element.id) { index, habit in
                                 HabitCardView(
                                     habit: habit,
@@ -237,6 +239,7 @@ private struct ArchivedHabitsView: View {
         }
         .navigationTitle("Archive")
         .navigationBarTitleDisplayMode(.inline)
+        .appNavigationTitleTint()
         .background(AppBackground(style: .habits))
         .appTintedBackButton()
     }
@@ -262,6 +265,8 @@ private struct ArchivedHabitsView: View {
 }
 
 private struct HabitCardView: View {
+    @ScaledMetric(relativeTo: .caption) private var trailingColumnWidth: CGFloat = 88
+
     let habit: HabitCardProjection
     let position: HabitRowPosition
     let currentTime: Date
@@ -272,7 +277,9 @@ private struct HabitCardView: View {
                 Text(habit.name)
                     .font(.headline)
                     .lineLimit(2)
+                    .truncationMode(.tail)
                     .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Text(habit.scheduleSummary)
                     .font(.footnote)
@@ -293,11 +300,16 @@ private struct HabitCardView: View {
                         Text(futureStartLabel)
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: true, vertical: false)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.trailing)
+                            .minimumScaleFactor(0.78)
+                            .allowsTightening(true)
+                            .fixedSize(horizontal: false, vertical: true)
                     } else if habit.reminderText != nil || activeOverdueLabel != nil {
                         VStack(alignment: .trailing, spacing: 2) {
                             if let reminderText = habit.reminderText {
                                 Text(reminderText)
+                                    .foregroundStyle(reminderStyle.color)
                             }
                             if let activeOverdueLabel {
                                 Text(activeOverdueLabel)
@@ -305,7 +317,11 @@ private struct HabitCardView: View {
                         }
                         .font(.caption)
                         .foregroundStyle(isReminderOverdue ? .red : .secondary)
-                        .fixedSize(horizontal: true, vertical: false)
+                        .lineLimit(1)
+                        .multilineTextAlignment(.trailing)
+                        .minimumScaleFactor(0.78)
+                        .allowsTightening(true)
+                        .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 .overlay(alignment: .trailing) {
@@ -329,7 +345,7 @@ private struct HabitCardView: View {
                             .accessibilityLabel("History needs review")
                     }
                 }
-            .frame(width: 40)
+            .frame(width: trailingColumnWidth)
             .frame(maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
@@ -339,6 +355,17 @@ private struct HabitCardView: View {
         .background(
             position.backgroundShape
                 .fill(Color(.secondarySystemGroupedBackground))
+        )
+    }
+
+    private var reminderStyle: CardReminderStyle {
+        CardReminderStyle(
+            isArchived: habit.isArchived,
+            startsInFuture: habit.startsInFuture,
+            isOverdue: isReminderOverdue,
+            needsHistoryReview: habit.needsHistoryReview,
+            isCompleted: habit.isCompletedToday,
+            isSkipped: habit.isSkippedToday
         )
     }
 
@@ -353,7 +380,7 @@ private struct HabitCardView: View {
 
     private var futureStartLabel: String? {
         guard habit.startsInFuture, let futureStartDate = habit.futureStartDate else { return nil }
-        return FutureStartLabel.text(for: futureStartDate)
+        return FutureStartLabel.text(for: futureStartDate, stacked: true)
     }
 }
 

@@ -131,6 +131,7 @@ struct EditHabitView: View {
         }
         .navigationTitle(isRestoreMode ? "Restore Habit" : "Habit Details")
         .navigationBarTitleDisplayMode(.inline)
+        .appNavigationTitleTint()
         .scrollDismissesKeyboard(.immediately)
         .toolbar {
             if showsCloseButton {
@@ -812,10 +813,10 @@ struct EditHabitView: View {
 
     private var isSaveDisabled: Bool {
         if isRestoreMode {
-            return isSaving
+            return false
         }
 
-        return !isFormValid || hasMissingPastDays || isSaving
+        return !isFormValid || hasMissingPastDays
     }
 
     private func beginRestore() {
@@ -845,6 +846,7 @@ struct EditHabitView: View {
     }
 
     private func save() {
+        guard !isSaving else { return }
         guard !isRestoreMode else {
             prepareRestoreHabitConfirmation()
             return
@@ -879,7 +881,6 @@ struct EditHabitView: View {
         Task {
             do {
                 try await appState.updateHabit(from: savedDraft)
-                isSaving = false
                 onSaveSuccess()
                 dismiss()
 
@@ -997,6 +998,7 @@ struct EditHabitView: View {
     }
 
     private func restoreHabit(savedDraft: EditHabitDraft, historyMode: RestoreHistoryMode) {
+        guard !isSaving else { return }
         isSaving = true
         validationMessage = nil
         historyValidationMessage = nil
@@ -1004,7 +1006,6 @@ struct EditHabitView: View {
         Task {
             do {
                 try await appState.restoreHabit(from: savedDraft, historyMode: historyMode)
-                isSaving = false
                 onSaveSuccess()
                 dismiss()
             } catch {
@@ -1247,7 +1248,7 @@ struct HabitCalendarDayView: View {
     let isEditable: Bool
     let isScheduled: Bool
     let cellSize: CGFloat
-    @AppStorage(AppTint.storageKey) private var appTintRawValue = AppTint.blue.rawValue
+    @Environment(\.appTint) private var appTint
 
     var body: some View {
         ZStack {
@@ -1341,7 +1342,4 @@ struct HabitCalendarDayView: View {
         Color(uiColor: .tertiaryLabel)
     }
 
-    private var appTint: AppTint {
-        AppTint.stored(rawValue: appTintRawValue)
-    }
 }
