@@ -239,7 +239,7 @@ private struct AppNotificationSettingsAlertModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .alert("Notifications are off", isPresented: $isPresented) {
+            .appAlert("Notifications are off", isPresented: $isPresented) {
                 Button("Open Settings") {
                     openAppSettings()
                 }

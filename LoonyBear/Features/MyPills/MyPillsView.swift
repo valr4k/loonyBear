@@ -147,7 +147,7 @@ struct MyPillsView: View {
                 .appAccentTint()
             }
         }
-        .alert("Action failed", isPresented: actionErrorAlertBinding) {
+        .appAlert("Action failed", isPresented: actionErrorAlertBinding) {
             Button("OK") {
                 pillAppState.clearActionError()
             }

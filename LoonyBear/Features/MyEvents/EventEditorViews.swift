@@ -43,7 +43,7 @@ struct CreateEventView: View {
                     AppToolbarIconLabel("Close", systemName: "xmark")
                 }
                 .appAccentTint()
-                .confirmationDialog(
+                .appConfirmationDialog(
                     AppCopy.discardChangesTitle,
                     isPresented: $isShowingDiscardConfirmation,
                     titleVisibility: .visible
@@ -212,7 +212,7 @@ struct EditEventView: View {
                     AppToolbarIconLabel("Close", systemName: "xmark")
                 }
                 .appAccentTint()
-                .confirmationDialog(
+                .appConfirmationDialog(
                     AppCopy.discardChangesTitle,
                     isPresented: $isShowingDiscardConfirmation,
                     titleVisibility: .visible
@@ -237,7 +237,7 @@ struct EditEventView: View {
             }
         }
         .appSheetDismissGuard(isDisabled: hasUnsavedChanges, onAttempt: close)
-        .alert("Delete this Event?", isPresented: $isShowingDeleteConfirmation) {
+        .appAlert("Delete this Event?", isPresented: $isShowingDeleteConfirmation) {
             Button("Cancel", role: .cancel) {}
             Button("Delete", role: .destructive) {
                 deleteEvent()

@@ -161,7 +161,7 @@ struct EditPillView: View {
                             AppToolbarIconLabel("Close", systemName: "xmark")
                         }
                         .appAccentTint()
-                        .confirmationDialog(
+                        .appConfirmationDialog(
                             AppCopy.discardChangesTitle,
                             isPresented: $isShowingDiscardConfirmation,
                             titleVisibility: .visible
@@ -185,7 +185,7 @@ struct EditPillView: View {
                         .appToolbarActionTint(isDisabled: isSaveDisabled)
                         .fontWeight(.semibold)
                         .disabled(isSaveDisabled)
-                        .confirmationDialog(
+                        .appConfirmationDialog(
                             "Restore Pill?",
                             isPresented: $isShowingRestoreConfirmation,
                             titleVisibility: .visible
@@ -433,7 +433,7 @@ struct EditPillView: View {
         .tint(.red)
         .frame(maxWidth: .infinity)
         .disabled(isSaving)
-        .alert("Permanently delete this Pill?", isPresented: $isShowingDeleteConfirmation) {
+        .appAlert("Permanently delete this Pill?", isPresented: $isShowingDeleteConfirmation) {
             Button("Delete", role: .destructive) {
                 deletePill()
             }
@@ -454,7 +454,7 @@ struct EditPillView: View {
         .buttonStyle(AppMaterialCapsuleActionButtonStyle())
         .frame(maxWidth: .infinity)
         .disabled(isSaving)
-        .alert(archiveConfirmationTitle, isPresented: $isShowingArchiveConfirmation) {
+        .appAlert(archiveConfirmationTitle, isPresented: $isShowingArchiveConfirmation) {
             Button("Archive") {
                 archivePill()
             }

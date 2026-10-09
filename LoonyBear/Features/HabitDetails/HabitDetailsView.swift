@@ -134,7 +134,7 @@ struct HabitDetailsView: View {
         .navigationTitle(details?.type.sectionTitle ?? "Habit")
         .navigationBarTitleDisplayMode(.inline)
         .appNavigationTitleTint()
-        .alert("Permanently delete this Habit?", isPresented: $isShowingDeleteConfirmation) {
+        .appAlert("Permanently delete this Habit?", isPresented: $isShowingDeleteConfirmation) {
             Button("Delete", role: .destructive) {
                 deleteHabit()
             }

@@ -44,7 +44,7 @@ struct CreateHabitView: View {
                     AppToolbarIconLabel("Close", systemName: "xmark")
                 }
                 .appAccentTint()
-                .confirmationDialog(
+                .appConfirmationDialog(
                     AppCopy.discardChangesTitle,
                     isPresented: $isShowingDiscardConfirmation,
                     titleVisibility: .visible

@@ -62,7 +62,7 @@ struct BackupSettingsView: View {
         .onDisappear {
             dismissVisibleBanner()
         }
-        .alert("Create backup?", isPresented: $isShowingCreateBackupConfirmation) {
+        .appAlert("Create backup?", isPresented: $isShowingCreateBackupConfirmation) {
             Button("Backup") {
                 Task {
                     await Task.yield()
@@ -74,7 +74,7 @@ struct BackupSettingsView: View {
         } message: {
             Text("A new backup file will be created in the selected folder.")
         }
-        .alert("Restore backup?", isPresented: $isShowingRestoreBackupConfirmation) {
+        .appAlert("Restore backup?", isPresented: $isShowingRestoreBackupConfirmation) {
             Button("Restore", role: .destructive) {
                 Task {
                     await Task.yield()

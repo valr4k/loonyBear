@@ -67,7 +67,7 @@ struct MyEventsView: View {
                 .appAccentTint()
             }
         }
-        .alert("Action failed", isPresented: actionErrorAlertBinding) {
+        .appAlert("Action failed", isPresented: actionErrorAlertBinding) {
             Button("OK") {
                 eventAppState.clearActionError()
             }

@@ -142,7 +142,7 @@ struct EditHabitView: View {
                         AppToolbarIconLabel("Close", systemName: "xmark")
                     }
                     .appAccentTint()
-                    .confirmationDialog(
+                    .appConfirmationDialog(
                         AppCopy.discardChangesTitle,
                         isPresented: $isShowingDiscardConfirmation,
                         titleVisibility: .visible
@@ -166,7 +166,7 @@ struct EditHabitView: View {
                     .appToolbarActionTint(isDisabled: isSaveDisabled)
                     .fontWeight(.semibold)
                     .disabled(isSaveDisabled)
-                    .confirmationDialog(
+                    .appConfirmationDialog(
                         "Restore Habit?",
                         isPresented: $isShowingRestoreConfirmation,
                         titleVisibility: .visible
@@ -385,7 +385,7 @@ struct EditHabitView: View {
         .tint(.red)
         .frame(maxWidth: .infinity)
         .disabled(isSaving)
-        .alert("Permanently delete this Habit?", isPresented: $isShowingDeleteConfirmation) {
+        .appAlert("Permanently delete this Habit?", isPresented: $isShowingDeleteConfirmation) {
             Button("Delete", role: .destructive) {
                 deleteHabit()
             }
@@ -406,7 +406,7 @@ struct EditHabitView: View {
         .buttonStyle(AppMaterialCapsuleActionButtonStyle())
         .frame(maxWidth: .infinity)
         .disabled(isSaving)
-        .alert(archiveConfirmationTitle, isPresented: $isShowingArchiveConfirmation) {
+        .appAlert(archiveConfirmationTitle, isPresented: $isShowingArchiveConfirmation) {
             Button("Archive") {
                 archiveHabit()
             }
