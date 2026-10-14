@@ -525,6 +525,7 @@ final class NotificationService {
     func makePendingNotificationRequests() throws -> [UNNotificationRequest] {
         let habits = try storeContext.performRead(fetchHabitReminderConfigurations)
         let pills = try storeContext.performRead(fetchPillReminderConfigurations)
+        let events = try storeContext.performRead { try EventBadgeNotificationSupport.fetchEvents(context: $0, calendar: calendar) }
         let candidates = ReminderPlanningSupport.habitCandidates(
             reminders: habits,
             now: clock.now(),
@@ -536,11 +537,18 @@ final class NotificationService {
             candidates: candidates,
             habits: habits,
             pills: pills,
+            events: events,
             aggregationThreshold: aggregationThreshold,
             calendar: calendar
         )
 
-        return deliveries.map(makeNotificationRequest(for:))
+        let requests = deliveries.map(makeNotificationRequest(for:))
+        let pillCandidates = ReminderPlanningSupport.pillCandidates(reminders: pills, now: clock.now(), schedulingWindowDays: schedulingWindowDays, calendar: calendar)
+        let pillRequestCount = ReminderPlanningSupport.pillDeliveries(candidates: pillCandidates, habits: habits, pills: pills, events: events, aggregationThreshold: aggregationThreshold, calendar: calendar).count
+        // Share the system queue with reminders; leave eight slots for snoozes.
+        let eventRequests = EventBadgeNotificationSupport.requests(events: events, habits: habits, pills: pills,
+            now: clock.now(), calendar: calendar, limit: max(0, 56 - requests.count - pillRequestCount))
+        return requests + eventRequests
     }
 
     private func recordPendingOverdueAnchors(from candidates: [HabitNotificationCandidate]) {
@@ -1068,7 +1076,11 @@ final class NotificationService {
     }
 
     private func removePendingHabitNotifications(completion: @escaping () -> Void) {
-        LocalNotificationSupport.removePendingNotifications(center: center, prefix: "habit_", completion: completion)
+        center.getPendingNotificationRequests { requests in
+            let ids = requests.filter { $0.identifier.hasPrefix("habit_") || $0.identifier.hasPrefix(EventBadgeNotificationSupport.identifierPrefix) }.map(\.identifier)
+            self.center.removePendingNotificationRequests(withIdentifiers: ids)
+            completion()
+        }
     }
 
     private func removePendingNotifications(forHabitID habitID: UUID, completion: @escaping () -> Void) {
@@ -1082,6 +1094,7 @@ final class NotificationService {
     private func makePendingNotificationRequests(forHabitID habitID: UUID) throws -> [UNNotificationRequest] {
         let habits = try storeContext.performRead(fetchHabitReminderConfigurations)
         let pills = try storeContext.performRead(fetchPillReminderConfigurations)
+        let events = try storeContext.performRead { try EventBadgeNotificationSupport.fetchEvents(context: $0, calendar: calendar) }
         guard let habit = habits.first(where: { $0.id == habitID }) else {
             return []
         }
@@ -1101,6 +1114,7 @@ final class NotificationService {
                     at: candidate.scheduledDateTime,
                     habits: habits,
                     pills: pills,
+                    events: events,
                     calendar: calendar
                 )
             )

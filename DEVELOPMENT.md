@@ -76,6 +76,15 @@ This rule is mandatory for local test runs and documentation examples.
 
 ## Testing Priorities
 
+Event badges and ordering:
+- EventBadgeTests covers local midnight, idempotent acknowledgment, saved-date resets, Count Up exclusion, time zones, DST trigger components, section-only ordering, silent notifications, legacy model migration, and backup round trips.
+- EventCardAppearanceTests also checks the shared timeline refresh across midnight: yesterday's completed Habit and taken Pill reset their dashboard state before the combined badge includes them and the newly due Countdown.
+- EventCardAppearanceTests compares normal/sorting card pixels and dimensions in light/dark appearances at narrow and regular widths.
+- Its native-list integration test hosts the real Events screen, moves a collection-view row through interactive movement, and verifies the resulting repository order while List edit mode stays inactive. This covers more than isolated card rendering.
+- Events uses onMove on each section's ForEach, gated by moveDisabled. Do not replace it with row-level onDrop: a visually correct drag modifier does not prove that the native List delivers drops.
+- Real-device QA: without entering an Edit mode, long-press and drop to the first/last row in the same section, scroll during drag, reject a cross-section drop, and cancel a drag. Confirm normal taps open Details and acknowledge due Events, while dragging does not. Verify an open Details sheet across midnight and foreground, plus app-icon updates while terminated with badge permission enabled/disabled.
+- Pending Event badge requests share the system queue with Habit/Pill reminders. The planner reserves eight slots for snoozes and prioritizes nearest distinct Event dates. Delivery is system-controlled, not a guaranteed background task.
+
 High-priority tests include:
 - repository state transitions
 - history normalization

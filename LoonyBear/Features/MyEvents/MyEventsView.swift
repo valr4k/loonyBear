@@ -2,6 +2,8 @@ import SwiftUI
 
 struct MyEventsView: View {
     @EnvironmentObject private var eventAppState: EventAppState
+    @State private var pendingOrder: [EventCardProjection]?
+    @State private var isSavingOrder = false
     let currentTime: Date
     let onCreateEvent: () -> Void
     let onEditEvent: (EventCardProjection) -> Void
@@ -24,7 +26,7 @@ struct MyEventsView: View {
             } else if events.isEmpty {
                 ContentUnavailableView(
                     "No Events Yet",
-                    systemImage: "calendar.badge",
+                    systemImage: "calendar",
                     description: Text("Create your first event to get started.")
                 )
             } else {
@@ -45,8 +47,20 @@ struct MyEventsView: View {
                                 .listRowSeparator(.hidden)
                                 .contentShape(Rectangle())
                                 .onTapGesture {
+                                    guard !isSavingOrder else { return }
                                     onEditEvent(event)
                                 }
+                                .modifier(EventReorderModifier(
+                                    enabled: !isSavingOrder,
+                                    event: event, events: section.events,
+                                    move: { ids in saveOrder(ids, mode: event.mode) }
+                                ))
+                            }
+                            .onMove { offsets, destination in
+                                guard !isSavingOrder else { return }
+                                var ids = section.events.map(\.id)
+                                ids.move(fromOffsets: offsets, toOffset: destination)
+                                saveOrder(ids, mode: section.events[0].mode)
                             }
                         }
                     }
@@ -54,6 +68,7 @@ struct MyEventsView: View {
                 .listStyle(.plain)
                 .contentMargins(.horizontal, 10, for: .scrollContent)
                 .scrollContentBackground(.hidden)
+                .environment(\.editMode, .constant(.inactive))
             }
         }
         .background(AppBackground())
@@ -65,6 +80,7 @@ struct MyEventsView: View {
                     AppToolbarIconLabel("Create Event", systemName: "plus")
                 }
                 .appAccentTint()
+                .disabled(isSavingOrder)
             }
         }
         .appAlert("Action failed", isPresented: actionErrorAlertBinding) {
@@ -77,7 +93,21 @@ struct MyEventsView: View {
     }
 
     private var events: [EventCardProjection] {
-        eventAppState.dashboard.events
+        pendingOrder ?? eventAppState.dashboard.events
+    }
+
+    private func saveOrder(_ ids: [UUID], mode: EventMode) {
+        guard !isSavingOrder else { return }
+        guard ids != events.filter({ $0.mode == mode }).map(\.id) else { return }
+        let byID = Dictionary(uniqueKeysWithValues: events.map { ($0.id, $0) })
+        var reordered = ids.compactMap { byID[$0] }.makeIterator()
+        pendingOrder = events.map { $0.mode == mode ? (reordered.next() ?? $0) : $0 }
+        isSavingOrder = true
+        Task {
+            await eventAppState.reorderEvents(ids: ids, mode: mode)
+            pendingOrder = nil
+            isSavingOrder = false
+        }
     }
 
     private var sections: [EventDashboardSectionProjection] {
@@ -120,7 +150,33 @@ struct MyEventsView: View {
     }
 }
 
-private struct EventCardView: View {
+struct EventReorderModifier: ViewModifier {
+    let enabled: Bool
+    let event: EventCardProjection
+    let events: [EventCardProjection]
+    let move: ([UUID]) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .moveDisabled(!enabled)
+            .accessibilityActions {
+                if enabled {
+                    Button("Move up") { moveBy(-1) }
+                    Button("Move down") { moveBy(1) }
+                }
+            }
+    }
+
+    private func moveBy(_ offset: Int) {
+        guard let source = events.firstIndex(where: { $0.id == event.id }),
+              events.indices.contains(source + offset) else { return }
+        var ids = events.map(\.id)
+        ids.swapAt(source, source + offset)
+        move(ids)
+    }
+}
+
+struct EventCardView: View {
     let event: EventCardProjection
     let position: PillRowPosition
     let currentTime: Date
@@ -154,9 +210,9 @@ private struct EventCardView: View {
         EventDurationFormatter.text(for: event, now: currentTime)
     }
 
-    private var durationColor: Color {
+    var durationColor: Color {
         if EventDurationFormatter.isCountdownComplete(event, now: currentTime) {
-            return .red
+            return event.acknowledgedAt == nil ? .red : .secondary
         }
         return appTint.accentColor
     }

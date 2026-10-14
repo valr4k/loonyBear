@@ -33,6 +33,12 @@ final class AppNotificationCoordinator: NSObject, UNUserNotificationCenterDelega
         _ = await habitNotificationService.ensureAuthorizationIfNeeded()
     }
 
+    @MainActor
+    func refreshScheduledBadges() async {
+        await rescheduleAllReminderNotifications()
+        badgeService.refreshBadge(forceApply: true)
+    }
+
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
@@ -94,7 +100,15 @@ final class AppNotificationCoordinator: NSObject, UNUserNotificationCenterDelega
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        completionHandler([.banner, .sound, .list, .badge])
+        if notification.request.content.userInfo["type"] as? String == "event.badge" {
+            Task { @MainActor in
+                NotificationCenter.default.post(name: .eventBadgeBecameDue, object: nil)
+                self.badgeService.refreshBadge(forceApply: true)
+                completionHandler([])
+            }
+        } else {
+            completionHandler([.banner, .sound, .list, .badge])
+        }
     }
 
     private func registerCategories() {

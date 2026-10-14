@@ -178,7 +178,7 @@ This file describes the behavioral rules that are currently implemented in code.
 ## Events
 
 - Events live on a separate `Events` tab between `My Habits` and `Settings`.
-- Events are not Habits or Pills and do not participate in reminders, notifications, overdue state, badge count, history review, Archive, Restore, widgets, or streak calculation.
+- Events are not Habits or Pills and do not participate in reminders, Habit/Pill overdue state, history review, Archive, Restore, widgets, or streak calculation. Countdown badge-only notifications have no alert or sound.
 - Event name fields use the shared `Name` placeholder and word-capitalization input behavior.
 - The Events dashboard has one global empty state when no Events exist:
   - `No Events Yet`
@@ -193,7 +193,7 @@ This file describes the behavioral rules that are currently implemented in code.
 - Event duration normally uses the selected app tint.
 - Countdown events count full local calendar days from today to the event date.
 - Countdown date can be today or in the future when saving. Past dates are invalid.
-- When a Countdown event reaches or passes its date, it remains on screen and shows `0d` in red forever.
+- When a Countdown event reaches or passes its date, it remains on screen and shows `0d`: red until acknowledged by opening its Details, then system secondary gray.
 - Count Up events show elapsed local calendar time from the selected date to today. The selected date itself displays `0d`; yesterday displays `1d`; older dates use real calendar years, months, and days rather than fixed 365/30-day math.
 - Count Up date can be today or in the past when saving. Future dates are invalid.
 - Count Up events continue counting indefinitely until the user deletes them.
@@ -210,6 +210,20 @@ This file describes the behavioral rules that are currently implemented in code.
 - Event Details is editable and has the same fields as Add new Event: name, mode, and date.
 - Event Delete is permanent and uses the confirmation `Delete this Event?` / `This Event will be permanently deleted.`
 - Events are never automatically deleted.
+
+### Event Acknowledgment and Ordering
+
+- At local midnight on its selected date, an unacknowledged Countdown contributes one to the Events tab badge and the combined app icon badge. Past dates stay counted until acknowledged. Count Up never contributes.
+- Opening Event Details after the date becomes due acknowledges the saved Event immediately; Save is not required. Opening only the Events tab does not acknowledge anything. Details visible at midnight or on foreground acknowledges the due Event.
+- Acknowledgment changes `0d` from red to system secondary gray alongside removing the badge; it does not delete the Event. A saved date change resets acknowledgment and the duration color follows the new date's state.
+- Saving a different date resets acknowledgment. Name edits, canceled edits, and time-zone changes do not. Switching mode clears acknowledgment; Count Up removes the badge contribution.
+- A newly created Event dated today, or an Event whose saved date changes to today, remains unacknowledged until Details is opened again.
+- Calendar dates remain fixed when changing time zones. Midnight follows the current local zone. Legacy dates use the existing date-only normalization before their civil date is persisted.
+- Event acknowledgment and order survive relaunch and backup/restore. Legacy backups without acknowledgment restore Events as unacknowledged.
+- Whole-card drag ordering is always available on Events, only within Countdown or within Count Up. There is no Edit/Done mode. Section order and Event mode cannot change through dragging. A normal tap opens Details; dragging does not acknowledge the Event. Card taps, adding, and further moves are briefly blocked while a drop's order is being saved.
+- Each completed drop saves its order immediately; canceled drags do not reorder. New Events and Events switched to another mode append to their destination section. VoiceOver exposes Move up/Move down whenever reordering is available.
+- Sorting preserves card geometry, type, colors, and backgrounds. Pills/Habits ordering is unchanged.
+- Background icon delivery needs the system badge permission and is best effort. Pending requests share iOS's finite notification queue; nearest Event dates are prioritized and refilled on rescheduling. The in-app badge always derives from saved Events.
 
 ## Schedule Rules
 
@@ -320,7 +334,7 @@ This file describes the behavioral rules that are currently implemented in code.
 
 ## Badge Rules
 
-- Badge count equals overdue Habits plus overdue Pills.
+- Badge count equals overdue Habits plus overdue Pills plus due, unacknowledged Countdown Events.
 - An item is overdue when the latest due scheduled day has no positive or skipped state.
 - Overdue labels are `Today`, `Yesterday`, or a date like `03 May 2026`.
 - Badge calculation is derived state only. Reconciliation does not persist skipped states for overdue catch-up.

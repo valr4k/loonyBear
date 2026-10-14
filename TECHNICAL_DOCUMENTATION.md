@@ -663,6 +663,7 @@ Defined in `LoonyBear/Core/Services/AppBadgeService.swift`.
 Badge count is:
 - overdue Habit count
 - plus overdue Pill count
+- plus due, unacknowledged Countdown Event count (Count Up is excluded)
 
 ### 9.2 Overdue Habit Rule
 A Habit is overdue when:
@@ -691,7 +692,7 @@ The active overdue label shown on cards is `Today`, `Yesterday`, or a date like 
 ### 9.4 Badge API
 - on iOS 17+: `UNUserNotificationCenter.setBadgeCount`
 - on older systems: `UIApplication.shared.applicationIconBadgeNumber`
-- `refreshBadge(habitDashboard:pillDashboard:now:forceApply:)` computes from already-loaded dashboard projections
+- `refreshBadge(habitDashboard:pillDashboard:now:forceApply:)` combines loaded Habit/Pill projections with fresh Event repository projections
 - the service caches the last badge count and skips redundant badge writes unless `forceApply` is true
 
 ## 10. Backup and Restore
@@ -1107,7 +1108,7 @@ Persistence rules:
 - dashboard fetches sort by `sortOrder`, then `createdAt`.
 - create assigns the next `sortOrder` after existing Events.
 - delete is a hard delete.
-- Events do not have schedule versions, history state, reminder rows, badge state, Archive state, or Restore state.
+- Events do not have schedule versions, history state, reminder rows, Archive state, or Restore state. Optional acknowledgedAt persists the acknowledgment; dateKey stores the stable Gregorian civil date independently of the old eventDate instant.
 
 ### 14.3 App State
 Defined in `LoonyBear/Core/Application/EventAppState.swift`.
@@ -1119,6 +1120,9 @@ Responsibilities:
 - create Event from `EventDraft`.
 - update Event from `EditEventDraft`.
 - permanently delete Event.
+- acknowledge due Events on Details presentation, without saving the editor draft.
+- atomically save independent per-mode ordering; malformed/cross-section ID sets fail before writes.
+- successful badge-affecting mutations refresh the combined icon badge and reschedule both notification services. Reordering only refreshes the dashboard and marks backup dirty.
 - surface unexpected action errors through `actionErrorMessage`.
 
 Store-change notification:
@@ -1130,9 +1134,11 @@ Defined in `LoonyBear/Features/MyEvents/MyEventsView.swift`.
 
 Behavior:
 - tab title is `Events`.
-- tab item icon is `calendar.badge`.
+- tab item icon is `calendar`.
 - the tab is positioned between `My Habits` and `Settings`.
 - the toolbar has a `+` button that opens `Add new Event`.
+- whole-card drag/drop is always available inside the current section without Edit/Done or native List edit controls. Normal taps open Details; dragging does not acknowledge an Event. A completed drop saves immediately; canceled drags leave order unchanged. Further moves, card taps, and Plus are briefly disabled only while saving the order. Accessibility Move up/Move down actions are available.
+- Reordering uses native List onMove on the section's ForEach; moveDisabled gates the gesture while editMode remains inactive to preserve row geometry. An optimistic local order updates synchronously with the native move, then repository completion clears it. Failed saves return to persisted order and show the existing action error.
 - if there are no Events, the screen shows one empty state:
   - `No Events Yet`
   - `Create your first event to get started.`
@@ -1142,7 +1148,7 @@ Behavior:
 - left side shows the Event name.
 - right side shows duration.
 - normal duration uses app tint.
-- Countdown duration becomes red when the Event date is today or in the past and displays `0d`.
+- Countdown duration displays `0d` when the Event date is today or in the past: red while `acknowledgedAt` is nil, system secondary gray after acknowledgment. Future Countdown and Count Up durations retain the app tint.
 - Count Up duration uses real calendar components. For example, `5 Jul 1988` through `8 Jun 2026` displays `37yr 11mo 3d`.
 
 ### 14.5 Add and Details UI
@@ -1211,7 +1217,20 @@ Restore behavior:
 - restore validates duplicate Event identifiers.
 - restore validates Event mode values.
 - restore recreates Event rows before refreshing `EventAppState`.
-- Events do not affect Habit/Pill restore validation, notifications, badge count, or widget snapshots.
+- BackupEvent also carries optional dateKey and acknowledgedAt. Missing legacy values are supported; restore validates dateKey before replacing data. sortOrder preserves each section's order.
+- Events do not change Habit/Pill restore validation or widgets. Restored Events do affect the combined badge and projected notification badge totals.
+
+### 14.8 Countdown Badge Scheduling
+
+- EventBadgeSupport counts Countdown records with acknowledgedAt == nil and local event date <= today.
+- EventEditSheetLoader acknowledges only successfully loaded Details. It checks again on local day change, foreground, significant time change, and foreground badge delivery. Closing without Save does not undo acknowledgment.
+- Saving a changed civil date or mode clears acknowledgment. Name-only edits preserve it. Newly created same-day Events remain unacknowledged until Details opens.
+- ContentView refreshes Habit, Pill, and Event dashboards before recalculating the combined badge on local day/time-zone/significant-time notifications and foreground Event badge delivery. All three refresh together because advancing currentTime consumes the day transition that the minute timer would otherwise detect. Notification triggers have floating local year/month/day at midnight, without a fixed timeZone. The stored dateKey prevents the Event's calendar date from moving during travel.
+- Existing date-only data uses CoreDataDateOnlyStorage normalization before dateKey is persisted. The old model is retained for migration to LoonyBearEventBadges.
+- EventBadgeNotificationSupport creates one silent request per distinct future due date, with only badge and routing metadata: no title, body, sound, or action category. Requests use event_badge_ identifiers and event.badge payload type. No additional permission prompt is introduced.
+- NotificationService owns replacement of these requests as part of its serialized full reschedule. Both Habit and Pill individual/aggregate payloads include Events in projected badge counts, so later reminders do not erase the Event contribution. Existing shared mutation, notification action, foreground, and backup restore paths reschedule them.
+- The Event request budget is max(0, 56 - plannedHabitRequestCount - plannedPillRequestCount), leaving eight slots for existing snoozes in the finite system queue. Nearest dates are scheduled first; the plan refills on the next reschedule. Exact background delivery cannot be guaranteed by the app, and app-icon badges require system permission. Tab badges do not depend on permission.
+- A foreground event.badge delivery presents no UI and refreshes current derived state instead of applying a potentially stale planned count.
 
 ### 13.3.1 Dashboard List Section Headers
 Defined in the dashboard list views.

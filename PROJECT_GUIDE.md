@@ -145,9 +145,11 @@ LoonyBear is an iOS SwiftUI app built around two tracking domains:
   - Count Up date can be today or in the past
   - invalid dates disable Save and show a dismissible floating warning banner
 - Event cards show the name on the left and duration on the right in the same compact style as streak text, for example `2yr 2mo 7d`.
-- Event duration uses the app tint, except completed Countdown cards show `0d` in red forever.
+- Event duration uses the app tint, except completed Countdown cards show `0d` in red until acknowledged, then system secondary gray.
 - Event Details supports editing name, mode, and date.
-- Event Delete is permanent. There is no Archive, Restore, reminder, overdue, badge, history review, or auto-delete behavior for Events.
+- Event Delete is permanent. There is no Archive, Restore, reminder, Habit/Pill overdue, history review, or auto-delete behavior for Events.
+- Countdown badges start at local midnight and remain until Event Details is opened. A saved date change resets acknowledgment; name edits and time-zone changes do not. The icon combines Events with Habit/Pill overdue counts; Count Up is excluded.
+- Events has always-available whole-card sorting restricted to each mode, without an Edit/Done button or changes to card appearance. Normal taps open Details. Each drop saves; new Events append. Order and acknowledgment are included in backup/restore.
 
 ## Important Current Rules
 

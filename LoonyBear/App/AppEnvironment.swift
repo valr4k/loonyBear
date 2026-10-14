@@ -60,6 +60,7 @@ struct AppEnvironment {
         let badgeService = AppBadgeService(
             loadDashboardUseCase: loadDashboardUseCase,
             pillRepository: pillRepository,
+            eventRepository: eventRepository,
             calendar: calendar,
             clock: clock
         )
@@ -88,7 +89,10 @@ struct AppEnvironment {
             clock: clock,
             rescheduleAllReminderNotifications: rescheduleAllReminderNotifications
         )
-        let eventAppState = EventAppState(repository: eventRepository)
+        let eventAppState = EventAppState(repository: eventRepository) {
+            badgeService.refreshBadge(forceApply: true)
+            rescheduleAllReminderNotifications()
+        }
         let notificationCoordinator = AppNotificationCoordinator(
             habitNotificationService: notificationService,
             pillNotificationService: pillNotificationService,
@@ -157,6 +161,7 @@ struct AppEnvironment {
         let badgeService = AppBadgeService(
             loadDashboardUseCase: loadDashboardUseCase,
             pillRepository: pillRepository,
+            eventRepository: eventRepository,
             calendar: calendar,
             clock: clock
         )
@@ -185,7 +190,10 @@ struct AppEnvironment {
             clock: clock,
             rescheduleAllReminderNotifications: rescheduleAllReminderNotifications
         )
-        let eventAppState = EventAppState(repository: eventRepository)
+        let eventAppState = EventAppState(repository: eventRepository) {
+            badgeService.refreshBadge(forceApply: true)
+            rescheduleAllReminderNotifications()
+        }
         let notificationCoordinator = AppNotificationCoordinator(
             habitNotificationService: notificationService,
             pillNotificationService: pillNotificationService,

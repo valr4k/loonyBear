@@ -74,6 +74,7 @@ struct CoreDataEventRepository: EventRepository {
 
             let object = NSEntityDescription.insertNewObject(forEntityName: "Event", into: context)
             object.setValue(eventID, forKey: "id")
+            object.setValue(EventLocalDate.key(for: draft.date, calendar: calendar), forKey: "dateKey")
             object.setValue(draft.trimmedName, forKey: "name")
             object.setValue(draft.mode.rawValue, forKey: "modeRaw")
             object.setValue(calendar.startOfDay(for: draft.date), forKey: "eventDate")
@@ -95,9 +96,22 @@ struct CoreDataEventRepository: EventRepository {
                 throw EventRepositoryError.internalFailure
             }
 
+            let nextKey = draft.resolvedDateKey(calendar: calendar)
+            let oldKey = object.stringValue(forKey: "dateKey")
+                ?? object.dateValue(forKey: "eventDate").map { EventLocalDate.legacyKey(for: $0, calendar: calendar) }
+            if oldKey != nextKey || object.stringValue(forKey: "modeRaw") != draft.mode.rawValue {
+                object.setValue(nil, forKey: "acknowledgedAt")
+            }
+            if object.stringValue(forKey: "modeRaw") != draft.mode.rawValue {
+                let request = NSFetchRequest<NSManagedObject>(entityName: "Event")
+                request.predicate = NSPredicate(format: "modeRaw == %@", draft.mode.rawValue)
+                let lastOrder = try context.fetch(request).map { $0.int32Value(forKey: "sortOrder") }.max() ?? -1
+                object.setValue(lastOrder + 1, forKey: "sortOrder")
+            }
+            object.setValue(nextKey, forKey: "dateKey")
             object.setValue(draft.trimmedName, forKey: "name")
             object.setValue(draft.mode.rawValue, forKey: "modeRaw")
-            object.setValue(calendar.startOfDay(for: draft.date), forKey: "eventDate")
+            object.setValue(EventLocalDate.date(for: nextKey, calendar: calendar), forKey: "eventDate")
             object.setValue(clock.now(), forKey: "updatedAt")
             object.setValue(object.int32Value(forKey: "version", default: 1) + 1, forKey: "version")
 
@@ -133,7 +147,8 @@ struct CoreDataEventRepository: EventRepository {
         guard
             let id = object.uuidValue(forKey: "id"),
             let name = object.stringValue(forKey: "name"),
-            let date = object.dateValue(forKey: "eventDate"),
+            let storedDate = object.dateValue(forKey: "eventDate"),
+            let date = localDate(object, fallback: storedDate),
             let modeRaw = object.stringValue(forKey: "modeRaw"),
             let mode = EventMode(rawValue: modeRaw)
         else {
@@ -150,8 +165,9 @@ struct CoreDataEventRepository: EventRepository {
             id: id,
             name: name,
             mode: mode,
-            date: calendar.startOfDay(for: date),
-            sortOrder: Int(object.int32Value(forKey: "sortOrder"))
+            date: date,
+            sortOrder: Int(object.int32Value(forKey: "sortOrder")),
+            acknowledgedAt: object.dateValue(forKey: "acknowledgedAt")
         )
     }
 
@@ -162,7 +178,8 @@ struct CoreDataEventRepository: EventRepository {
         guard
             let id = object.uuidValue(forKey: "id"),
             let name = object.stringValue(forKey: "name"),
-            let date = object.dateValue(forKey: "eventDate"),
+            let storedDate = object.dateValue(forKey: "eventDate"),
+            let date = localDate(object, fallback: storedDate),
             let modeRaw = object.stringValue(forKey: "modeRaw"),
             let mode = EventMode(rawValue: modeRaw)
         else {
@@ -179,7 +196,63 @@ struct CoreDataEventRepository: EventRepository {
             id: id,
             name: name,
             mode: mode,
-            date: calendar.startOfDay(for: date)
+            date: date,
+            dateKey: object.stringValue(forKey: "dateKey")
         )
+    }
+
+    private func localDate(_ object: NSManagedObject, fallback: Date) -> Date? {
+        if let key = object.stringValue(forKey: "dateKey") {
+            return EventLocalDate.date(for: key, calendar: calendar)
+        }
+        return CoreDataDateOnlyStorage.normalizedDay(fromStoredDate: fallback, calendar: calendar)
+    }
+
+    func prepareLocalDates() throws {
+        try repositoryContext.performWrite { context in
+            let request = NSFetchRequest<NSManagedObject>(entityName: "Event")
+            request.predicate = NSPredicate(format: "dateKey == nil")
+            for object in try context.fetch(request) {
+                guard let date = object.dateValue(forKey: "eventDate") else { throw EventRepositoryError.internalFailure }
+                object.setValue(EventLocalDate.legacyKey(for: date, calendar: calendar), forKey: "dateKey")
+            }
+            if context.hasChanges { try context.save() }
+        }
+    }
+
+    func acknowledgeEvent(id: UUID) throws -> Bool {
+        try repositoryContext.performWrite({ context in
+            guard let object = try fetchEvent(id: id, in: context),
+                  object.stringValue(forKey: "modeRaw") == EventMode.countdown.rawValue,
+                  object.dateValue(forKey: "acknowledgedAt") == nil,
+                  let date = object.dateValue(forKey: "eventDate"),
+                  let localDay = localDate(object, fallback: date),
+                  localDay <= calendar.startOfDay(for: clock.now()) else { return false }
+            object.setValue(clock.now(), forKey: "acknowledgedAt")
+            object.setValue(clock.now(), forKey: "updatedAt")
+            object.setValue(object.int32Value(forKey: "version", default: 1) + 1, forKey: "version")
+            try context.save()
+            return true
+        }, missingResultError: EventRepositoryError.internalFailure)
+    }
+
+    func reorderEvents(ids: [UUID], mode: EventMode) throws {
+        try repositoryContext.performWrite { context in
+            let request = NSFetchRequest<NSManagedObject>(entityName: "Event")
+            request.predicate = NSPredicate(format: "modeRaw == %@", mode.rawValue)
+            let objects = try context.fetch(request)
+            guard ids.count == Set(ids).count, Set(ids) == Set(objects.compactMap { $0.uuidValue(forKey: "id") }) else {
+                throw EventRepositoryError.internalFailure
+            }
+            let positions = Dictionary(uniqueKeysWithValues: ids.enumerated().map { ($1, $0) })
+            for object in objects {
+                guard let id = object.uuidValue(forKey: "id"), let position = positions[id] else { continue }
+                guard object.int32Value(forKey: "sortOrder") != Int32(position) else { continue }
+                object.setValue(Int32(position), forKey: "sortOrder")
+                object.setValue(clock.now(), forKey: "updatedAt")
+                object.setValue(object.int32Value(forKey: "version", default: 1) + 1, forKey: "version")
+            }
+            if context.hasChanges { try context.save() }
+        }
     }
 }

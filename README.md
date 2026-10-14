@@ -45,7 +45,7 @@ The current app supports:
 - read-only item Details for archived items, Restore Draft flows with Continue Progress / Start From Scratch choices, and permanent delete
 - unsaved-change protection for create/details/restore sheets: Close and swipe-down dismissal both route through the same Discard Changes confirmation
 - no-op-safe Restore persistence that skips notification/archive side effects when a stale Restore Draft no longer maps to an archived item
-- Events tab between Habits and Settings, with permanent delete only and no reminder/history/archive behavior
+- Events tab between Habits and Settings, with acknowledged Countdown badges, section-local drag ordering, permanent delete only, and no reminder/history/archive behavior
 - optimized Habit/Pill history storage using monthly buckets plus schedule-aware cold history ranges for very old generated history
 - optional Auto Backup toggle on the Backup screen; automatic backup keeps the existing backup files/schema and runs only when user-enabled, dirty data exists, and the selected folder is accessible
 - scheduled-day dots in Habit and Pill history calendars

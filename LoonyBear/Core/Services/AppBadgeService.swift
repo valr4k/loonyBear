@@ -48,11 +48,12 @@ enum ProjectedBadgeCountCalculator {
         at date: Date,
         habits: [HabitReminderConfiguration],
         pills: [PillReminderConfiguration],
+        events: [EventCardProjection] = [],
         calendar: Calendar = .autoupdatingCurrent
     ) -> Int {
         let overdueHabits = habits.filter { isOverdue($0, at: date, calendar: calendar) }.count
         let overduePills = pills.filter { isOverdue($0, at: date, calendar: calendar) }.count
-        return overdueHabits + overduePills
+        return overdueHabits + overduePills + EventBadgeSupport.count(events, now: date, calendar: calendar)
     }
 
     private static func isOverdue(_ habit: HabitCardProjection, now: Date, calendar: Calendar) -> Bool {
@@ -123,6 +124,7 @@ enum ProjectedBadgeCountCalculator {
 final class AppBadgeService {
     private let loadDashboardUseCase: LoadDashboardUseCase
     private let pillRepository: PillRepository
+    private let eventRepository: EventRepository?
     private let calendar: Calendar
     private let clock: AppClock
     private let badgeApplier: AppBadgeApplying
@@ -131,6 +133,7 @@ final class AppBadgeService {
     init(
         loadDashboardUseCase: LoadDashboardUseCase,
         pillRepository: PillRepository,
+        eventRepository: EventRepository? = nil,
         calendar: Calendar = .autoupdatingCurrent,
         clock: AppClock? = nil,
         badgeApplier: AppBadgeApplying? = nil
@@ -138,6 +141,7 @@ final class AppBadgeService {
         let resolvedClock = clock ?? AppClock(calendar: calendar)
         self.loadDashboardUseCase = loadDashboardUseCase
         self.pillRepository = pillRepository
+        self.eventRepository = eventRepository
         self.calendar = resolvedClock.calendar
         self.clock = resolvedClock
         self.badgeApplier = badgeApplier ?? SystemAppBadgeApplier()
@@ -162,6 +166,13 @@ final class AppBadgeService {
         forceApply: Bool = false
     ) {
         let currentDate = now ?? clock.now()
+        let events: [EventCardProjection]
+        do {
+            events = try eventRepository?.fetchDashboardEvents() ?? []
+        } catch {
+            ReliabilityLog.error("badge.event.refresh failed: \(error.localizedDescription)")
+            return
+        }
         let badgeCount = ProjectedBadgeCountCalculator.overdueCount(
             now: currentDate,
             habits: habitDashboard.sections.flatMap(\.habits),
@@ -169,7 +180,7 @@ final class AppBadgeService {
             calendar: calendar
         )
 
-        applyBadgeCountIfNeeded(badgeCount, forceApply: forceApply)
+        applyBadgeCountIfNeeded(badgeCount + EventBadgeSupport.count(events, now: currentDate, calendar: calendar), forceApply: forceApply)
     }
 
     private func applyBadgeCountIfNeeded(_ badgeCount: Int, forceApply: Bool) {
@@ -186,7 +197,8 @@ final class AppBadgeService {
 
         let pills = try pillRepository.fetchDashboardPills()
 
-        return ProjectedBadgeCountCalculator.overdueCount(
+        let events = try eventRepository?.fetchDashboardEvents() ?? []
+        return EventBadgeSupport.count(events, now: currentDate, calendar: calendar) + ProjectedBadgeCountCalculator.overdueCount(
             now: currentDate,
             habits: habits,
             pills: pills,

@@ -65,7 +65,7 @@ struct CoreDataRepositoryContext {
 }
 
 enum CoreDataDateOnlyStorage {
-    static func normalizedDay(fromStoredDate storedDate: Date, calendar: Calendar = .autoupdatingCurrent) -> Date {
+    nonisolated static func normalizedDay(fromStoredDate storedDate: Date, calendar: Calendar = .autoupdatingCurrent) -> Date {
         let startOfDay = calendar.startOfDay(for: storedDate)
 
         // Legacy date-only Core Data rows were stored as local midnight Date values.

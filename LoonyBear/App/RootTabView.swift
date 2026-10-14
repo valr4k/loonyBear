@@ -128,8 +128,9 @@ struct RootTabView: View {
                 .appTintScope(tint(for: .events))
                 .tag(AppTab.events)
                 .tabItem {
-                    Label("Events", systemImage: "calendar.badge")
+                    Label("Events", systemImage: "calendar")
                 }
+                .badge(EventBadgeSupport.count(eventAppState.dashboard.events, now: currentTime))
 
             NavigationStack(path: $settingsPath) {
                 SettingsView()
@@ -473,6 +474,7 @@ private enum PillEditSheetLoadState {
 
 private struct EventEditSheetLoader: View {
     @EnvironmentObject private var eventAppState: EventAppState
+    @Environment(\.scenePhase) private var scenePhase
     let eventID: UUID
     @State private var state: EventEditSheetLoadState = .loading
 
@@ -484,10 +486,11 @@ private struct EventEditSheetLoader: View {
             case .found(let details):
                 EditEventView(details: details)
                     .environmentObject(eventAppState)
+                    .task { await eventAppState.acknowledgeEvent(id: eventID) }
             case .notFound:
                 ContentUnavailableView(
                     "Event not found",
-                    systemImage: "calendar.badge",
+                    systemImage: "calendar",
                     description: Text("This event is no longer available.")
                 )
             case .integrityError(let message):
@@ -509,6 +512,26 @@ private struct EventEditSheetLoader: View {
                 state = .integrityError(message)
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .eventBadgeBecameDue)) { _ in
+            acknowledgeIfVisible()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in
+            acknowledgeIfVisible()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange).receive(on: RunLoop.main)) { _ in
+            acknowledgeIfVisible()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+            acknowledgeIfVisible()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { acknowledgeIfVisible() }
+        }
+    }
+
+    private func acknowledgeIfVisible() {
+        guard scenePhase == .active, case .found = state else { return }
+        Task { await eventAppState.acknowledgeEvent(id: eventID) }
     }
 }
 

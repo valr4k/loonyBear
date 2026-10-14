@@ -210,7 +210,9 @@ On every `.active` scene phase:
 ## Current Technical Boundaries
 
 - Habits and Pills use separate repositories and separate app state.
-- Events use their own repository and app state. They do not participate in reminders, overdue, badges, history review, Archive, Restore, or widget snapshots.
+- Events use their own repository and app state. Due, unacknowledged Countdowns contribute to the Events tab and combined app badge. They do not participate in reminders, Habit/Pill overdue, history review, Archive, Restore, or widgets.
+- EventBadgeNotificationSupport builds badge-only local requests. NotificationService owns their replacement together with Habit requests so the existing serialized/coalesced scheduler, startup, foreground, notification-action, and backup-restore paths all refresh them. Pill/Habit notification payloads include the Event contribution.
+- Event dates have a stable civil dateKey; acknowledgedAt persists acknowledgment. The new LoonyBearEventBadges model retains the original model for inferred migration. Event reordering writes only sortOrder inside the selected mode; the cards retain their existing layout outside native edit mode.
 - Streak logic exists only for Habits.
 - Pills support reordering through `sortOrder`.
 - Backup covers Habits, Pills, Events, and app appearance settings in one archive schema.
@@ -227,4 +229,4 @@ On every `.active` scene phase:
 - Schedule Create/active Details picker safety is centralized in shared UI infrastructure: native compact `DatePicker` controls and Repeat `NavigationLink` stay system-owned, while `AppSchedulePresentationGuard`, the Schedule card exclusive-touch scope, a window-level touch-down observer, and the End Repeat dismiss signal prevent simultaneous picker/popover/navigation presentation races without attaching scroll-stealing SwiftUI gestures to the picker capsules.
 - App tint updates are applied through SwiftUI tint helpers and visible UIKit tab/navigation bar updates.
 - Widget snapshot currently serializes Habit dashboard data only.
-- Event dashboard state is derived from stored `Event` rows. `Countdown` cards show days remaining and clamp to `0d` in red on/after the event date. `Count Up` cards show elapsed local calendar time from the selected date to today, using real calendar years/months/days, and continue indefinitely until the user permanently deletes the Event.
+- Event dashboard state is derived from stored `Event` rows. `Countdown` cards show days remaining and clamp to `0d` on/after the event date: red until acknowledged, then system secondary gray. `Count Up` cards show elapsed local calendar time from the selected date to today, using real calendar years/months/days, and continue indefinitely until the user permanently deletes the Event.

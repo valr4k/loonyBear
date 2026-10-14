@@ -104,6 +104,8 @@ struct BackupEvent: Codable {
     let createdAt: Date
     let updatedAt: Date
     let version: Int
+    var dateKey: String? = nil
+    var acknowledgedAt: Date? = nil
 }
 
 struct BackupHabit: Codable {

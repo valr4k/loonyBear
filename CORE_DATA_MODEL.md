@@ -268,6 +268,8 @@ Important fields:
 - `name`
 - `modeRaw`
 - `eventDate`
+- `dateKey` (optional String, Gregorian YYYY-MM-DD)
+- `acknowledgedAt` (optional Date)
 - `sortOrder`
 - `createdAt`
 - `updatedAt`
@@ -277,6 +279,11 @@ Meaning:
 - `modeRaw = countdown` means the dashboard counts down from today to `eventDate`
 - `modeRaw = elapsed` is the persisted compatibility value for the user-facing Count Up mode; it means the dashboard counts from `eventDate` through today
 - Events have no relationships, no history buckets, no reminder rows, no archive flag, and no schedule versions
+- dateKey preserves the selected civil date across time zones; eventDate remains for legacy/backup compatibility. Existing rows without dateKey are populated at startup using the shared legacy date-only normalization.
+- acknowledgedAt is set only when due Countdown Details is opened; date/mode changes clear it. Badge count itself is derived, not stored.
+- sortOrder is independently reordered inside each mode. Moves validate the full section ID set and reject cross-mode, duplicate, and incomplete input atomically.
+- Current model version is LoonyBearEventBadges.xcdatamodel. The original LoonyBear.xcdatamodel remains unchanged for lightweight migration; both added attributes are optional.
+- BackupEvent carries optional dateKey and acknowledgedAt alongside existing sortOrder. Missing legacy fields remain supported under schema version 3.
 
 ## Stored Model Rules
 

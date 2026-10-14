@@ -43,11 +43,12 @@ struct ContentView: View {
             .task {
                 guard !didStartInitialStateLoad else { return }
                 didStartInitialStateLoad = true
+                eventAppState.load()
                 await lifecycleRefreshCoordinator.perform {
                     await notificationCoordinator.configure()
                     await appState.handleAppDidBecomeActive()
                     await pillAppState.handleAppDidBecomeActive()
-                    eventAppState.load()
+                    eventAppState.refreshDashboard()
                     refreshBadgeFromDashboards(forceApply: true)
                 }
                 didLoadInitialState = true
@@ -65,22 +66,36 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: .eventStoreDidChange)) { _ in
                 eventAppState.refreshDashboard()
             }
+            .onReceive(NotificationCenter.default.publisher(for: .eventBadgeBecameDue)) { _ in
+                refreshTimeline()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in
+                refreshTimeline()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+                refreshTimeline(reschedule: true)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange).receive(on: RunLoop.main)) { _ in
+                refreshTimeline(reschedule: true)
+            }
             .onReceive(minuteTimer) { now in
                 guard didLoadInitialState, scenePhase == .active else { return }
                 let previousTime = currentTime
                 currentTime = now
 
                 if shouldRefreshDashboardsForTimelineTransition(from: previousTime, to: now) {
-                    appState.refreshDashboard()
-                    pillAppState.refreshDashboard()
-                    eventAppState.refreshDashboard()
+                    refreshTimelineDashboards(now: now)
+                } else {
+                    refreshBadgeFromDashboards(now: now)
                 }
-                refreshBadgeFromDashboards(now: now)
             }
             .onChange(of: appState.dashboard) { _, _ in
                 refreshBadgeFromDashboards(forceApply: true)
             }
             .onChange(of: pillAppState.dashboard) { _, _ in
+                refreshBadgeFromDashboards(forceApply: true)
+            }
+            .onChange(of: eventAppState.dashboard) { _, _ in
                 refreshBadgeFromDashboards(forceApply: true)
             }
             .onChange(of: scenePhase) { _, newPhase in
@@ -114,6 +129,23 @@ struct ContentView: View {
             pillDashboard: pillAppState.dashboard,
             now: now,
             forceApply: forceApply
+        )
+    }
+
+    private func refreshTimeline(reschedule: Bool = false) {
+        guard didLoadInitialState else { return }
+        currentTime = Date()
+        // Advancing currentTime consumes the transition that the minute timer would detect.
+        refreshTimelineDashboards(now: currentTime)
+        if reschedule {
+            Task { await notificationCoordinator.refreshScheduledBadges() }
+        }
+    }
+
+    private func refreshTimelineDashboards(now: Date) {
+        AppTimelineRefresh.refresh(
+            habits: appState, pills: pillAppState, events: eventAppState,
+            badgeService: badgeService, now: now
         )
     }
 

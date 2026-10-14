@@ -137,11 +137,19 @@
         },
         {
           "title": "Event cards",
-          "body": "Event cards show the name on the left and duration on the right. Duration uses the same compact style as streak text, such as 2yr 2mo 7d. Duration normally uses the app tint. Countdown events show 0d in red on and after the event date. Count Up events show elapsed local calendar time from the selected date to today, so the selected date itself is 0d and older dates use real calendar years, months, and days."
+          "body": "Event cards show the name on the left and duration on the right. Duration uses the same compact style as streak text, such as 2yr 2mo 7d. Duration normally uses the app tint. Countdown events show 0d on and after the event date: red until you open their Details, then gray. Count Up events show elapsed local calendar time from the selected date to today, so the selected date itself is 0d and older dates use real calendar years, months, and days."
         },
         {
           "title": "Event Details and Delete",
-          "body": "Tapping an Event card opens Event Details. Event Details can edit name, mode, and date. Delete is permanent and uses the confirmation Delete this Event? / This Event will be permanently deleted. Events do not use Archive, Restore, reminders, overdue, badge count, history review, or auto-delete. For persistence and backup compatibility, user-facing Count Up is stored with the raw mode value elapsed."
+          "body": "Tapping an Event card opens Event Details. Event Details can edit name, mode, and date. Opening a due Countdown acknowledges it immediately without Save. Delete is permanent and uses the confirmation Delete this Event? / This Event will be permanently deleted. Events do not use Archive, Restore, reminders, Habit/Pill overdue, history review, or auto-delete. For persistence and backup compatibility, user-facing Count Up is stored with the raw mode value elapsed."
+        },
+        {
+          "title": "Countdown badges",
+          "body": "At local midnight on the selected date, an unacknowledged Countdown adds one to the Events tab badge and the combined app icon badge. It stays counted until its Details is opened, even if the editor is closed without Save. Opening Details removes the badge contribution and changes 0d from red to gray. Saving a different date starts the cycle again; changing only the name or time zone does not reset acknowledgment. Count Up has no badge. Selected calendar dates stay fixed across time zones. The background icon update has no alert or sound and depends on iOS badge permission and delivery. Acknowledgment is included in backup."
+        },
+        {
+          "title": "Sorting Events",
+          "body": "Long-press and drag a card to reorder it within Countdown or within Count Up; moving between sections is not allowed. No Edit mode is needed and card appearance stays unchanged. A normal tap opens Details; dragging does not acknowledge Events. Each completed drop saves immediately. While its order is being saved, further moves, card taps, and adding are briefly unavailable. New Events append to their section. Order is included in backup."
         }
       ]
     },
@@ -265,7 +273,7 @@
       "items": [
         {
           "title": "What the badge counts",
-          "body": "The app badge is the total number of overdue Habits plus overdue Pills."
+          "body": "The app badge is the total number of overdue Habits plus overdue Pills plus due, unacknowledged Countdown Events. Count Up does not contribute."
         },
         {
           "title": "When a Habit is overdue",
@@ -277,7 +285,7 @@
         },
         {
           "title": "Projected badge count in notifications",
-          "body": "When the app builds reminder notifications, it also calculates a projected overdue badge count for the exact scheduled reminder time of each notification request."
+          "body": "When the app builds reminder notifications, it calculates the combined projected Habit, Pill, and unacknowledged Countdown badge count at each scheduled delivery time. Countdown midnight updates are badge-only, without an alert or sound."
         },
         {
           "title": "What overdue does not do",

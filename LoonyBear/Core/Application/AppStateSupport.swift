@@ -168,6 +168,25 @@ final class AppStateWriteCoordinator {
 }
 
 @MainActor
+enum AppTimelineRefresh {
+    static func refresh(
+        habits: HabitAppState,
+        pills: PillAppState,
+        events: EventAppState,
+        badgeService: AppBadgeService,
+        now: Date
+    ) {
+        habits.refreshDashboard()
+        pills.refreshDashboard()
+        events.refreshDashboard()
+        badgeService.refreshBadge(
+            habitDashboard: habits.dashboard, pillDashboard: pills.dashboard,
+            now: now, forceApply: true
+        )
+    }
+}
+
+@MainActor
 final class AppLifecycleRefreshCoordinator {
     private var isRunning = false
     private var pendingOperation: (() async -> Void)?

@@ -18,4 +18,7 @@ protocol EventRepository {
     func createEvent(from draft: EventDraft) throws -> UUID
     func updateEvent(from draft: EditEventDraft) throws
     func deleteEvent(id: UUID) throws
+    func prepareLocalDates() throws
+    func acknowledgeEvent(id: UUID) throws -> Bool
+    func reorderEvents(ids: [UUID], mode: EventMode) throws
 }

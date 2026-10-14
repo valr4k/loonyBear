@@ -659,6 +659,7 @@ final class PillNotificationService {
     func makePendingNotificationRequests() throws -> [UNNotificationRequest] {
         let pills = try storeContext.performRead(fetchReminderConfigurations)
         let habits = try storeContext.performRead(fetchHabitReminderConfigurations)
+        let events = try storeContext.performRead { try EventBadgeNotificationSupport.fetchEvents(context: $0, calendar: calendar) }
         let candidates = ReminderPlanningSupport.pillCandidates(
             reminders: pills,
             now: clock.now(),
@@ -670,6 +671,7 @@ final class PillNotificationService {
             candidates: candidates,
             habits: habits,
             pills: pills,
+            events: events,
             aggregationThreshold: aggregationThreshold,
             calendar: calendar
         )
@@ -1317,6 +1319,7 @@ final class PillNotificationService {
     private func makePendingNotificationRequests(forPillID pillID: UUID) throws -> [UNNotificationRequest] {
         let pills = try storeContext.performRead(fetchReminderConfigurations)
         let habits = try storeContext.performRead(fetchHabitReminderConfigurations)
+        let events = try storeContext.performRead { try EventBadgeNotificationSupport.fetchEvents(context: $0, calendar: calendar) }
         guard let pill = pills.first(where: { $0.id == pillID }) else {
             return []
         }
@@ -1336,6 +1339,7 @@ final class PillNotificationService {
                     at: candidate.scheduledDateTime,
                     habits: habits,
                     pills: pills,
+                    events: events,
                     calendar: calendar
                 )
             )

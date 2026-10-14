@@ -17,14 +17,22 @@ final class EventAppState: ObservableObject {
     @Published private(set) var detailErrorMessage: String?
 
     private let repository: EventRepository
+    private let onBadgeStateChanged: () -> Void
     private let writeCoordinator = AppStateWriteCoordinator(name: "LoonyBear.EventAppState.WriteQueue")
 
-    init(repository: EventRepository) {
+    init(repository: EventRepository, onBadgeStateChanged: @escaping () -> Void = {}) {
         self.repository = repository
+        self.onBadgeStateChanged = onBadgeStateChanged
     }
 
     func load() {
         isLoading = true
+        do { try repository.prepareLocalDates() } catch {
+            actionErrorMessage = UserFacingErrorMessage.text(for: error)
+            isLoading = false
+            hasLoadedOnce = true
+            return
+        }
         refreshDashboard()
         hasLoadedOnce = true
         isLoading = false
@@ -72,12 +80,14 @@ final class EventAppState: ObservableObject {
     }
 
     func createEvent(from draft: EventDraft) async throws -> UUID {
-        try await writeCoordinator.performThrowingMutation(
+        let id = try await writeCoordinator.performThrowingMutation(
             refresh: refreshDashboard,
             setError: { self.actionErrorMessage = $0 }
         ) {
             try self.repository.createEvent(from: draft)
         }
+        onBadgeStateChanged()
+        return id
     }
 
     func updateEvent(from draft: EditEventDraft) async throws {
@@ -87,16 +97,31 @@ final class EventAppState: ObservableObject {
         ) {
             try self.repository.updateEvent(from: draft)
         }
+        onBadgeStateChanged()
     }
 
     func deleteEvent(id: UUID) async {
-        _ = await writeCoordinator.performMutation(
+        let didDelete = await writeCoordinator.performMutation(
             refresh: refreshDashboard,
             setError: { self.actionErrorMessage = $0 },
             refreshOnFailure: true
         ) {
             try self.repository.deleteEvent(id: id)
         }
+        if didDelete { onBadgeStateChanged() }
+    }
+
+    func acknowledgeEvent(id: UUID) async {
+        let didChange = await writeCoordinator.performMutation(
+            refresh: refreshDashboard, setError: { self.actionErrorMessage = $0 }
+        ) { try self.repository.acknowledgeEvent(id: id) }
+        if didChange { onBadgeStateChanged() }
+    }
+
+    func reorderEvents(ids: [UUID], mode: EventMode) async {
+        _ = await writeCoordinator.performMutation(
+            refresh: refreshDashboard, setError: { self.actionErrorMessage = $0 }, refreshOnFailure: true
+        ) { try self.repository.reorderEvents(ids: ids, mode: mode) }
     }
 
     func clearActionError() {

@@ -121,6 +121,7 @@ enum ReminderPlanningSupport {
         candidates: [HabitNotificationCandidate],
         habits: [HabitReminderConfiguration],
         pills: [PillReminderConfiguration],
+        events: [EventCardProjection] = [],
         aggregationThreshold: Int,
         calendar: Calendar
     ) -> [HabitNotificationDeliveryPlan] {
@@ -133,6 +134,7 @@ enum ReminderPlanningSupport {
                 at: scheduledDateTime,
                 habits: habits,
                 pills: pills,
+                events: events,
                 calendar: calendar
             )
 
@@ -148,6 +150,7 @@ enum ReminderPlanningSupport {
         candidates: [PillNotificationCandidate],
         habits: [HabitReminderConfiguration],
         pills: [PillReminderConfiguration],
+        events: [EventCardProjection] = [],
         aggregationThreshold: Int,
         calendar: Calendar
     ) -> [PillNotificationDeliveryPlan] {
@@ -160,6 +163,7 @@ enum ReminderPlanningSupport {
                 at: scheduledDateTime,
                 habits: habits,
                 pills: pills,
+                events: events,
                 calendar: calendar
             )
 

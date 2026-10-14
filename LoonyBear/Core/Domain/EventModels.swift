@@ -20,6 +20,7 @@ struct EventCardProjection: Identifiable, Equatable, Hashable {
     let mode: EventMode
     let date: Date
     let sortOrder: Int
+    var acknowledgedAt: Date? = nil
 }
 
 struct EventDetailsProjection: Equatable {
@@ -27,6 +28,7 @@ struct EventDetailsProjection: Equatable {
     let name: String
     let mode: EventMode
     let date: Date
+    var dateKey: String? = nil
 }
 
 struct EventDashboardProjection: Equatable {
@@ -60,16 +62,25 @@ struct EditEventDraft: Equatable {
     var name: String
     var mode: EventMode
     var date: Date
+    private let originalDate: Date
+    private let originalDateKey: String?
 
     init(details: EventDetailsProjection) {
         id = details.id
         name = details.name
         mode = details.mode
         date = details.date
+        originalDate = details.date
+        originalDateKey = details.dateKey
     }
 
     var trimmedName: String {
         name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func resolvedDateKey(calendar: Calendar) -> String {
+        if date == originalDate, let originalDateKey { return originalDateKey }
+        return EventLocalDate.key(for: date, calendar: calendar)
     }
 }
 

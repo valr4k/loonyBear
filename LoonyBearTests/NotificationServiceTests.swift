@@ -16,6 +16,45 @@ struct NotificationServiceTests {
     private var notificationCenter: TestNotificationCenter { TestNotificationCenter.shared }
 
     @Test
+    func eventBadgeRequestsAreReplacedOnDateChangeModeChangeAndDeletion() async throws {
+        try await clearNotifications()
+        let persistence = PersistenceController(inMemory: true)
+        let calendar = Calendar.autoupdatingCurrent
+        let now = calendar.startOfDay(for: Date())
+        let clock = AppClock(calendar: calendar, now: { now })
+        let repository = CoreDataEventRepository(context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext, clock: clock)
+        let service = NotificationService(context: persistence.container.viewContext,
+            makeWriteContext: persistence.makeBackgroundContext, clock: clock)
+        let tomorrow = try #require(calendar.date(byAdding: .day, value: 1, to: now))
+        let later = try #require(calendar.date(byAdding: .day, value: 3, to: now))
+        let id = try repository.createEvent(from: EventDraft(name: "Event", date: tomorrow))
+        await rescheduleAllNotifications(service)
+        let initial = await pendingRequests()
+        #expect(initial.count == 1)
+        #expect(initial.first?.identifier == "event_badge_" + EventLocalDate.key(for: tomorrow))
+        var draft = EditEventDraft(details: try #require(try repository.fetchEventDetails(id: id)))
+        draft.date = later
+        try repository.updateEvent(from: draft)
+        await rescheduleAllNotifications(service)
+        let updated = await pendingRequests()
+        #expect(updated.count == 1)
+        #expect(updated.first?.identifier == "event_badge_" + EventLocalDate.key(for: later))
+        draft.mode = .countUp
+        try repository.updateEvent(from: draft)
+        await rescheduleAllNotifications(service)
+        #expect(await pendingRequests().isEmpty)
+        draft.mode = .countdown
+        try repository.updateEvent(from: draft)
+        await rescheduleAllNotifications(service)
+        #expect(await pendingRequests().count == 1)
+        try repository.deleteEvent(id: id)
+        await rescheduleAllNotifications(service)
+        #expect(await pendingRequests().isEmpty)
+        try await clearNotifications()
+    }
+
+    @Test
     func habitSchedulingUsesCurrentTwoDayWindow() async throws {
         let persistence = PersistenceController(inMemory: true)
         let repository = CoreDataHabitRepository(

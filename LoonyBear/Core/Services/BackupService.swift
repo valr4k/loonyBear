@@ -882,7 +882,9 @@ final class BackupService {
                         sortOrder: Int(event.value(forKey: "sortOrder") as? Int32 ?? 0),
                         createdAt: createdAt,
                         updatedAt: updatedAt,
-                        version: Int(event.value(forKey: "version") as? Int32 ?? 1)
+                        version: Int(event.value(forKey: "version") as? Int32 ?? 1),
+                        dateKey: event.value(forKey: "dateKey") as? String ?? EventLocalDate.legacyKey(for: date),
+                        acknowledgedAt: event.value(forKey: "acknowledgedAt") as? Date
                     )
                 )
             }
@@ -1156,6 +1158,8 @@ final class BackupService {
                     object.setValue(event.name, forKey: "name")
                     object.setValue(event.mode, forKey: "modeRaw")
                     object.setValue(event.date, forKey: "eventDate")
+                    object.setValue(event.dateKey ?? EventLocalDate.legacyKey(for: event.date, calendar: calendar), forKey: "dateKey")
+                    object.setValue(event.acknowledgedAt, forKey: "acknowledgedAt")
                     object.setValue(Int32(event.sortOrder), forKey: "sortOrder")
                     object.setValue(event.createdAt, forKey: "createdAt")
                     object.setValue(event.updatedAt, forKey: "updatedAt")
@@ -1625,6 +1629,10 @@ final class BackupService {
         }
 
         for event in archive.events {
+            if let dateKey = event.dateKey, EventLocalDate.date(for: dateKey) == nil {
+                report.append(area: "backup.restore", entityName: "BackupEvent",
+                    objectIdentifier: "event:\(event.id.uuidString)", message: "Event backup contains an invalid calendar date.")
+            }
             guard EventMode(rawValue: event.mode) != nil else {
                 report.append(
                     area: "backup.restore",
